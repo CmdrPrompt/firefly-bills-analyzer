@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- `make init-project` now generates `.gitignore` from `scaffold/.gitignore.tmpl`;
+  `make install` also auto-generates it if missing. (TASK-010)
+
 ### Changed
 
 - Scaffold `pyproject.toml.tmpl` now sets ruff `line-length = 100` instead of 88. (TASK-008)
