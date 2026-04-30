@@ -164,7 +164,7 @@ Analyze historical transactions in Firefly III to automatically identify recurri
 
 | ID | Requirement |
 |---|---|
-| FR-01 | The application shall communicate with Firefly III via REST API (v1) |
+| FR-01 | The application shall communicate with Firefly III via REST API (v1) using the shared `firefly-python-client` package for session management and authentication |
 | FR-02 | The analysis time window shall be configurable (default: 24 months) |
 | FR-03 | The application shall support the frequencies: monthly, quarterly, half-year, yearly |
 | FR-04 | The confidence threshold for automatic approval shall be configurable |
@@ -189,6 +189,8 @@ Analyze historical transactions in Firefly III to automatically identify recurri
 | FR-23 | The bills cache shall be invalidated immediately when a new bill is created via UC4 |
 | FR-24 | The web UI shall expose a "Clear cache" button that removes all cached data |
 | FR-25 | CLI mode shall support the `--clear-cache` flag to clear the cache on startup |
+| FR-26 | All HTTP communication with Firefly III shall go through a shared Python package (`firefly-python-client`) that provides an authenticated session, URL validation, and configuration loading |
+| FR-27 | The `firefly-python-client` package shall read `FIREFLY_URL` and `FIREFLY_TOKEN` from environment variables or a `.env` file and expose a `FireflyClient` class with a configured `requests.Session` |
 
 ---
 
@@ -209,6 +211,8 @@ Analyze historical transactions in Firefly III to automatically identify recurri
 | NFR-11 | Sensitive configuration (API token) shall not be baked into the image but mounted via `.env` file or environment variables |
 | NFR-12 | The cache directory shall be mounted as a named Docker volume to survive container restarts |
 | NFR-13 | The image shall run on TrueNAS Scale without modifications to the host system |
+| NFR-14 | `firefly-python-client` shall be a standalone, pip-installable package shared with `firefly-bank-importer` |
+| NFR-15 | The shared package shall have no opinionated dependencies beyond `requests` and `python-dotenv` |
 
 ---
 
@@ -266,6 +270,20 @@ If Firefly III runs as a separate container on the same NAS, two options are ava
 
 - **Shared Docker network:** Add `networks` to the compose file and use the container name as `FIREFLY_URL` (e.g. `http://firefly-app:8080`)
 - **Host IP:** Use the NAS local IP address as `FIREFLY_URL` (e.g. `http://192.168.1.x:8080`); simplest when Firefly III is deployed via the TrueNAS Apps interface
+
+### Shared Firefly client
+
+The HTTP layer toward Firefly III is provided by a standalone Python package
+(`firefly-python-client`) shared between `firefly-bills-analyzer` and
+`firefly-bank-importer`. It exposes:
+
+- `FireflyClient(url, token)` — wraps `requests.Session` with Bearer auth headers
+- `load_config(env_path)` — reads `FIREFLY_URL` and `FIREFLY_TOKEN` from environment or `.env` file
+- `validate_connection()` — `GET /api/v1/about`; raises on failure
+
+The package owns no application logic; it only manages the HTTP session lifecycle and credential loading.
+
+---
 
 ### Endpoints
 
@@ -337,5 +355,6 @@ The application supports two run modes:
 
 - Firefly III v6+ with REST API enabled
 - Personal Access Token with read and write access
+- `firefly-python-client` (shared internal package) — authenticated HTTP session and URL/token configuration
 - Flask or FastAPI (web server)
 - Docker Engine and Docker Compose (available on TrueNAS Scale)
