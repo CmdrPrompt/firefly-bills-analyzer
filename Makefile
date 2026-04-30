@@ -230,7 +230,12 @@ init-project:
 		PROJECT_MAKE_TARGET="$$ptarget"; \
 	$(MAKE) generate-pyproject FORCE=$(FORCE) \
 		PROJECT_NAME="$$pname" \
-		PROJECT_DESCRIPTION="$$pdesc"
+		PROJECT_DESCRIPTION="$$pdesc"; \
+	echo ""; \
+	echo "✓ Done. Stage and commit with:"; \
+	echo ""; \
+	echo "  git add CLAUDE.md pyproject.toml .github/ .claude/"; \
+	echo "  git commit -m \"Bootstrap project with python-butler\""
 
 ## Generate project governance files from .butler templates
 generate-governance-files:

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Scaffold `pyproject.toml.tmpl` now sets ruff `line-length = 100` instead of 88. (TASK-008)
+- `make init-project` now prints the suggested `git add` and `git commit` commands
+  after successful generation so the user can copy-paste them. (TASK-009)
+
 ### Added
 
 - `make init-project` interactively prompts for project name, description, requirements
