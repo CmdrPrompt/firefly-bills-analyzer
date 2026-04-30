@@ -162,6 +162,17 @@ class FireflyClient:
         """Return all categories (``data`` list from ``GET /api/v1/categories``)."""
         return self._get(f"{self.url}/api/v1/categories")["data"]  # type: ignore[no-any-return]
 
-    def get_summary(self) -> dict[str, Any]:
-        """Return the summary dict from ``GET /api/v1/summary/basic``."""
-        return self._get(f"{self.url}/api/v1/summary/basic")  # type: ignore[no-any-return]
+    def get_summary(self, start: str, end: str) -> dict[str, Any]:
+        """Return the summary dict from ``GET /api/v1/summary/basic``.
+
+        Parameters
+        ----------
+        start:
+            Start date in ``YYYY-MM-DD`` format.
+        end:
+            End date in ``YYYY-MM-DD`` format.
+        """
+        return self._get(  # type: ignore[no-any-return]
+            f"{self.url}/api/v1/summary/basic",
+            params={"start": start, "end": end},
+        )

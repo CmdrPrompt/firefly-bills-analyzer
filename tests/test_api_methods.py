@@ -281,8 +281,11 @@ class TestGetSummary:
         client = make_client()
         payload = {"earned": {"value": "1000.00"}, "spent": {"value": "500.00"}}
         with patch.object(client.session, "get", return_value=mock_response(payload)) as mock_get:
-            result = client.get_summary()
-        mock_get.assert_called_once_with("https://firefly.example.com/api/v1/summary/basic")
+            result = client.get_summary("2024-01-01", "2024-12-31")
+        mock_get.assert_called_once_with(
+            "https://firefly.example.com/api/v1/summary/basic",
+            params={"start": "2024-01-01", "end": "2024-12-31"},
+        )
         assert result == payload
 
     def test_raises_on_http_error(self):
@@ -291,4 +294,4 @@ class TestGetSummary:
         resp.raise_for_status.side_effect = requests.HTTPError("500")
         with patch.object(client.session, "get", return_value=resp):
             with pytest.raises(FireflyConnectionError):
-                client.get_summary()
+                client.get_summary("2024-01-01", "2024-12-31")

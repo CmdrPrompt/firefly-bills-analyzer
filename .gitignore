@@ -81,6 +81,7 @@ dmypy.json
 
 # Complexipy output
 complexipy_results_*.json
+complexipy-results*.json
 .complexipy_cache/
 
 # PyPI configuration file
@@ -88,3 +89,7 @@ complexipy_results_*.json
 
 # macOS
 .DS_Store
+
+# Local credential files
+config.json
+secrets.json
