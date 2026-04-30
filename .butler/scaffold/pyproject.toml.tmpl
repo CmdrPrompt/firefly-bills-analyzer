@@ -1,0 +1,33 @@
+[project]
+name = "{{PROJECT_NAME}}"
+version = "0.1.0"
+description = "{{PROJECT_DESCRIPTION}}"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "mypy",
+    "bandit",
+    "pymarkdown",
+    "complexipy",
+    "pytest",
+    "pytest-cov",
+    "pre-commit",
+]
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.mypy]
+strict = true
+
+[tool.bandit]
+skips = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
