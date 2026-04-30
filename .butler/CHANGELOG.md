@@ -12,6 +12,14 @@
 - README adoption guide clarifies that an initial empty commit is required only when
   the repo was created locally with `git init`, not when cloned from GitHub. (TASK-004)
 
+### Fixed
+
+- `make init-project` now generates `pyproject.toml` with the collected project name
+  and description; previously `make install` would generate it with default values
+  (`my-project`, `Describe your project here.`). (TASK-005)
+- `generate-pyproject` now guards against overwriting an existing `pyproject.toml`
+  unless `FORCE=1` is passed. (TASK-005)
+
 ### Changed
 
 - `templates/CLAUDE.md.tmpl` is now a proper project-scoped CLAUDE.md template with all

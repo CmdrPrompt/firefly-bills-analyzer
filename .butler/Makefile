@@ -53,6 +53,8 @@ help:
 
 ## Generate pyproject.toml from template if missing
 generate-pyproject:
+	@[ ! -f pyproject.toml ] || [ "$(FORCE)" = "1" ] || \
+		(echo "pyproject.toml already exists. Run with FORCE=1 to overwrite."; exit 1)
 	@sed \
 		-e 's|{{PROJECT_NAME}}|$(PROJECT_NAME)|g' \
 		-e 's|{{PROJECT_DESCRIPTION}}|$(PROJECT_DESCRIPTION)|g' \
@@ -223,7 +225,10 @@ init-project:
 		PROJECT_NAME="$$pname" \
 		PROJECT_DESCRIPTION="$$pdesc" \
 		REQUIREMENTS_PATH="$$rpath" \
-		PROJECT_MAKE_TARGET="$$ptarget"
+		PROJECT_MAKE_TARGET="$$ptarget"; \
+	$(MAKE) generate-pyproject FORCE=$(FORCE) \
+		PROJECT_NAME="$$pname" \
+		PROJECT_DESCRIPTION="$$pdesc"
 
 ## Generate project governance files from .butler templates
 generate-governance-files:
