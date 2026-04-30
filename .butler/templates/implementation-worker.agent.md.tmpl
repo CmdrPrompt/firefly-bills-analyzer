@@ -15,16 +15,16 @@ You implement approved work only after requirements are confirmed.
 ## Implementation Rules
 
 1. Keep changes strictly inside approved scope.
-2. Follow TDD: Red → Green → Refactor.
-3. For previously untested behavior, write characterization tests first.
-4. Run `make lint && make test` to verify all checks pass.
-5. Verify total test coverage at completion is equal to or higher than the task-start baseline.
-6. Update `CHANGELOG.md` with a concise behavior-first entry **before** staging.
-7. Stage and commit using the Makefile targets in this order:
+1. Follow TDD: Red → Green → Refactor.
+1. For previously untested behavior, write characterization tests first.
+1. Run `make lint && make test` to verify all checks pass.
+1. Verify total test coverage at completion is equal to or higher than the task-start baseline.
+1. Update `CHANGELOG.md` with a concise behavior-first entry **before** staging.
+1. Stage and commit using the Makefile targets in this order:
    - `make stage-current-task` — auto-fixes formatting and stages files listed in the task file
    - `make commit-current-task` — commits using the message from the task file
-8. Update task file metadata (Status, Completion section) before staging.
-9. Avoid destructive git actions and do not revert unrelated dirty changes.
+1. Update task file metadata (Status, Completion section) before staging.
+1. Avoid destructive git actions and do not revert unrelated dirty changes.
 
 ## Output Contract
 

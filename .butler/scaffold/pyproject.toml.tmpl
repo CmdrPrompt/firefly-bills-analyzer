@@ -10,7 +10,7 @@ dev = [
     "ruff",
     "mypy",
     "bandit",
-    "pymarkdown",
+    "pymarkdownlnt>=0.9.36",
     "complexipy",
     "pytest",
     "pytest-cov",
@@ -31,3 +31,10 @@ skips = []
 
 [tool.pytest.ini_options]
 testpaths = ["{{TESTS_DIR}}"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["{{SRC_DIR}}"]

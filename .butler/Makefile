@@ -1,8 +1,10 @@
 .PHONY: all help setup install lint fix stage branch-task stage-task commit-task \
         pr-task merge-pr stage-current-task commit-current-task pr-current-task \
 	merge-current-task test clean clean-complexity generate-governance-files \
-	generate-pyproject generate-gitignore generate-pre-commit-config init-project
+	generate-pyproject generate-gitignore generate-pre-commit-config generate-pymarkdown init-project \
+	butler-trim butler-fetch butler-pull butler-check
 
+BUTLER_REMOTE ?= https://github.com/CmdrPrompt/python-butler.git
 TASKS_DIR ?= docs/tasks
 SRC_DIR ?= src
 TESTS_DIR ?= tests
@@ -21,6 +23,12 @@ all: help
 help:
 	@echo ""
 	@echo "Available commands:"
+	@echo ""
+	@echo "  Keeping butler up to date:"
+	@echo "    make butler-check  -- Check if butler updates are available"
+	@echo "    make butler-pull   -- Pull butler updates and trim (updates .butler/Makefile only)"
+	@echo "    make butler-fetch  -- Pull butler without trimming (use before regenerating files)"
+	@echo "    make butler-trim   -- Remove all but .butler/Makefile (run after init-project)"
 	@echo ""
 	@echo "  First time on a new project:"
 	@echo "    make init-project  -- Interactively generate CLAUDE.md and governance files"
@@ -52,7 +60,7 @@ help:
 	@echo "    make merge-current-task      -- Squash-merge PR, pull main"
 	@echo ""
 
-## Generate pyproject.toml from template if missing
+## Generate pyproject.toml and .pymarkdown from templates if missing
 generate-pyproject:
 	@[ ! -f pyproject.toml ] || [ "$(FORCE)" = "1" ] || \
 		(echo "pyproject.toml already exists. Run with FORCE=1 to overwrite."; exit 1)
@@ -60,8 +68,17 @@ generate-pyproject:
 		-e 's|{{PROJECT_NAME}}|$(PROJECT_NAME)|g' \
 		-e 's|{{PROJECT_DESCRIPTION}}|$(PROJECT_DESCRIPTION)|g' \
 		-e 's|{{TESTS_DIR}}|$(TESTS_DIR)|g' \
+		-e 's|{{SRC_DIR}}|$(SRC_DIR)|g' \
 		.butler/scaffold/pyproject.toml.tmpl > pyproject.toml
 	@echo "✓ Generated pyproject.toml"
+	@$(MAKE) generate-pymarkdown FORCE=$(FORCE)
+
+## Generate .pymarkdown config from scaffold
+generate-pymarkdown:
+	@[ ! -f .pymarkdown ] || [ "$(FORCE)" = "1" ] || \
+		(echo ".pymarkdown already exists. Run with FORCE=1 to overwrite."; exit 1)
+	@cp .butler/scaffold/.pymarkdown .pymarkdown
+	@echo "✓ Generated .pymarkdown"
 
 ## Generate .gitignore from scaffold template
 generate-gitignore:
@@ -87,6 +104,7 @@ install:
 	@[ -f pyproject.toml ] || $(MAKE) generate-pyproject
 	@[ -f .gitignore ] || $(MAKE) generate-gitignore
 	@[ -f .pre-commit-config.yaml ] || $(MAKE) generate-pre-commit-config
+	@[ -f .pymarkdown ] || $(MAKE) generate-pymarkdown
 	uv sync --extra dev
 	uv run pre-commit install
 	@[ -f CLAUDE.md ] || $(MAKE) generate-governance-files
@@ -255,6 +273,68 @@ init-project:
 	echo "  git add CLAUDE.md pyproject.toml .gitignore .pre-commit-config.yaml .github/ .claude/"; \
 	echo "  git commit -m \"Bootstrap project with python-butler\""
 
+## Remove all but .butler/Makefile — run after make init-project (idempotent)
+butler-trim:
+	@echo "Trimming .butler/ down to Makefile only ..."
+	@git rm -r --ignore-unmatch --cached \
+		.butler/.claude \
+		.butler/.gitignore \
+		.butler/CHANGELOG.md \
+		.butler/claude-agents \
+		.butler/docs \
+		.butler/README.md \
+		.butler/scaffold \
+		.butler/templates
+	@rm -rf \
+		.butler/.claude \
+		.butler/.gitignore \
+		.butler/CHANGELOG.md \
+		.butler/claude-agents \
+		.butler/docs \
+		.butler/README.md \
+		.butler/scaffold \
+		.butler/templates
+	@BUTLER_SHORT=$$(git log --format="%B" | grep -m1 "Squashed '.butler/' content from commit" | awk '{print $$NF}'); \
+	if [ -n "$$BUTLER_SHORT" ]; then \
+		BUTLER_SHA=$$(git rev-parse "$$BUTLER_SHORT" 2>/dev/null || echo "$$BUTLER_SHORT"); \
+		echo "$$BUTLER_SHA" > .butler-version; \
+		echo "✓ Recorded butler version: $$BUTLER_SHA"; \
+	else \
+		echo "Warning: could not determine butler commit SHA — .butler-version not written"; \
+	fi
+	@echo "✓ Trim complete. Stage and commit with:"
+	@echo ""
+	@echo "  git add -A .butler/ .butler-version"
+	@echo "  git commit -m \"chore: trim .butler/ down to Makefile\""
+
+## Check if butler updates are available
+butler-check:
+	@CURRENT=$$(cat .butler-version 2>/dev/null); \
+	echo "Checking for butler updates..."; \
+	LATEST=$$(git ls-remote $(BUTLER_REMOTE) refs/heads/main | cut -f1); \
+	[ -n "$$LATEST" ] || (echo "Could not reach $(BUTLER_REMOTE)"; exit 1); \
+	if [ -z "$$CURRENT" ]; then \
+		echo "No .butler-version found — assuming updates are available."; \
+		echo "  Latest: $$LATEST"; \
+		echo "  Run: make butler-pull"; \
+	elif [ "$$CURRENT" = "$$LATEST" ]; then \
+		echo "✓ butler is up to date ($$CURRENT)"; \
+	else \
+		echo "Updates available."; \
+		echo "  Current: $$CURRENT"; \
+		echo "  Latest:  $$LATEST"; \
+		echo "  Run: make butler-pull"; \
+	fi
+
+## Pull the latest butler without trimming — use before regenerating governance files
+butler-fetch:
+	git subtree pull --prefix=.butler $(BUTLER_REMOTE) main --squash
+
+## Pull the latest butler and trim — updates .butler/Makefile only
+butler-pull:
+	git subtree pull --prefix=.butler $(BUTLER_REMOTE) main --squash
+	$(MAKE) butler-trim
+
 ## Generate project governance files from .butler templates
 generate-governance-files:
 	@[ ! -f CLAUDE.md ] || [ "$(FORCE)" = "1" ] || \
@@ -283,7 +363,7 @@ generate-governance-files:
 			.butler/templates/$$agent.agent.md.tmpl > .github/agents/$$agent.agent.md; \
 	done
 	@mkdir -p .claude/agents
-	@cp .butler/.claude/agents/*.agent.md .claude/agents/
+	@cp .butler/claude-agents/*.agent.md .claude/agents/
 	@echo "✓ Generated CLAUDE.md, .github/copilot-instructions.md, .github/agents/, and .claude/agents/"
 
 ## Remove generated complexipy artifacts
