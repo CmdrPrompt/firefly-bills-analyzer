@@ -5,6 +5,7 @@
 
 TASKS_DIR ?= docs/tasks
 SRC_DIR ?= src
+TESTS_DIR ?= tests
 PROJECT_NAME ?= my-project
 PROJECT_DESCRIPTION ?= Describe your project here.
 REQUIREMENTS_PATH ?= docs/REQUIREMENTS.md
@@ -58,6 +59,7 @@ generate-pyproject:
 	@sed \
 		-e 's|{{PROJECT_NAME}}|$(PROJECT_NAME)|g' \
 		-e 's|{{PROJECT_DESCRIPTION}}|$(PROJECT_DESCRIPTION)|g' \
+		-e 's|{{TESTS_DIR}}|$(TESTS_DIR)|g' \
 		.butler/scaffold/pyproject.toml.tmpl > pyproject.toml
 	@echo "✓ Generated pyproject.toml"
 
@@ -205,7 +207,7 @@ merge-current-task:
 
 ## Run tests with coverage
 test:
-	uv run pytest --cov=$(SRC_DIR) --cov-report=term-missing
+	uv run pytest $(TESTS_DIR)/ --cov=$(SRC_DIR) --cov-report=term-missing
 
 ## Interactively prompt for project values and generate governance files
 init-project:

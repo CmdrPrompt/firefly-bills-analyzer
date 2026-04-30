@@ -22,6 +22,10 @@
 
 ### Changed
 
+- `TESTS_DIR ?= tests` added to Makefile alongside `SRC_DIR`; `test` target now passes
+  `$(TESTS_DIR)/` explicitly to pytest; `scaffold/pyproject.toml.tmpl` uses `{{TESTS_DIR}}`
+  placeholder for `testpaths` instead of hardcoded `tests`. (TASK-006)
+
 - `templates/CLAUDE.md.tmpl` is now a proper project-scoped CLAUDE.md template with all
   supported placeholders (`{{PROJECT_NAME}}`, `{{PROJECT_DESCRIPTION}}`, `{{REQUIREMENTS_PATH}}`,
   `{{WORKFLOW_GUARDIAN_NAME}}`, `{{BUG_TRIAGE_NAME}}`, `{{PROJECT_MAKE_TARGET}}`); previously
