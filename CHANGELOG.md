@@ -6,6 +6,9 @@
 
 - `make init-project` now generates `.gitignore` from `scaffold/.gitignore.tmpl`;
   `make install` also auto-generates it if missing. (TASK-010)
+- `make init-project` now generates `.pre-commit-config.yaml` from scaffold with
+  ruff hooks; `make install` also auto-generates it if missing, eliminating the
+  "No .pre-commit-config.yaml file was found" warning on first commit. (TASK-011)
 
 ### Changed
 

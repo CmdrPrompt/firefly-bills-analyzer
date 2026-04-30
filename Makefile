@@ -1,7 +1,7 @@
 .PHONY: all help setup install lint fix stage branch-task stage-task commit-task \
         pr-task merge-pr stage-current-task commit-current-task pr-current-task \
 	merge-current-task test clean clean-complexity generate-governance-files \
-	generate-pyproject generate-gitignore init-project
+	generate-pyproject generate-gitignore generate-pre-commit-config init-project
 
 TASKS_DIR ?= docs/tasks
 SRC_DIR ?= src
@@ -70,6 +70,13 @@ generate-gitignore:
 	@cp .butler/scaffold/.gitignore.tmpl .gitignore
 	@echo "✓ Generated .gitignore"
 
+## Generate .pre-commit-config.yaml from scaffold template
+generate-pre-commit-config:
+	@[ ! -f .pre-commit-config.yaml ] || [ "$(FORCE)" = "1" ] || \
+		(echo ".pre-commit-config.yaml already exists. Run with FORCE=1 to overwrite."; exit 1)
+	@cp .butler/scaffold/.pre-commit-config.yaml.tmpl .pre-commit-config.yaml
+	@echo "✓ Generated .pre-commit-config.yaml"
+
 ## Install uv if missing (run once per machine)
 setup:
 	@which uv > /dev/null 2>&1 && echo "✓ uv already installed" || \
@@ -79,6 +86,7 @@ setup:
 install:
 	@[ -f pyproject.toml ] || $(MAKE) generate-pyproject
 	@[ -f .gitignore ] || $(MAKE) generate-gitignore
+	@[ -f .pre-commit-config.yaml ] || $(MAKE) generate-pre-commit-config
 	uv sync --extra dev
 	uv run pre-commit install
 	@[ -f CLAUDE.md ] || $(MAKE) generate-governance-files
@@ -240,10 +248,11 @@ init-project:
 		PROJECT_NAME="$$pname" \
 		PROJECT_DESCRIPTION="$$pdesc"; \
 	$(MAKE) generate-gitignore FORCE=$(FORCE); \
+	$(MAKE) generate-pre-commit-config FORCE=$(FORCE); \
 	echo ""; \
 	echo "✓ Done. Stage and commit with:"; \
 	echo ""; \
-	echo "  git add CLAUDE.md pyproject.toml .gitignore .github/ .claude/"; \
+	echo "  git add CLAUDE.md pyproject.toml .gitignore .pre-commit-config.yaml .github/ .claude/"; \
 	echo "  git commit -m \"Bootstrap project with python-butler\""
 
 ## Generate project governance files from .butler templates
