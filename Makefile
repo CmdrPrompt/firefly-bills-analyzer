@@ -214,8 +214,8 @@ init-project:
 	@echo "Initialising project governance files."
 	@echo "Press Enter to accept the default shown in brackets."
 	@echo ""
-	@read -p "Project name [$(PROJECT_NAME)]: " pname; \
-	pname=$${pname:-$(PROJECT_NAME)}; \
+	@read -p "Project name [$(notdir $(CURDIR))]: " pname; \
+	pname=$${pname:-$(notdir $(CURDIR))}; \
 	read -p "Project description [$(PROJECT_DESCRIPTION)]: " pdesc; \
 	pdesc=$${pdesc:-$(PROJECT_DESCRIPTION)}; \
 	read -p "Requirements path [$(REQUIREMENTS_PATH)]: " rpath; \
