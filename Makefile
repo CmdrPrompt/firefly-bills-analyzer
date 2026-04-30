@@ -294,13 +294,12 @@ butler-trim:
 		.butler/README.md \
 		.butler/scaffold \
 		.butler/templates
-	@BUTLER_SHORT=$$(git log --format="%B" | grep -m1 "Squashed '.butler/' content from commit" | awk '{print $$NF}'); \
-	if [ -n "$$BUTLER_SHORT" ]; then \
-		BUTLER_SHA=$$(git rev-parse "$$BUTLER_SHORT" 2>/dev/null || echo "$$BUTLER_SHORT"); \
+	@BUTLER_SHA=$$(git ls-remote $(BUTLER_REMOTE) refs/heads/main | cut -f1); \
+	if [ -n "$$BUTLER_SHA" ]; then \
 		echo "$$BUTLER_SHA" > .butler-version; \
 		echo "✓ Recorded butler version: $$BUTLER_SHA"; \
 	else \
-		echo "Warning: could not determine butler commit SHA — .butler-version not written"; \
+		echo "Warning: could not reach $(BUTLER_REMOTE) — .butler-version not written"; \
 	fi
 	@echo "✓ Trim complete. Stage and commit with:"
 	@echo ""

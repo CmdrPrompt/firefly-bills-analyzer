@@ -4,6 +4,11 @@
 
 ### Fixed
 
+- `butler-trim` now records the remote HEAD SHA via `git ls-remote` instead of
+  extracting from the squash-merge commit message, which did not reliably match
+  the branch tip. `butler-check` now correctly reports "up to date" after a pull.
+  (TASK-016)
+
 - `scaffold/pyproject.toml.tmpl`: replaced `"pymarkdown"` with `"pymarkdownlnt>=0.9.36"`,
   added `[build-system]` table, and added `[tool.setuptools.packages.find]` for src-layout
   projects. (TASK-014)

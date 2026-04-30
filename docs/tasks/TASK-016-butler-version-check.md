@@ -30,7 +30,7 @@ version marker.
 ## Acceptance criteria
 
 - [x] `make butler-trim` writes `.butler-version` to the project root containing
-  the butler commit SHA (extracted from the subtree squash-merge log entry)
+  the current remote HEAD SHA (fetched via `git ls-remote`)
 - [x] `.butler-version` is placed in the project root, not inside `.butler/`
 - [x] `make butler-check` reads `.butler-version` and compares it to the remote
   HEAD SHA via `git ls-remote $(BUTLER_REMOTE) refs/heads/main`
@@ -46,5 +46,5 @@ version marker.
 **Summary:** Added `butler-check` target and version tracking via `.butler-version`. `butler-trim` extracts the full butler commit SHA from the subtree squash-merge log entry and writes it to `.butler-version` in the project root. `butler-check` fetches remote HEAD via `git ls-remote` and compares. `butler-pull` stays up to date automatically.
 **Files changed:** `Makefile`, `README.md`, `CHANGELOG.md`, `docs/tasks/TASK-016-butler-version-check.md`
 **Branch:** `task/016-butler-version-check`
-**Stage:** `git add Makefile docs/tasks/TASK-016-butler-version-check.md`
-**Commit:** `git commit -m "butler-check assumes updates available when .butler-version missing (TASK-016)"`
+**Stage:** `git add Makefile CHANGELOG.md docs/tasks/TASK-016-butler-version-check.md`
+**Commit:** `git commit -m "Fix butler-trim to record remote HEAD SHA via git ls-remote (TASK-016)"`
