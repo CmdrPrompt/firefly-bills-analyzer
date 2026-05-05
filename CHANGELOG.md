@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Python package `firefly_bills_analyzer` with `config.py` (loads all env vars with
+  typed defaults, raises `ConfigError` for missing required values) and `__main__.py`
+  (CLI entry-point with `--dry-run`, `--auto-approve`, `--clear-cache` flags). (TASK-001)
+- `python-dotenv` added as runtime dependency for automatic `.env` loading. (TASK-001)
+- `firefly-python-api` added as a git subtree under `lib/firefly-python-api/`. (TASK-001)
+
 ## [0.1.0] - 2026-03-27
 
 ### Added

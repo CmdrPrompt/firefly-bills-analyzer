@@ -47,8 +47,24 @@ Analyze historical transactions in Firefly III to automatically identify recurri
    - Median number of days between transactions
    - Most common day of the month/quarter/year
 3. A pattern is classified as recurring if it meets a configurable threshold (default: at least 2 occurrences)
-4. Frequency is estimated as: monthly / quarterly / half-yearly / yearly / irregular
-5. Results are returned to the caller (web server or terminal) with a confidence score per entry
+4. Frequency is estimated by comparing the median interval between transactions to the following thresholds:
+
+   | Frequency | Median interval (days) |
+   |---|---|
+   | Monthly | 25–35 |
+   | Quarterly | 80–100 |
+   | Half-yearly | 160–200 |
+   | Yearly | 340–390 |
+   | Irregular | outside all ranges above |
+
+5. A confidence score in [0.0, 1.0] is computed as:
+   `confidence = 0.4 × occurrence_score + 0.4 × regularity_score + 0.2 × amount_score + category_boost`
+   where:
+   - `occurrence_score = min(n / 4, 1.0)`
+   - `regularity_score = max(0, 1 − stddev_days / median_days)`
+   - `amount_score = max(0, 1 − stddev_amount / mean_amount)`
+   - `category_boost = CATEGORY_CONFIDENCE_BOOST` if the payee's category is in the include list, else 0
+6. Results are returned to the caller (web server or terminal) with the confidence score per entry
 
 **Alternative flow:**
 - Too few transactions to establish a pattern: entry is flagged with low confidence
@@ -137,7 +153,7 @@ Analyze historical transactions in Firefly III to automatically identify recurri
 **Precondition:** Application is running  
 **Primary flow (automatic cache):**
 1. On the first call to `/api/categories`, data is fetched from Firefly III and saved to a file cache with a timestamp
-2. Subsequent calls within `CACHE_TTL` read from cache without making an API call
+2. Subsequent calls within `CACHE_TTL_CATEGORIES` read from cache without making an API call
 3. On calls to `/api/analyze`, the application checks whether cached transaction data exists and is within `CACHE_TTL_TRANSACTIONS`; if so, cached data is used, otherwise fresh data is fetched
 4. When UC4 creates a new bill, the bills cache is invalidated immediately
 
@@ -164,9 +180,9 @@ Analyze historical transactions in Firefly III to automatically identify recurri
 
 | ID | Requirement |
 |---|---|
-| FR-01 | The application shall communicate with Firefly III via REST API (v1) using the shared `firefly-python-client` package for session management and authentication |
+| FR-01 | The application shall communicate with Firefly III via REST API (v1) exclusively through the shared `firefly-python-api` package, which provides an authenticated session, URL validation, and configuration loading |
 | FR-02 | The analysis time window shall be configurable (default: 24 months) |
-| FR-03 | The application shall support the frequencies: monthly, quarterly, half-year, yearly |
+| FR-03 | The application shall support the frequencies: monthly, quarterly, half-yearly, yearly, irregular |
 | FR-04 | The confidence threshold for automatic approval shall be configurable |
 | FR-05 | The application shall check whether a bill already exists before creating it |
 | FR-06 | The amount range (min/max) shall be calculated with a configurable margin |
@@ -189,8 +205,8 @@ Analyze historical transactions in Firefly III to automatically identify recurri
 | FR-23 | The bills cache shall be invalidated immediately when a new bill is created via UC4 |
 | FR-24 | The web UI shall expose a "Clear cache" button that removes all cached data |
 | FR-25 | CLI mode shall support the `--clear-cache` flag to clear the cache on startup |
-| FR-26 | All HTTP communication with Firefly III shall go through a shared Python package (`firefly-python-client`) that provides an authenticated session, URL validation, and configuration loading |
-| FR-27 | The `firefly-python-client` package shall read `FIREFLY_URL` and `FIREFLY_TOKEN` from environment variables or a `.env` file and expose a `FireflyClient` class with a configured `requests.Session` |
+| FR-26 | The `firefly-python-api` package shall read `FIREFLY_URL` and `FIREFLY_TOKEN` from environment variables or a `.env` file and expose a `FireflyClient` class with a configured `requests.Session` |
+| FR-27 | The confidence score shall be computed from occurrence count (weight 0.4), interval regularity (weight 0.4), and amount stability (weight 0.2), with an optional category boost; the result shall be clamped to [0.0, 1.0] |
 
 ---
 
@@ -203,16 +219,11 @@ Analyze historical transactions in Firefly III to automatically identify recurri
 | NFR-03 | The application shall handle Firefly III API pagination transparently |
 | NFR-04 | Error handling shall produce clear error messages without stack traces for common errors |
 | NFR-05 | Analysis of 24 months of data shall complete in under 60 seconds |
-| NFR-06 | The application shall be deployable on TrueNAS Scale without modifications to the host system |
-| NFR-07 | The web UI shall work without external CDN dependencies (all assets served locally) |
-| NFR-08 | The web server shall listen on a configurable port (default: 5000) and be accessible on localhost only |
-| NFR-09 | The application shall be packaged as a Docker image and deployable via Docker Compose |
-| NFR-10 | The Docker image shall be based on `python:3.12-slim` to minimize image size |
-| NFR-11 | Sensitive configuration (API token) shall not be baked into the image but mounted via `.env` file or environment variables |
-| NFR-12 | The cache directory shall be mounted as a named Docker volume to survive container restarts |
-| NFR-13 | The image shall run on TrueNAS Scale without modifications to the host system |
-| NFR-14 | `firefly-python-client` shall be a standalone, pip-installable package shared with `firefly-bank-importer` |
-| NFR-15 | The shared package shall have no opinionated dependencies beyond `requests` and `python-dotenv` |
+| NFR-06 | The web UI shall work without external CDN dependencies (all assets served locally) |
+| NFR-07 | The web server shall listen on a configurable port (default: 5000) and configurable bind address (default: `127.0.0.1`); to allow access from other machines the bind address shall be settable to `0.0.0.0` via `WEB_HOST` |
+| NFR-09 | The cache directory shall persist across application restarts |
+| NFR-10 | `firefly-python-api` shall be a standalone, pip-installable package shared with `firefly-bank-importer` |
+| NFR-11 | The shared package shall have no opinionated dependencies beyond `requests` and `python-dotenv` |
 
 ---
 
@@ -233,48 +244,19 @@ firefly_bills_analyzer/
 │   └── index.html       # Single-page web UI
 ├── static/
 │   └── app.js           # Minimal vanilla JS for table interactions and API calls
-├── cache/               # Cache files (created automatically, mounted as volume)
+├── cache/               # Cache files (created automatically, persisted across restarts)
 │   ├── categories.json
 │   ├── bills.json
 │   ├── transactions.json
 │   └── payees.json
-├── Dockerfile           # Builds the application image
-├── docker-compose.yml   # Deployment with volume, port, and env file
 ├── .env.example         # Configuration template without sensitive values
 └── requirements.txt     # Python dependencies
 ```
 
-### Docker Compose
-
-```yaml
-services:
-  bills-analyzer:
-    build: .
-    image: firefly-bills-analyzer:latest
-    container_name: firefly-bills-analyzer
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:5000:5000"
-    env_file:
-      - .env
-    volumes:
-      - bills-analyzer-cache:/app/cache
-
-volumes:
-  bills-analyzer-cache:
-```
-
-### Network configuration on TrueNAS
-
-If Firefly III runs as a separate container on the same NAS, two options are available:
-
-- **Shared Docker network:** Add `networks` to the compose file and use the container name as `FIREFLY_URL` (e.g. `http://firefly-app:8080`)
-- **Host IP:** Use the NAS local IP address as `FIREFLY_URL` (e.g. `http://192.168.1.x:8080`); simplest when Firefly III is deployed via the TrueNAS Apps interface
-
 ### Shared Firefly client
 
 The HTTP layer toward Firefly III is provided by a standalone Python package
-(`firefly-python-client`) shared between `firefly-bills-analyzer` and
+(`firefly-python-api`) shared between `firefly-bills-analyzer` and
 `firefly-bank-importer`. It exposes:
 
 - `FireflyClient(url, token)` — wraps `requests.Session` with Bearer auth headers
@@ -335,6 +317,7 @@ The application supports two run modes:
 | `CATEGORY_CONFIDENCE_BOOST` | Confidence boost for transactions matching the include list | `0.15` |
 | `UNCATEGORIZED_BEHAVIOR` | Handling of uncategorized transactions (include/exclude/neutral) | `neutral` |
 | `WEB_PORT` | Port the web server listens on | `5000` |
+| `WEB_HOST` | IP address the web server binds to | `127.0.0.1` |
 | `CACHE_DIR` | Directory for cache files | `./cache` |
 | `CACHE_TTL_CATEGORIES` | TTL for category cache (seconds) | `86400` |
 | `CACHE_TTL_BILLS` | TTL for bills cache (seconds) | `3600` |
@@ -355,6 +338,5 @@ The application supports two run modes:
 
 - Firefly III v6+ with REST API enabled
 - Personal Access Token with read and write access
-- `firefly-python-client` (shared internal package) — authenticated HTTP session and URL/token configuration
+- `firefly-python-api` (shared internal package) — authenticated HTTP session and URL/token configuration
 - Flask or FastAPI (web server)
-- Docker Engine and Docker Compose (available on TrueNAS Scale)
