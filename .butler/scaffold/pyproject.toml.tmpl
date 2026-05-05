@@ -1,0 +1,40 @@
+[project]
+name = "{{PROJECT_NAME}}"
+version = "0.1.0"
+description = "{{PROJECT_DESCRIPTION}}"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "mypy",
+    "bandit",
+    "pymarkdownlnt>=0.9.36",
+    "complexipy",
+    "pytest",
+    "pytest-cov",
+    "pre-commit",
+]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.mypy]
+strict = true
+
+[tool.bandit]
+skips = []
+
+[tool.pytest.ini_options]
+testpaths = ["{{TESTS_DIR}}"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["{{SRC_DIR}}"]
