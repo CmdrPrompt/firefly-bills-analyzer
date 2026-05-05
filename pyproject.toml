@@ -1,0 +1,44 @@
+[project]
+name = "firefly-python-api"
+version = "0.1.0"
+description = "Python client library for the Firefly III REST API — shared HTTP layer with credential management and API coverage for accounts, transactions, and reporting resources."
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.32",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+    "mypy",
+    "bandit",
+    "pymarkdownlnt>=0.9.36",
+    "complexipy",
+    "pytest",
+    "pytest-cov",
+    "types-requests",
+    "pre-commit",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.mypy]
+strict = true
+
+[tool.bandit]
+skips = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
