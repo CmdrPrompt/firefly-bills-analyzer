@@ -3,7 +3,9 @@ name = "firefly-bills-analyzer"
 version = "0.1.0"
 description = "Analyzes your Firefly III transaction history to automatically identify recurring payments and create subscriptions (bills) via the Firefly III API. Designed for cash flow planning across the full year, including low-frequency bills such as quarterly and annual payments."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "python-dotenv>=1.2.2",
+]
 
 [project.optional-dependencies]
 dev = [
