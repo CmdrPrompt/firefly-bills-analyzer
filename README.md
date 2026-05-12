@@ -24,7 +24,7 @@ Analyzes your Firefly III transaction history to automatically identify recurrin
 ## Getting started
 
 ```bash
-git clone https://github.com/your-username/firefly-bills-analyzer.git
+git clone https://github.com/CmdrPrompt/firefly-bills-analyzer.git 
 cd firefly-bills-analyzer
 cp .env.example .env
 # Edit .env with your Firefly III URL and token
