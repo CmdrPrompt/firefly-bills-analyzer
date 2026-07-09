@@ -33,6 +33,7 @@ Files removed by `butler-trim`:
 Only `.butler/Makefile` remains after trim.
 
 Regeneration workflow (when governance files need updating):
+
 ```bash
 make butler-fetch                  # restore templates/scaffold/claude-agents/
 make generate-governance-files     # or make init-project, or individual generate-* targets

@@ -45,13 +45,15 @@ butler scaffold (`make init-project` / `make generate-pyproject`):
 - [x] `scaffold/pyproject.toml.tmpl` contains `"pymarkdownlnt>=0.9.36"` instead of
   `"pymarkdown"`
 - [x] `scaffold/pyproject.toml.tmpl` contains a `[build-system]` table:
-  ```toml
+  
+```toml
   [build-system]
   requires = ["setuptools>=68"]
   build-backend = "setuptools.build_meta"
   ```
+  
 - [x] `scaffold/pyproject.toml.tmpl` contains `[tool.setuptools.packages.find]`
-  with `where = ["{{SRC_DIR}}"]` (or the resolved value of `SRC_DIR`, defaulting
+with `where = ["{{SRC_DIR}}"]` (or the resolved value of `SRC_DIR`, defaulting
   to `src`)
 - [x] `scaffold/.pymarkdown.tmpl` (or a static `scaffold/.pymarkdown`) is created
   with the same disabled-rules config used across existing butler-based projects
