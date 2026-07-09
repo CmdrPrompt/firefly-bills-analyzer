@@ -56,10 +56,10 @@ via `uv add`. Added `firefly-python-api` as a git subtree. 12 tests, 84 % covera
 - `pyproject.toml` — modified (python-dotenv dependency)
 - `uv.lock` — modified
 - `lib/firefly-python-api/` — created (git subtree)
-- `docs/REQUIREMENTS.md` — modified (spec updates from this session)
+- `docs/REQUIREMENTS_new.md` — modified (spec updates from this session)
 - `CHANGELOG.md` — modified
 - `docs/tasks/TASK-001-project-scaffold.md` — modified
 
 **Branch:** `git checkout task/001-project-scaffold`
-**Stage:** `git add src/ tests/ .env.example pyproject.toml uv.lock CHANGELOG.md docs/REQUIREMENTS.md docs/tasks/TASK-001-project-scaffold.md`
+**Stage:** `git add src/ tests/ .env.example pyproject.toml uv.lock CHANGELOG.md docs/REQUIREMENTS_new.md docs/tasks/TASK-001-project-scaffold.md`
 **Commit:** `Add project scaffold and configuration layer`

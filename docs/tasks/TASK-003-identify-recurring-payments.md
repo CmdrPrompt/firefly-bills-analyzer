@@ -13,7 +13,7 @@ a list of `RecurringPattern` objects sorted by confidence score descending.
 The confidence score formula and frequency thresholds are specified in the
 requirements spec (UC2, FR-27).
 
-Covers UC2, FR-03, FR-04, FR-12, FR-27, NFR-05.
+Covers UC2, FR-03, FR-04b, FR-12, FR-27, NFR-05.
 
 ## Branch
 

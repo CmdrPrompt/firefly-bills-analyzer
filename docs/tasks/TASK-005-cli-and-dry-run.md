@@ -13,7 +13,7 @@ create bills (UC4) — or skip creation in dry-run mode (UC5).
 
 Also adds `exporter.py` for CSV/JSON export (FR-08, UC5).
 
-Covers UC3 (terminal flow), UC5, FR-07, FR-08.
+Covers UC3 (terminal flow), UC5, FR-07a, FR-07b, FR-08.
 
 ## Branch
 

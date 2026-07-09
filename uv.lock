@@ -59,6 +59,11 @@ wheels = [
 ]
 
 [[package]]
+name = "butler-core"
+version = "0.1.0"
+source = { git = "https://github.com/CmdrPrompt/python-butler.git#969b88d2e6bd41539183b48554c22947aca854f9" }
+
+[[package]]
 name = "cfgv"
 version = "3.5.0"
 source = { registry = "https://pypi.org/simple" }
@@ -301,6 +306,11 @@ dev = [
     { name = "ruff" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "butler-core" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "bandit", marker = "extra == 'dev'" },
@@ -314,6 +324,9 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'" },
 ]
 provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "butler-core", git = "https://github.com/CmdrPrompt/python-butler.git" }]
 
 [[package]]
 name = "identify"

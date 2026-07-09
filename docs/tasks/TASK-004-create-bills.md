@@ -20,7 +20,7 @@ fraction (FR-06). `repeat_freq` maps from the `frequency` string
 (`monthly` → `monthly`, `quarterly` → `quarterly`, `half-yearly` → `half-year`,
 `yearly` → `yearly`, `irregular` → not created unless explicitly approved).
 
-Covers UC4, FR-05, FR-06, FR-09.
+Covers UC4, FR-05, FR-06, FR-07b, FR-09.
 
 ## Branch
 
@@ -38,7 +38,7 @@ Covers UC4, FR-05, FR-06, FR-09.
       iterates over approved patterns and returns one `BillOutcome` per entry
 - [ ] Existing bills are fetched once via `client.get_bills()` and matched by name
       (case-insensitive); a match sets status `"exists"` without an API call
-- [ ] In dry-run mode all outcomes are `"skipped"` and no POST is made (FR-07)
+- [ ] In dry-run mode all outcomes are `"skipped"` and no POST is made (FR-07b)
 - [ ] Amount min/max = `mean × (1 ∓ config.amount_margin)`, rounded to 2 decimals
 - [ ] `irregular` patterns produce status `"skipped"` with an explanatory message
       unless the caller explicitly passes `force=True`

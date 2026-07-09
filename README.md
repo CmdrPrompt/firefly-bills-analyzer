@@ -21,6 +21,15 @@ Analyzes your Firefly III transaction history to automatically identify recurrin
 - Firefly III v6+ with REST API enabled and a Personal Access Token
 - Docker and Docker Compose
 
+## Subproject governance
+
+The `lib/firefly-python-api` directory is a separate upstream repository:
+https://github.com/CmdrPrompt/firefly-python-api
+
+Treat it as an independent project with its own requirements source, agent
+instructions, and workflow rules. Changes to the analyzer project should not
+implicitly rewrite governance files inside that subproject.
+
 ## Getting started
 
 ```bash

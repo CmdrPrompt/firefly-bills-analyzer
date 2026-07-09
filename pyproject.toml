@@ -19,6 +19,11 @@ dev = [
     "pre-commit",
 ]
 
+[dependency-groups]
+dev = [
+    "butler-core @ git+https://github.com/CmdrPrompt/python-butler.git",
+]
+
 [tool.ruff]
 line-length = 100
 
