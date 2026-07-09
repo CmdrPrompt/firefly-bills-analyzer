@@ -1,6 +1,6 @@
 # Requirements Specification: Firefly III Bills Analyzer
 
-**Version:** 0.2.4
+**Version:** 0.2.5
 **Date:** 2026-07-09
 **Status:** Draft, pending owner confirmation of items marked TBD (see Open Items)
 
@@ -24,8 +24,8 @@ Terms used with a specific meaning in this specification. All requirements use t
 | Frequency | The classification of a recurring payment pattern by median interval: monthly, quarterly, half-yearly, yearly, or irregular (FR-03) |
 | Confidence score | The value in [0.0, 1.0] computed per FR-27 |
 | Neutral (uncategorized behavior) | Uncategorized transactions are always included in the analysis (never filtered out, regardless of `INCLUDE_CATEGORIES`/`EXCLUDE_CATEGORIES`), receive no `CATEGORY_CONFIDENCE_BOOST`, and have `UNCATEGORIZED_CONFIDENCE_PENALTY` subtracted from their pattern's confidence score per FR-27 |
-| Common error | An error in the enumerated list: unreachable Firefly III instance, invalid or expired API token, invalid or missing required configuration value, insufficient API token permissions, Firefly III API error response (4xx/5xx other than 401), cache directory not writable. Example messages for each are given in Error Messages |
-| Duplicate bill | An existing bill in Firefly III whose name equals the candidate bill name (case-insensitive), whose `amount_min` and `amount_max` both equal the candidate bill's `amount_min` and `amount_max`, and whose `repeat_freq` equals the candidate bill's frequency |
+| Common error | An error in the enumerated list: unreachable Firefly III instance, invalid or expired API token, invalid or missing required configuration value, insufficient API token permissions, Firefly III API error response (4xx/5xx other than 401, 403, and the name-uniqueness rejection handled per FR-05d), cache directory not writable. Example messages for each are given in Error Messages |
+| Duplicate bill | An existing bill in Firefly III whose name equals the candidate bill name, compared case-sensitively after trimming leading and trailing whitespace. Amount and frequency are not part of the duplicate criterion |
 
 ---
 
@@ -113,7 +113,7 @@ The use cases are informative. They describe intended flows and provide context 
 3. High-confidence rows are pre-selected; others are unchecked
 4. The user can edit amount, frequency, and start date inline per row
 5. The user clicks "Create selected bills" to trigger UC4
-6. The outcome of UC4 is shown inline (created / already exists / error)
+6. The outcome of UC4 is shown inline (created / already exists / exists with different parameters / error)
 
 **Alternative flow (terminal, `--auto-approve`):**
 
@@ -133,12 +133,14 @@ The use cases are informative. They describe intended flows and provide context 
    - Amount range (min/max with configurable margin, default: ±10%)
    - Frequency and start date
    - Active status
-2. Existing bills are checked before creation to avoid duplicates
+2. Existing bills are checked before creation to avoid duplicates (FR-05a to FR-05d)
 3. Created bills are logged
 
 **Alternative flow:**
 
-- Bill already exists: application skips it and notifies the user
+- Duplicate bill with identical amount range and frequency: application skips it and reports "already exists"
+- Duplicate bill with differing amount range or frequency: application skips it and reports "exists with different parameters", including the differing values
+- Firefly III rejects creation with a name-uniqueness validation error: application reports "already exists"
 
 ---
 
@@ -230,7 +232,10 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-03  | The application shall classify each recurring payment pattern into exactly one of the frequencies monthly, quarterly, half-yearly, yearly, or irregular | UC2 |
 | FR-04a | The application shall read the confidence threshold for automatic approval from configuration (`HIGH_CONFIDENCE_THRESHOLD`, default 0.80) | UC3 |
 | FR-04b | The application shall read the minimum occurrence threshold for classifying a pattern as recurring from configuration (`MIN_OCCURRENCES`, default 2) | UC2 |
-| FR-05  | When the application is about to create a bill, the application shall verify whether a duplicate bill (see Definitions) already exists in Firefly III before creating the bill | UC4 |
+| FR-05a | When the application is about to create a bill, the application shall verify whether a duplicate bill (see Definitions) already exists in Firefly III before creating the bill | UC4 |
+| FR-05b | If a duplicate bill exists and its amount range and frequency equal the candidate's, then the application shall skip creation and report the outcome "already exists" | UC4 |
+| FR-05c | If a duplicate bill exists and its amount range or frequency differs from the candidate's, then the application shall skip creation and report the outcome "exists with different parameters", including the differing values in the report | UC4 |
+| FR-05d | If the Firefly III API rejects bill creation with a name-uniqueness validation error, then the application shall report the outcome "already exists" for that entry | UC4 |
 | FR-06  | When the application creates a bill, the application shall compute the bill amount range (minimum and maximum) by applying the configured margin (`AMOUNT_MARGIN`) to the estimated amount | UC4 |
 | FR-07a | When the application is started with the `--dry-run` flag or the `DRY_RUN` configuration parameter is set, the application shall activate dry-run mode | UC5 |
 | FR-07b | While dry-run mode is active, the application shall not write any data to Firefly III | UC5 |
@@ -247,7 +252,7 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-16  | When the web UI page is loaded, the web UI shall fetch the existing categories from the Firefly III API and display them as multiselect lists | UC6 |
 | FR-17a | When an analysis completes, the web UI shall display the analysis results in a sortable table | UC3 |
 | FR-17b | The web UI shall accept inline edits of amount, frequency, and start date for each analysis result row | UC3 |
-| FR-18  | When bill creation completes, the web UI shall display the outcome per bill (created, already exists, or error) without reloading the page | UC3 |
+| FR-18  | When bill creation completes, the web UI shall display the outcome per bill (created, already exists, exists with different parameters, or error) without reloading the page | UC3 |
 | FR-19  | When the user enables the dry-run toggle in the web UI, the web UI shall activate dry-run mode | UC5 |
 | FR-20  | When the user clicks the export button in the web UI, the application shall export the analysis results to CSV format or JSON format | UC5 |
 | FR-21  | The application shall cache categories, bills, transactions, and payees as JSON files on disk | UC7 |
@@ -287,14 +292,16 @@ Example messages satisfying NFR-04 for each common error (see Definitions). Thes
 are illustrative, not literal required strings — the binding obligation is that
 the displayed message states the cause and contains no stack trace.
 
-| Common error | Example message |
-| ------------ | ---------------- |
-| Unreachable Firefly III instance | `Cannot reach Firefly III at {FIREFLY_URL}: connection failed. Check network connectivity and FIREFLY_URL.` |
-| Invalid or expired API token | `Firefly III rejected the API token (401 Unauthorized). Check that FIREFLY_TOKEN is valid and has not expired.` |
-| Invalid or missing required configuration value | `Missing required configuration value: {parameter_name}. Set it in .env or as an environment variable.` |
-| Insufficient API token permissions | `Firefly III rejected the request (403 Forbidden). The API token may lack the permission required to create bills.` |
-| Firefly III API error response (4xx/5xx other than 401) | `Firefly III returned an error (HTTP {status_code}) while {operation}: {firefly_message}.` |
-| Cache directory not writable | `Cannot write to cache directory {CACHE_DIR}: {reason}. Check permissions or free disk space.` |
+| Common error                                            | Example message                                                                                                     |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Unreachable Firefly III instance                        | `Cannot reach Firefly III at {FIREFLY_URL}: connection failed. Check network connectivity and FIREFLY_URL.`         |
+| Invalid or expired API token                            | `Firefly III rejected the API token (401 Unauthorized). Check that FIREFLY_TOKEN is valid and has not expired.`     |
+| Invalid or missing required configuration value         | `Missing required configuration value: {parameter_name}. Set it in .env or as an environment variable.`             |
+| Insufficient API token permissions                      | `Firefly III rejected the request (403 Forbidden). The API token may lack the permission required to create bills.` |
+| Firefly III API error response (see Definitions)        | `Firefly III returned an error (HTTP {status_code}) while {operation}: {firefly_message}.`                          |
+| Cache directory not writable                            | `Cannot write to cache directory {CACHE_DIR}: {reason}. Check permissions or free disk space.`                      |
+
+Note: a name-uniqueness rejection at bill creation is not a common error; it is mapped to the outcome "already exists" per FR-05d.
 
 ---
 
@@ -302,13 +309,15 @@ the displayed message states the cause and contains no stack trace.
 
 Binding negative requirements defining the boundary of version 1.0. These are intentional exclusions and shall be verified as such.
 
-| ID     | Requirement |
-| ------ | ----------- |
-| SE-01  | The application shall not create categories or budgets in Firefly III |
-| SE-02  | The application shall not create a bill for an entry whose confidence score is below the configured confidence threshold, unless the user explicitly approves the entry |
-| SE-03  | The application shall not delete or update existing bills in Firefly III |
+| ID    | Requirement |
+| ----- | ----------- |
+| SE-01 | The application shall not create categories or budgets in Firefly III |
+| SE-02 | The application shall not create a bill for an entry whose confidence score is below the configured confidence threshold, unless the user explicitly approves the entry |
+| SE-03 | The application shall not delete or update existing bills in Firefly III |
 
 Note on SE-02: version 0.1.0 equated "irregular pattern" with "confidence below threshold". These are distinct concepts (frequency is interval-based per FR-03; confidence is score-based per FR-27). SE-02 is expressed in terms of confidence, which matches the approval logic in UC3.
+
+Note on SE-03 and FR-05c: the outcome "exists with different parameters" surfaces amount and frequency drift to the user but does not update the existing bill; updating remains excluded per SE-03.
 
 ---
 
@@ -414,7 +423,7 @@ The application supports two run modes:
 Decisions required from the requirement owner before this specification is baselined.
 
 | # | Item | Affected requirements |
-| - | ---- | --------------------- |
+| --- | ---- | --------------------- |
 | 5 | Web framework selection: Flask or FastAPI — **deferred**: no task through TASK-009 touches `app.py` or a web framework, so this costs nothing to postpone. Open question behind it: is a web UI needed at all, given `--dry-run` + `EXPORT_FORMAT=csv` already covers category filtering (`.env`), cache clearing (`--clear-cache`), and reviewing suggestions in a spreadsheet? The concrete gap if the web UI is dropped is FR-17b's inline edit + an import-edited-CSV-back-into-the-app path, which is unspecified today. Revisit after the CLI (through TASK-009) has been used in practice | NFR-02 |
 | 6 | Reference transaction volume for the 60-second performance bound — **deferred**: cannot be set credibly by guessing; TASK-009 measures elapsed time across a range of synthetic dataset sizes and resolves this item from the results | NFR-05 |
 | 7 | Confirm FR-13b interpretation: "unique per payee" = exactly one category among the payee's transactions | FR-13b |
@@ -424,40 +433,66 @@ Decisions required from the requirement owner before this specification is basel
 
 ## Changelog
 
+### 0.2.5 (2026-07-09)
+
+- Open Item #1 revised: the duplicate bill definition (Definitions) is now a
+name match only, compared case-sensitively after trimming leading and
+trailing whitespace; amount and frequency are no longer part of the
+criterion. Rationale: amounts are recalculated from transaction history at
+every run, so an exact amount match fails on re-runs for the very bills
+FR-05 exists to skip, and Firefly III enforces per-user unique bill names
+("unique_object_for_user"), turning such misses into 422 errors instead of
+skips. Case-sensitive comparison is chosen because candidate names come
+from Firefly's own `destination_name` values.
+- FR-05 decomposed into FR-05a (pre-creation duplicate check), FR-05b (skip
+and report "already exists" on identical parameters), FR-05c (skip and
+report "exists with different parameters" on differing amount range or
+frequency, surfacing the differing values), and FR-05d (map a
+name-uniqueness rejection from the Firefly III API to the outcome
+"already exists" as a safety net for collation differences).
+- FR-18, UC3 step 6, and UC4's alternative flows updated with the new outcome
+"exists with different parameters". Note added under Scope Exclusions
+clarifying that FR-05c reports drift without updating bills (SE-03).
+- Common error definition adjusted: the generic Firefly III API error entry
+now explicitly excludes 401, 403, and the name-uniqueness rejection handled
+per FR-05d, removing the overlap with the dedicated 403 entry and the
+conflict with FR-05d's outcome mapping. Clarifying note added in Error
+Messages.
+
 ### 0.2.4 (2026-07-09)
 
 - Open Item #2 resolved: `neutral` uncategorized behavior no longer filters
-  transactions differently from `include` — both always keep uncategorized
-  transactions in the analysis. Instead, `neutral` reduces the pattern's
-  confidence score via a new `UNCATEGORIZED_CONFIDENCE_PENALTY` term in the
-  FR-27 formula (default `0.10`), reusing the existing confidence/review
-  mechanism (UC3, SE-02) rather than introducing a second, filtering-based
-  exclusion path that could silently drop real recurring bills from the
-  analysis. FR-14, FR-27, UC2, and the Definitions and Configuration
-  Parameters tables updated accordingly.
+transactions differently from `include` — both always keep uncategorized
+transactions in the analysis. Instead, `neutral` reduces the pattern's
+confidence score via a new `UNCATEGORIZED_CONFIDENCE_PENALTY` term in the
+FR-27 formula (default `0.10`), reusing the existing confidence/review
+mechanism (UC3, SE-02) rather than introducing a second, filtering-based
+exclusion path that could silently drop real recurring bills from the
+analysis. FR-14, FR-27, UC2, and the Definitions and Configuration
+Parameters tables updated accordingly.
 
 ### 0.2.3 (2026-07-09)
 
 - Open Item #3 resolved: the "common error" list (Definitions, NFR-04) is now
-  enumerated as six errors — unreachable instance, invalid/expired token,
-  invalid/missing required config, insufficient token permissions, other
-  Firefly III API error responses, and unwritable cache directory — with an
-  example message per error in a new Error Messages section.
+enumerated as six errors — unreachable instance, invalid/expired token,
+invalid/missing required config, insufficient token permissions, other
+Firefly III API error responses, and unwritable cache directory — with an
+example message per error in a new Error Messages section.
 
 ### 0.2.2 (2026-07-09)
 
 - Open Item #1 resolved: a duplicate bill (Definitions, FR-05) is now defined as
-  a name match (case-insensitive) plus an exact match on `amount_min`,
-  `amount_max`, and `repeat_freq` — not name alone. Chosen over an overlapping-
-  amount-range match for determinism and testability.
+a name match (case-insensitive) plus an exact match on `amount_min`,
+`amount_max`, and `repeat_freq` — not name alone. Chosen over an overlapping-
+amount-range match for determinism and testability. *(Superseded by 0.2.5.)*
 
 ### 0.2.1 (2026-07-09)
 
 - Open Item #4 resolved: environment variables take precedence over `.env` file
-  values when the same parameter is defined in both (FR-10, FR-26a). Rationale:
-  matches `python-dotenv`'s default behavior and the 12-factor-app convention;
-  one-off test overrides remain trivial via a shell-prefixed variable
-  (`VAR=value command`) without editing `.env`.
+values when the same parameter is defined in both (FR-10, FR-26a). Rationale:
+matches `python-dotenv`'s default behavior and the 12-factor-app convention;
+one-off test overrides remain trivial via a shell-prefixed variable
+(`VAR=value command`) without editing `.env`.
 
 ### 0.2.0 (2026-07-09)
 
