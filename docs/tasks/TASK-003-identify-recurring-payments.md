@@ -11,9 +11,12 @@ transaction list from TASK-002, groups by payee (`destination_name`), and return
 a list of `RecurringPattern` objects sorted by confidence score descending.
 
 The confidence score formula and frequency thresholds are specified in the
-requirements spec (UC2, FR-27).
+requirements spec (UC2, FR-27). The formula includes both the category boost
+(FR-12) and an uncategorized-behavior penalty (FR-14/FR-27): patterns with no
+category have `config.uncategorized_confidence_penalty` subtracted when
+`config.uncategorized_behavior` is `"neutral"`.
 
-Covers UC2, FR-03, FR-04b, FR-12, FR-27, NFR-05.
+Covers UC2, FR-03, FR-04b, FR-12, FR-14 (scoring part), FR-27, NFR-05.
 
 ## Branch
 
@@ -37,12 +40,19 @@ Covers UC2, FR-03, FR-04b, FR-12, FR-27, NFR-05.
       yearly 340–390 d, irregular otherwise
 - [ ] Confidence is computed as:
       `0.4 × min(n/4, 1.0) + 0.4 × max(0, 1 − stddev_days/median_days) + 0.2 × max(0, 1 − stddev_amount/mean_amount)`
-      clamped to [0.0, 1.0], plus `config.category_confidence_boost` when
-      `category_name` is in `config.include_categories`
+      plus `config.category_confidence_boost` when `category_name` is in
+      `config.include_categories`, minus `config.uncategorized_confidence_penalty`
+      when `category_name` is `None` and `config.uncategorized_behavior` is
+      `"neutral"`, all clamped to [0.0, 1.0] (FR-27)
 - [ ] `tests/test_analyzer.py` uses **Hypothesis** (`@given`) for the confidence
       formula and interval classification; additionally covers the happy path,
-      the single-occurrence filter, and the sorting order
-- [ ] Analysis of 24 months of data completes in under 60 seconds (NFR-05)
+      the single-occurrence filter, the sorting order, and the
+      uncategorized-penalty cases (`"neutral"` reduces confidence for
+      no-category patterns; `"include"`/`"exclude"` do not)
+- [ ] Analysis of 24 months of data completes in under 60 seconds against a
+      moderate synthetic dataset (a quick sanity check within `test_analyzer.py`
+      is enough here — the systematic benchmark across dataset sizes is
+      TASK-009, which owns closing Open Item #6)
 - [ ] `make lint && make test` pass with coverage >= baseline
 
 ## Completion

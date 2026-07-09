@@ -1,6 +1,6 @@
 # Requirements Specification: Firefly III Bills Analyzer
 
-**Version:** 0.2.0
+**Version:** 0.2.4
 **Date:** 2026-07-09
 **Status:** Draft, pending owner confirmation of items marked TBD (see Open Items)
 
@@ -23,9 +23,9 @@ Terms used with a specific meaning in this specification. All requirements use t
 | Recurring payment pattern | A group of transactions with the same payee that meets the occurrence threshold (FR-04a) |
 | Frequency | The classification of a recurring payment pattern by median interval: monthly, quarterly, half-yearly, yearly, or irregular (FR-03) |
 | Confidence score | The value in [0.0, 1.0] computed per FR-27 |
-| Neutral (uncategorized behavior) | Uncategorized transactions are included in the analysis but receive no confidence boost and no penalty **[DEFINITION TBD: confirm with owner]** |
-| Common error | An error in the enumerated list: unreachable Firefly III instance, invalid or expired API token, invalid configuration value **[LIST TBD: confirm completeness with owner]** |
-| Duplicate bill | An existing bill in Firefly III whose name equals the candidate bill name **[CRITERION TBD: confirm whether amount or frequency shall also match]** |
+| Neutral (uncategorized behavior) | Uncategorized transactions are always included in the analysis (never filtered out, regardless of `INCLUDE_CATEGORIES`/`EXCLUDE_CATEGORIES`), receive no `CATEGORY_CONFIDENCE_BOOST`, and have `UNCATEGORIZED_CONFIDENCE_PENALTY` subtracted from their pattern's confidence score per FR-27 |
+| Common error | An error in the enumerated list: unreachable Firefly III instance, invalid or expired API token, invalid or missing required configuration value, insufficient API token permissions, Firefly III API error response (4xx/5xx other than 401), cache directory not writable. Example messages for each are given in Error Messages |
+| Duplicate bill | An existing bill in Firefly III whose name equals the candidate bill name (case-insensitive), whose `amount_min` and `amount_max` both equal the candidate bill's `amount_min` and `amount_max`, and whose `repeat_freq` equals the candidate bill's frequency |
 
 ---
 
@@ -86,12 +86,13 @@ The use cases are informative. They describe intended flows and provide context 
    | Yearly      | 340–390                  |
    | Irregular   | outside all ranges above |
 
-5. A confidence score in [0.0, 1.0] is computed as: `confidence = 0.4 × occurrence_score + 0.4 × regularity_score + 0.2 × amount_score + category_boost` where:
+5. A confidence score in [0.0, 1.0] is computed as: `confidence = 0.4 × occurrence_score + 0.4 × regularity_score + 0.2 × amount_score + category_boost − uncategorized_penalty` where:
 
    - `occurrence_score = min(n / 4, 1.0)`
    - `regularity_score = max(0, 1 − stddev_days / median_days)`
    - `amount_score = max(0, 1 − stddev_amount / mean_amount)`
    - `category_boost = CATEGORY_CONFIDENCE_BOOST` if the payee's category is in the include list, else 0
+   - `uncategorized_penalty = UNCATEGORIZED_CONFIDENCE_PENALTY` if the payee has no category and `UNCATEGORIZED_BEHAVIOR` is `neutral`, else 0
 
 6. Results are returned to the caller (web server or terminal) with the confidence score per entry
 
@@ -235,13 +236,13 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-07b | While dry-run mode is active, the application shall not write any data to Firefly III | UC5 |
 | FR-08  | Upon user request, the application shall export the analysis results to CSV format or JSON format | UC5 |
 | FR-09  | The application shall log all API calls and their outcomes | UC1, UC4 |
-| FR-10  | The application shall read its configuration from a `.env` file or from environment variables; when the same parameter is defined in both, environment variables shall take precedence **[PRECEDENCE TBD: confirm with owner]** | — |
+| FR-10  | The application shall read its configuration from a `.env` file or from environment variables; when the same parameter is defined in both, environment variables shall take precedence | — |
 | FR-11a | When a category include list is configured, the application shall include only transactions whose category matches the include list in the analysis | UC6 |
 | FR-11b | When a category exclude list is configured, the application shall exclude transactions whose category matches the exclude list from the analysis | UC6 |
 | FR-12  | When a transaction's category appears in the include list, the application shall increase that transaction's confidence score by the configured category confidence boost (`CATEGORY_CONFIDENCE_BOOST`) | UC6 |
 | FR-13a | The web UI shall display the category name in the table view | UC6 |
 | FR-13b | When exactly one category occurs among a payee's transactions, the application shall include that category name in the bill name | UC6 |
-| FR-14  | The application shall process uncategorized transactions according to the configured behavior (`UNCATEGORIZED_BEHAVIOR`), where the configured behavior is one of include, exclude, or neutral (see Definitions) | UC6 |
+| FR-14  | The application shall process uncategorized transactions according to the configured behavior (`UNCATEGORIZED_BEHAVIOR`): under `include` and `neutral` the transaction is kept in the analysis unconditionally; under `exclude` the transaction is filtered out. Under `neutral` (see Definitions), the confidence score of the transaction's pattern is additionally reduced per FR-27 | UC6 |
 | FR-15  | The application shall expose a web UI via a built-in HTTP server | UC3 |
 | FR-16  | When the web UI page is loaded, the web UI shall fetch the existing categories from the Firefly III API and display them as multiselect lists | UC6 |
 | FR-17a | When an analysis completes, the web UI shall display the analysis results in a sortable table | UC3 |
@@ -255,9 +256,9 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-24a | The web UI shall display a "Clear cache" button | UC7 |
 | FR-24b | When the user clicks the "Clear cache" button, the application shall delete all cached data | UC7 |
 | FR-25  | When the application is started in CLI mode with the `--clear-cache` flag, the application shall delete all cache files during startup | UC7 |
-| FR-26a | The `firefly-python-api` package shall read `FIREFLY_URL` and `FIREFLY_TOKEN` from environment variables or from a `.env` file, with the same precedence rule as FR-10 | — |
+| FR-26a | The `firefly-python-api` package shall read `FIREFLY_URL` and `FIREFLY_TOKEN` from environment variables or from a `.env` file; environment variables shall take precedence, per the same rule as FR-10 | — |
 | FR-26b | The `firefly-python-api` package shall expose a `FireflyClient` class that provides a configured `requests.Session` | — |
-| FR-27  | When the application classifies recurring payment patterns, the application shall compute the confidence score as 0.4 × occurrence score + 0.4 × regularity score + 0.2 × amount score + category boost, and shall clamp the result to the range [0.0, 1.0] | UC2 |
+| FR-27  | When the application classifies recurring payment patterns, the application shall compute the confidence score as 0.4 × occurrence score + 0.4 × regularity score + 0.2 × amount score + category boost − uncategorized penalty, and shall clamp the result to the range [0.0, 1.0], where uncategorized penalty equals `UNCATEGORIZED_CONFIDENCE_PENALTY` when the pattern's category is absent and `UNCATEGORIZED_BEHAVIOR` is `neutral`, else 0 | UC2 |
 
 ---
 
@@ -277,6 +278,23 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | NFR-09  | The application shall retain the cache directory and its contents across application restarts | UC7 |
 | NFR-10  | `firefly-python-api` shall be a standalone, pip-installable package shared with `firefly-bank-importer` | — |
 | NFR-11  | The `firefly-python-api` package shall declare no runtime dependencies other than `requests` and `python-dotenv` | — |
+
+---
+
+## Error Messages
+
+Example messages satisfying NFR-04 for each common error (see Definitions). These
+are illustrative, not literal required strings — the binding obligation is that
+the displayed message states the cause and contains no stack trace.
+
+| Common error | Example message |
+| ------------ | ---------------- |
+| Unreachable Firefly III instance | `Cannot reach Firefly III at {FIREFLY_URL}: connection failed. Check network connectivity and FIREFLY_URL.` |
+| Invalid or expired API token | `Firefly III rejected the API token (401 Unauthorized). Check that FIREFLY_TOKEN is valid and has not expired.` |
+| Invalid or missing required configuration value | `Missing required configuration value: {parameter_name}. Set it in .env or as an environment variable.` |
+| Insufficient API token permissions | `Firefly III rejected the request (403 Forbidden). The API token may lack the permission required to create bills.` |
+| Firefly III API error response (4xx/5xx other than 401) | `Firefly III returned an error (HTTP {status_code}) while {operation}: {firefly_message}.` |
+| Cache directory not writable | `Cannot write to cache directory {CACHE_DIR}: {reason}. Check permissions or free disk space.` |
 
 ---
 
@@ -366,27 +384,28 @@ The application supports two run modes:
 
 ## Configuration Parameters
 
-| Parameter                   | Description                                                      | Default         |
-| --------------------------- | ---------------------------------------------------------------- | --------------- |
-| `FIREFLY_URL`               | Base URL of the Firefly III instance                             | *(required)*    |
-| `FIREFLY_TOKEN`             | Personal Access Token                                            | *(required)*    |
-| `LOOKBACK_MONTHS`           | Months of transaction history to analyze                         | `24`            |
-| `MIN_OCCURRENCES`           | Minimum occurrences to classify as recurring                     | `2`             |
-| `AMOUNT_MARGIN`             | Margin for min/max amount (fraction)                             | `0.10`          |
-| `HIGH_CONFIDENCE_THRESHOLD` | Confidence threshold for auto-approval in CLI mode               | `0.80`          |
-| `DRY_RUN`                   | Do not create any bills                                          | `false`         |
-| `EXPORT_FORMAT`             | Export format (csv/json/none)                                    | `none`          |
-| `INCLUDE_CATEGORIES`        | Comma-separated category include list                            | *(empty = all)* |
-| `EXCLUDE_CATEGORIES`        | Comma-separated category exclude list                            | *(empty)*       |
-| `CATEGORY_CONFIDENCE_BOOST` | Confidence boost for transactions matching the include list      | `0.15`          |
-| `UNCATEGORIZED_BEHAVIOR`    | Handling of uncategorized transactions (include/exclude/neutral) | `neutral`       |
-| `WEB_PORT`                  | Port the web server listens on                                   | `5000`          |
-| `WEB_HOST`                  | IP address the web server binds to                               | `127.0.0.1`     |
-| `CACHE_DIR`                 | Directory for cache files                                        | `./cache`       |
-| `CACHE_TTL_CATEGORIES`      | TTL for category cache (seconds)                                 | `86400`         |
-| `CACHE_TTL_BILLS`           | TTL for bills cache (seconds)                                    | `3600`          |
-| `CACHE_TTL_TRANSACTIONS`    | TTL for transaction cache (seconds)                              | `3600`          |
-| `CACHE_TTL_PAYEES`          | TTL for payee cache (seconds)                                    | `86400`         |
+| Parameter                          | Description                                                      | Default         |
+| ---------------------------------- | ---------------------------------------------------------------- | --------------- |
+| `FIREFLY_URL`                      | Base URL of the Firefly III instance                             | *(required)*    |
+| `FIREFLY_TOKEN`                    | Personal Access Token                                            | *(required)*    |
+| `LOOKBACK_MONTHS`                  | Months of transaction history to analyze                         | `24`            |
+| `MIN_OCCURRENCES`                  | Minimum occurrences to classify as recurring                     | `2`             |
+| `AMOUNT_MARGIN`                    | Margin for min/max amount (fraction)                             | `0.10`          |
+| `HIGH_CONFIDENCE_THRESHOLD`        | Confidence threshold for auto-approval in CLI mode               | `0.80`          |
+| `DRY_RUN`                          | Do not create any bills                                          | `false`         |
+| `EXPORT_FORMAT`                    | Export format (csv/json/none)                                    | `none`          |
+| `INCLUDE_CATEGORIES`               | Comma-separated category include list                            | *(empty = all)* |
+| `EXCLUDE_CATEGORIES`               | Comma-separated category exclude list                            | *(empty)*       |
+| `CATEGORY_CONFIDENCE_BOOST`        | Confidence boost for transactions matching the include list      | `0.15`          |
+| `UNCATEGORIZED_BEHAVIOR`           | Handling of uncategorized transactions (include/exclude/neutral) | `neutral`       |
+| `UNCATEGORIZED_CONFIDENCE_PENALTY` | Confidence penalty for neutral uncategorized patterns (FR-27)    | `0.10`          |
+| `WEB_PORT`                         | Port the web server listens on                                   | `5000`          |
+| `WEB_HOST`                         | IP address the web server binds to                               | `127.0.0.1`     |
+| `CACHE_DIR`                        | Directory for cache files                                        | `./cache`       |
+| `CACHE_TTL_CATEGORIES`             | TTL for category cache (seconds)                                 | `86400`         |
+| `CACHE_TTL_BILLS`                  | TTL for bills cache (seconds)                                    | `3600`          |
+| `CACHE_TTL_TRANSACTIONS`           | TTL for transaction cache (seconds)                              | `3600`          |
+| `CACHE_TTL_PAYEES`                 | TTL for payee cache (seconds)                                    | `86400`         |
 
 ---
 
@@ -396,18 +415,49 @@ Decisions required from the requirement owner before this specification is basel
 
 | # | Item | Affected requirements |
 | - | ---- | --------------------- |
-| 1 | Duplicate bill matching criterion: name only, or name plus amount/frequency | FR-05, Definitions |
-| 2 | Definition of "neutral" uncategorized behavior | FR-14, Definitions |
-| 3 | Enumerated list of "common errors" | NFR-04, Definitions |
-| 4 | Configuration source precedence (environment variables over `.env` proposed) | FR-10, FR-26a |
-| 5 | Web framework selection: Flask or FastAPI | NFR-02 |
-| 6 | Reference transaction volume for the 60-second performance bound | NFR-05 |
+| 5 | Web framework selection: Flask or FastAPI — **deferred**: no task through TASK-009 touches `app.py` or a web framework, so this costs nothing to postpone. Open question behind it: is a web UI needed at all, given `--dry-run` + `EXPORT_FORMAT=csv` already covers category filtering (`.env`), cache clearing (`--clear-cache`), and reviewing suggestions in a spreadsheet? The concrete gap if the web UI is dropped is FR-17b's inline edit + an import-edited-CSV-back-into-the-app path, which is unspecified today. Revisit after the CLI (through TASK-009) has been used in practice | NFR-02 |
+| 6 | Reference transaction volume for the 60-second performance bound — **deferred**: cannot be set credibly by guessing; TASK-009 measures elapsed time across a range of synthetic dataset sizes and resolves this item from the results | NFR-05 |
 | 7 | Confirm FR-13b interpretation: "unique per payee" = exactly one category among the payee's transactions | FR-13b |
-| 8 | Confirm obligation levels raised or made explicit during review (all reformulated requirements use "shall") | All |
+| 8 | Confirm obligation levels raised or made explicit during review (all reformulated requirements use "shall"). Known candidates flagged so far: FR-21/22/23/NFR-09 (cache — see TASK-007's note, motivated by web UI polling, not a one-shot CLI run), and NFR-06 (no external CDN — only meaningful once a web UI task exists; no task covers it yet, so no task-file reminder has been written — re-flag this when a web UI task is created, contingent on Open Item #5) | All |
 
 ---
 
 ## Changelog
+
+### 0.2.4 (2026-07-09)
+
+- Open Item #2 resolved: `neutral` uncategorized behavior no longer filters
+  transactions differently from `include` — both always keep uncategorized
+  transactions in the analysis. Instead, `neutral` reduces the pattern's
+  confidence score via a new `UNCATEGORIZED_CONFIDENCE_PENALTY` term in the
+  FR-27 formula (default `0.10`), reusing the existing confidence/review
+  mechanism (UC3, SE-02) rather than introducing a second, filtering-based
+  exclusion path that could silently drop real recurring bills from the
+  analysis. FR-14, FR-27, UC2, and the Definitions and Configuration
+  Parameters tables updated accordingly.
+
+### 0.2.3 (2026-07-09)
+
+- Open Item #3 resolved: the "common error" list (Definitions, NFR-04) is now
+  enumerated as six errors — unreachable instance, invalid/expired token,
+  invalid/missing required config, insufficient token permissions, other
+  Firefly III API error responses, and unwritable cache directory — with an
+  example message per error in a new Error Messages section.
+
+### 0.2.2 (2026-07-09)
+
+- Open Item #1 resolved: a duplicate bill (Definitions, FR-05) is now defined as
+  a name match (case-insensitive) plus an exact match on `amount_min`,
+  `amount_max`, and `repeat_freq` — not name alone. Chosen over an overlapping-
+  amount-range match for determinism and testability.
+
+### 0.2.1 (2026-07-09)
+
+- Open Item #4 resolved: environment variables take precedence over `.env` file
+  values when the same parameter is defined in both (FR-10, FR-26a). Rationale:
+  matches `python-dotenv`'s default behavior and the 12-factor-app convention;
+  one-off test overrides remain trivial via a shell-prefixed variable
+  (`VAR=value command`) without editing `.env`.
 
 ### 0.2.0 (2026-07-09)
 

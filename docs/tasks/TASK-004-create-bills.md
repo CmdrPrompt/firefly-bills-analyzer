@@ -7,8 +7,9 @@ todo
 ## Description
 
 Implement `bills_creator.py` — the UC4 write layer. For each approved
-`RecurringPattern` it checks for an existing bill with the same name (FR-05),
-and creates a new one via the Firefly III API if none exists.
+`RecurringPattern` it checks for a duplicate bill — per the spec Definitions,
+name (case-insensitive) plus exact `amount_min`/`amount_max`/`repeat_freq`
+match (FR-05) — and creates a new one via the Firefly III API if none exists.
 
 **Prerequisite:** `create_bill()` must be added to `firefly-python-api` before this
 task can be implemented. Open TASK-006 in that repo using the pattern from TASK-005
@@ -36,15 +37,22 @@ Covers UC4, FR-05, FR-06, FR-07b, FR-09.
       and `message: str`)
 - [ ] `create_bills(patterns, client, config, dry_run) -> list[BillOutcome]`
       iterates over approved patterns and returns one `BillOutcome` per entry
-- [ ] Existing bills are fetched once via `client.get_bills()` and matched by name
-      (case-insensitive); a match sets status `"exists"` without an API call
+- [ ] Amount min/max = `mean × (1 ∓ config.amount_margin)`, rounded to 2 decimals,
+      computed before the duplicate check so the candidate's amount is available
+      for comparison
+- [ ] Existing bills are fetched once via `client.get_bills()`; a duplicate is a
+      bill whose name matches (case-insensitive) **and** whose `amount_min` and
+      `amount_max` both equal the candidate's rounded amount_min/amount_max
+      **and** whose `repeat_freq` equals the candidate's mapped frequency — all
+      three must match. A match sets status `"exists"` without a POST call
 - [ ] In dry-run mode all outcomes are `"skipped"` and no POST is made (FR-07b)
-- [ ] Amount min/max = `mean × (1 ∓ config.amount_margin)`, rounded to 2 decimals
 - [ ] `irregular` patterns produce status `"skipped"` with an explanatory message
       unless the caller explicitly passes `force=True`
 - [ ] All API calls are logged at DEBUG level (FR-09)
 - [ ] `tests/test_bills_creator.py` mocks `FireflyClient` and covers: happy-path
-      creation, duplicate detection, dry-run mode, irregular skip, and API error
+      creation, duplicate detection (name+amount+frequency all match), a
+      near-duplicate that only matches on name (not a duplicate — bill is
+      created), dry-run mode, irregular skip, and API error
 - [ ] `make lint && make test` pass with coverage >= baseline
 
 ## Completion

@@ -8,10 +8,21 @@ todo
 
 Wire all previous modules together into a working CLI. The entry-point in
 `__main__.py` is extended to run the full pipeline: load config → fetch
-transactions (UC1) → identify patterns (UC2) → interactive review (UC3) →
-create bills (UC4) — or skip creation in dry-run mode (UC5).
+transactions (UC1) → filter by category (UC6, TASK-006) → identify patterns
+(UC2) → interactive review (UC3) → create bills (UC4) — or skip creation in
+dry-run mode (UC5).
 
 Also adds `exporter.py` for CSV/JSON export (FR-08, UC5).
+
+**Depends on:** TASK-002, TASK-003, TASK-004 (pipeline stages being wired),
+TASK-006 (category filtering step), TASK-008 (category-aware bill naming),
+and TASK-007 (`--clear-cache` wiring in `__main__.py`), *if* TASK-007 is
+built — see its Open Item #8 note; it may be deprioritized for the
+terminal-only MVP. If TASK-007 is skipped, drop the `cache.clear_all()` call
+from `--clear-cache` and leave it a no-op with a "caching not implemented"
+message instead. Implement this task last so the full pipeline — including
+filtering and (if present) cache clearing — is assembled in one place instead
+of being retrofitted afterwards.
 
 Covers UC3 (terminal flow), UC5, FR-07a, FR-07b, FR-08.
 
@@ -23,9 +34,10 @@ Covers UC3 (terminal flow), UC5, FR-07a, FR-07b, FR-08.
 
 ## Acceptance criteria
 
-- [ ] `python -m firefly_bills_analyzer` runs the full pipeline end-to-end
-      (errors before creating any bills are surfaced as plain messages, not
-      stack traces — NFR-04)
+- [ ] `python -m firefly_bills_analyzer` runs the full pipeline end-to-end,
+      including `category_filter.filter_transactions` between fetch and
+      analyze (errors before creating any bills are surfaced as plain
+      messages, not stack traces — NFR-04)
 - [ ] Without `--auto-approve`, each suggestion above `config.high_confidence_threshold`
       is printed and the user is prompted `[y]es / [n]o / [a]ll / [q]uit`
 - [ ] Entries below the threshold are listed but defaulted to `n`; the user can
