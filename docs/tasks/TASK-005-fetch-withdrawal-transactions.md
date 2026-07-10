@@ -7,6 +7,8 @@ todo
 ## Requirements
 
 **Binding:** REQ-006
+**BDD mode:** BDD-ABSENT
+**Depends on:** none
 **Precedence:** The requirements above are the binding definition of this task.
 The story and scenarios below are derived from them. On any discrepancy, the
 requirements document wins. Stop and report discrepancies; do not build from
