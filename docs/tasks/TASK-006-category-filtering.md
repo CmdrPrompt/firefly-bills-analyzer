@@ -80,6 +80,7 @@ Covers UC6, FR-11a, FR-11b, FR-14.
 - `tests/test_category_filter.py` — created
 - `CHANGELOG.md` — modified
 - `docs/tasks/TASK-006-category-filtering.md` — modified
+- `docs/tasks/README.md` — modified (status)
 
 **Branch:** `git checkout task/006-category-filtering`
 **Stage:** `git add src/firefly_bills_analyzer/category_filter.py tests/test_category_filter.py CHANGELOG.md docs/tasks/TASK-006-category-filtering.md`

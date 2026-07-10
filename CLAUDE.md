@@ -4,22 +4,43 @@ Analyzes your Firefly III transaction history to automatically identify recurrin
 
 ## Spec-Driven Development
 
-All changes must be grounded in a requirements specification at `Firefly_bills_analyzer_spec.md`.
+All changes must be grounded in the requirements specification at `docs/REQUIREMENTS_new.md`.
 
 Before writing any code for a new feature or change:
 
-1. Update `Firefly_bills_analyzer_spec.md` with the relevant requirement(s) and use case(s).
+1. Update `docs/REQUIREMENTS_new.md` with the relevant requirement(s) and use case(s), bump the version, and add a changelog entry in the spec.
 2. Present the updated text and ask the user: "Is this what you intended?"
 3. Wait for explicit confirmation.
 4. Only then follow the TDD cycle.
 
 If a change cannot be expressed as a requirement and use case, do not implement it.
 
+Decisions the spec explicitly defers live in its **Open Items** table. If a task
+file references an Open Item, resolve it with the user before implementing —
+never assume a deferred decision has been made.
+
 ## Task Management
 
 Tasks live in `docs/tasks/TASK-XXX-short-description.md`. See the Workflow Guardian
 agent (`.github/agents/workflow-guardian.agent.md`) for the task file format and full
 workflow enforcement.
+
+**Implementation order:** numeric task order is NOT execution order. The
+authoritative sequence and dependency graph live in `docs/tasks/README.md` —
+consult it before starting any task, and never start a task whose dependencies
+are not `done`. When adding a new task file, add it to `docs/tasks/README.md`
+(table and graph) in the same commit. When a task's status changes, update the
+Status column there in the same commit — in particular, completing a task means
+updating BOTH the task file (Status + Completion section) AND the Status column
+in `docs/tasks/README.md` before committing. A task is not done until the index
+says so. Since `make stage-current-task` stages the files listed in the task
+file, `docs/tasks/README.md` must appear in every task's **Files changed** list
+— add it when creating a task file, or the index update will not be staged.
+
+**Spec consistency:** before implementing a task, verify that its Description and
+acceptance criteria still match the current spec version — task files can go
+stale when the spec is revised. If they conflict, the spec wins: update the task
+file first and confirm with the user.
 
 **Branch policy:** Every task runs on its own `task/<NNN>-short-description` branch.
 Never commit implementation work on `main`.
@@ -31,7 +52,8 @@ If it is, run `git merge main` before writing any code.
 
 ```bash
 make branch-task f=TASK-001        # create/switch to task branch
-# implement, then update CHANGELOG.md and task file Completion section
+# implement, then update CHANGELOG.md, the task file Completion section,
+# and the Status column in docs/tasks/README.md
 make stage-current-task            # auto-fix and stage files listed in task file
 git diff --staged                  # optional review
 make commit-current-task           # commit using message from task file — never git commit directly
@@ -77,3 +99,6 @@ Describe shipped behavior, not internal task bookkeeping.
 - Do not add dependencies without a clear requirement.
 - Do not suppress type errors with `# type: ignore` without explanation.
 - Do not run `git commit` directly on a task branch — always use `make commit-current-task`.
+- Do not implement a task in numeric order without checking `docs/tasks/README.md` first.
+- Do not implement a task that references an unresolved Open Item without confirming the decision with the user.
+- Do not mark a task as done without updating the Status column in `docs/tasks/README.md` in the same commit.

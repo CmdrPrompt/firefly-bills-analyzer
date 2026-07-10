@@ -58,6 +58,7 @@ Covers UC6, FR-13b.
 - `tests/test_bills_creator.py` — modified
 - `CHANGELOG.md` — modified
 - `docs/tasks/TASK-008-category-aware-bill-naming.md` — modified
+- `docs/tasks/README.md` — modified (status)
 
 **Branch:** `git checkout task/008-category-aware-bill-naming`
 **Stage:** `git add src/firefly_bills_analyzer/bills_creator.py tests/test_bills_creator.py CHANGELOG.md docs/tasks/TASK-008-category-aware-bill-naming.md`

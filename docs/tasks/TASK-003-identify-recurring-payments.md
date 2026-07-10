@@ -65,6 +65,7 @@ Covers UC2, FR-03, FR-04b, FR-12, FR-14 (scoring part), FR-27, NFR-05.
 - `tests/test_analyzer.py` — created
 - `CHANGELOG.md` — modified
 - `docs/tasks/TASK-003-identify-recurring-payments.md` — modified
+- `docs/tasks/README.md` — modified (status)
 
 **Branch:** `git checkout task/003-identify-recurring-payments`
 **Stage:** `git add src/firefly_bills_analyzer/analyzer.py tests/test_analyzer.py CHANGELOG.md docs/tasks/TASK-003-identify-recurring-payments.md`

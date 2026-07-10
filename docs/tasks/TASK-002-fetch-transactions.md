@@ -51,6 +51,7 @@ Covers FR-01, FR-02, FR-09, NFR-03.
 - `uv.lock` — modified
 - `CHANGELOG.md` — modified
 - `docs/tasks/TASK-002-fetch-transactions.md` — modified
+- `docs/tasks/README.md` — modified (status)
 
 **Branch:** `git checkout task/002-fetch-transactions`
 **Stage:** `git add src/firefly_bills_analyzer/fetcher.py tests/test_fetcher.py pyproject.toml uv.lock CHANGELOG.md docs/tasks/TASK-002-fetch-transactions.md`

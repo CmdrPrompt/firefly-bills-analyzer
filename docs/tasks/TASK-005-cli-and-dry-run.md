@@ -70,6 +70,7 @@ Covers UC3 (terminal flow), UC5, FR-07a, FR-07b, FR-08.
 - `tests/test_main.py` — created
 - `CHANGELOG.md` — modified
 - `docs/tasks/TASK-005-cli-and-dry-run.md` — modified
+- `docs/tasks/README.md` — modified (status)
 
 **Branch:** `git checkout task/005-cli-and-dry-run`
 **Stage:** `git add src/firefly_bills_analyzer/__main__.py src/firefly_bills_analyzer/exporter.py tests/test_exporter.py tests/test_main.py CHANGELOG.md docs/tasks/TASK-005-cli-and-dry-run.md`

@@ -68,6 +68,7 @@ Covers NFR-05.
 - `docs/REQUIREMENTS_new.md` — modified (NFR-05 value, Open Item #6 removed, changelog)
 - `CHANGELOG.md` — modified
 - `docs/tasks/TASK-009-performance-benchmark.md` — modified
+- `docs/tasks/README.md` — modified (status)
 
 **Branch:** `git checkout task/009-performance-benchmark`
 **Stage:** `git add tests/benchmark_analyzer.py Makefile .gitignore docs/REQUIREMENTS_new.md CHANGELOG.md docs/tasks/TASK-009-performance-benchmark.md`

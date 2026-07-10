@@ -95,6 +95,7 @@ Covers UC7, FR-21, FR-22, FR-23, FR-25, NFR-09.
 - `tests/test_bills_creator.py` — modified
 - `CHANGELOG.md` — modified
 - `docs/tasks/TASK-007-cache-layer.md` — modified
+- `docs/tasks/README.md` — modified (status)
 
 **Branch:** `git checkout task/007-cache-layer`
 **Stage:** `git add src/firefly_bills_analyzer/cache.py src/firefly_bills_analyzer/fetcher.py src/firefly_bills_analyzer/bills_creator.py src/firefly_bills_analyzer/__main__.py tests/test_cache.py tests/test_fetcher.py tests/test_bills_creator.py CHANGELOG.md docs/tasks/TASK-007-cache-layer.md`
