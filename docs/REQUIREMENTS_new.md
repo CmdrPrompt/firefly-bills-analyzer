@@ -1,7 +1,7 @@
 # Requirements Specification: Firefly III Bills Analyzer
 
-**Version:** 0.2.5
-**Date:** 2026-07-09
+**Version:** 0.2.6
+**Date:** 2026-07-11
 **Status:** Draft, pending owner confirmation of items marked TBD (see Open Items)
 
 ## Purpose
@@ -246,7 +246,7 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-11b | When a category exclude list is configured, the application shall exclude transactions whose category matches the exclude list from the analysis | UC6 |
 | FR-12  | When a transaction's category appears in the include list, the application shall increase that transaction's confidence score by the configured category confidence boost (`CATEGORY_CONFIDENCE_BOOST`) | UC6 |
 | FR-13a | The web UI shall display the category name in the table view | UC6 |
-| FR-13b | When exactly one category occurs among a payee's transactions, the application shall include that category name in the bill name | UC6 |
+| FR-13b | When a single category accounts for at least `CATEGORY_MAJORITY_THRESHOLD` of a payee's transactions, the application shall include that category name in the bill name; otherwise no category name is included. The share is computed over all of the payee's transactions, with uncategorized transactions counted as their own (non-matching) bucket | UC6 |
 | FR-14  | The application shall process uncategorized transactions according to the configured behavior (`UNCATEGORIZED_BEHAVIOR`): under `include` and `neutral` the transaction is kept in the analysis unconditionally; under `exclude` the transaction is filtered out. Under `neutral` (see Definitions), the confidence score of the transaction's pattern is additionally reduced per FR-27 | UC6 |
 | FR-15  | The application shall expose a web UI via a built-in HTTP server | UC3 |
 | FR-16  | When the web UI page is loaded, the web UI shall fetch the existing categories from the Firefly III API and display them as multiselect lists | UC6 |
@@ -406,6 +406,7 @@ The application supports two run modes:
 | `INCLUDE_CATEGORIES`               | Comma-separated category include list                            | *(empty = all)* |
 | `EXCLUDE_CATEGORIES`               | Comma-separated category exclude list                            | *(empty)*       |
 | `CATEGORY_CONFIDENCE_BOOST`        | Confidence boost for transactions matching the include list      | `0.15`          |
+| `CATEGORY_MAJORITY_THRESHOLD`      | Min. share of a payee's transactions in one category to name it (FR-13b) | `0.80`          |
 | `UNCATEGORIZED_BEHAVIOR`           | Handling of uncategorized transactions (include/exclude/neutral) | `neutral`       |
 | `UNCATEGORIZED_CONFIDENCE_PENALTY` | Confidence penalty for neutral uncategorized patterns (FR-27)    | `0.10`          |
 | `WEB_PORT`                         | Port the web server listens on                                   | `5000`          |
@@ -426,12 +427,22 @@ Decisions required from the requirement owner before this specification is basel
 | --- | ---- | --------------------- |
 | 5 | Web framework selection: Flask or FastAPI — **deferred**: no task through TASK-009 touches `app.py` or a web framework, so this costs nothing to postpone. Open question behind it: is a web UI needed at all, given `--dry-run` + `EXPORT_FORMAT=csv` already covers category filtering (`.env`), cache clearing (`--clear-cache`), and reviewing suggestions in a spreadsheet? The concrete gap if the web UI is dropped is FR-17b's inline edit + an import-edited-CSV-back-into-the-app path, which is unspecified today. Revisit after the CLI (through TASK-009) has been used in practice | NFR-02 |
 | 6 | Reference transaction volume for the 60-second performance bound — **deferred**: cannot be set credibly by guessing; TASK-009 measures elapsed time across a range of synthetic dataset sizes and resolves this item from the results | NFR-05 |
-| 7 | Confirm FR-13b interpretation: "unique per payee" = exactly one category among the payee's transactions | FR-13b |
 | 8 | Confirm obligation levels raised or made explicit during review (all reformulated requirements use "shall"). Known candidates flagged so far: FR-21/22/23/NFR-09 (cache — see TASK-007's note, motivated by web UI polling, not a one-shot CLI run), and NFR-06 (no external CDN — only meaningful once a web UI task exists; no task covers it yet, so no task-file reminder has been written — re-flag this when a web UI task is created, contingent on Open Item #5) | All |
 
 ---
 
 ## Changelog
+
+### 0.2.6 (2026-07-11)
+
+- Open Item #7 resolved: FR-13b now uses majority/mode-based tolerance instead
+  of a strict "exactly one distinct category" reading. A category is included
+  in the bill name when it accounts for at least `CATEGORY_MAJORITY_THRESHOLD`
+  (default `0.80`) of a payee's transactions, tolerating a small number of
+  miscategorized outliers rather than discarding the category name entirely.
+  New configuration parameter `CATEGORY_MAJORITY_THRESHOLD` added, consistent
+  with the other configurable thresholds (`AMOUNT_MARGIN`,
+  `HIGH_CONFIDENCE_THRESHOLD`, `CATEGORY_CONFIDENCE_BOOST`).
 
 ### 0.2.5 (2026-07-09)
 

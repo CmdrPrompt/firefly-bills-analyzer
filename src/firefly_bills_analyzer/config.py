@@ -25,6 +25,7 @@ class Config:
     amount_margin: float
     high_confidence_threshold: float
     category_confidence_boost: float
+    category_majority_threshold: float
     uncategorized_behavior: str
     include_categories: list[str]
     exclude_categories: list[str]
@@ -63,6 +64,9 @@ class Config:
             amount_margin=float(os.environ.get("AMOUNT_MARGIN", "0.10")),
             high_confidence_threshold=float(os.environ.get("HIGH_CONFIDENCE_THRESHOLD", "0.80")),
             category_confidence_boost=float(os.environ.get("CATEGORY_CONFIDENCE_BOOST", "0.15")),
+            category_majority_threshold=float(
+                os.environ.get("CATEGORY_MAJORITY_THRESHOLD", "0.80")
+            ),
             uncategorized_behavior=os.environ.get("UNCATEGORIZED_BEHAVIOR", "neutral"),
             include_categories=_csv("INCLUDE_CATEGORIES"),
             exclude_categories=_csv("EXCLUDE_CATEGORIES"),
