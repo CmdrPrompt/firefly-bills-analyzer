@@ -3,6 +3,9 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Claude self check
+.claude/state/
+
 # C extensions
 *.so
 
@@ -162,6 +165,7 @@ cython_debug/
 
 # Complexipy output
 complexipy_results_*.json
+complexipy-results*.json
 .complexipy_cache/
 
 # PyPI configuration file
