@@ -89,3 +89,5 @@ complexipy-results*.json
 
 # macOS
 .DS_Store
+secrets.json
+config.json
