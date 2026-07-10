@@ -122,3 +122,28 @@ of any consumer project's configuration flow.
 - No new runtime dependencies.
 - `mypy --strict` must pass.
 - Unit test coverage must not drop below baseline.
+
+## REQ-006 Withdrawal Transaction Fetching
+
+**As a** consumer application (e.g. firefly-bills-analyzer),
+**I want** a method that returns all withdrawal transactions in a date range as typed data,
+**so that** I can analyze spending/recurring payments without reimplementing pagination
+or Firefly III's split-transaction structure.
+
+### Use cases
+
+- UC-006-1: `get_withdrawal_transactions(start, end)` — paginated
+  `GET /api/v1/transactions?type=withdrawal&start=YYYY-MM-DD&end=YYYY-MM-DD&page=N`;
+  follows all pages until `total_pages` is reached; returns `list[TransactionRead]`.
+- UC-006-2: Each Firefly III transaction object may contain multiple splits under
+  `attributes.transactions`; each split is flattened into its own `TransactionRead` entry.
+- UC-006-3: `TransactionRead` is a `TypedDict` with `date: str` (truncated to `YYYY-MM-DD`),
+  `amount: str`, `destination_name: str | None`, `category_name: str | None` — the latter
+  two default to `None` when absent from the API response.
+- UC-006-4: `TransactionRead` is exported from `firefly_python_api`.
+
+### Constraints
+
+- No new runtime dependencies.
+- `mypy --strict` must pass.
+- Unit test coverage must not drop below baseline.
