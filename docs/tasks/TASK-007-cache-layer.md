@@ -38,10 +38,11 @@ fetch, filter, analyze, create, and cache-clear are all already in place.
 **⚠ Open Item #8 (spec):** FR-21/22/23/NFR-09 are written as hard "shall"
 requirements, but the caching mechanism was originally motivated by the web
 UI's repeated polling (UC7's `/api/categories` and `/api/analyze` endpoints),
-not a one-shot CLI run. If the web UI ends up deferred or dropped (Open Item
-#5), confirm with the user whether this task is still worth building before
-TASK-005, or whether it should be deprioritized/skipped for the terminal-only
-MVP. Do not assume caching is mandatory here just because the spec says
+not a one-shot CLI run. If the web UI ends up deferred or dropped
+(Open Item #5), confirm with the user whether this task is still worth
+building before TASK-005, or whether it should be deprioritized/skipped for
+the terminal-only MVP. Do not assume caching is mandatory here just because
+the spec says
 "shall" — that obligation level itself hasn't been individually confirmed.
 
 Covers UC7, FR-21, FR-22, FR-23, FR-25, NFR-09.
