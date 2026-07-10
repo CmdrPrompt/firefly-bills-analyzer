@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fetch withdrawal transactions from Firefly III for the configured lookback window
   (`fetcher.fetch_transactions`); connection failures exit with a human-readable
   message instead of a stack trace, and all API calls are logged at DEBUG level. (TASK-002)
+- Filter transactions by category include/exclude lists and configured
+  uncategorized-transaction handling (`category_filter.filter_transactions`); resolve
+  a payee's dominant category for bill naming, tolerating a minority of
+  miscategorized outliers via the new `CATEGORY_MAJORITY_THRESHOLD` setting
+  (`category_filter.resolve_category_name`). (TASK-006)
 
 ## [0.1.0] - 2026-03-27
 

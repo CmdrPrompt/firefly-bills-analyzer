@@ -18,6 +18,7 @@ def _make_config(**overrides: object) -> Config:
         amount_margin=0.10,
         high_confidence_threshold=0.80,
         category_confidence_boost=0.15,
+        category_majority_threshold=0.80,
         uncategorized_behavior="neutral",
         include_categories=[],
         exclude_categories=[],

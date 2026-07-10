@@ -36,8 +36,16 @@ def test_defaults() -> None:
     assert cfg.dry_run is False
     assert cfg.export_format == "none"
     assert cfg.uncategorized_behavior == "neutral"
+    assert cfg.category_majority_threshold == 0.80
     assert cfg.web_port == 5000
     assert cfg.web_host == "127.0.0.1"
+
+
+def test_category_majority_threshold_override() -> None:
+    env = {**BASE_ENV, "CATEGORY_MAJORITY_THRESHOLD": "0.90"}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.category_majority_threshold == 0.90
 
 
 def test_lookback_months_override() -> None:
