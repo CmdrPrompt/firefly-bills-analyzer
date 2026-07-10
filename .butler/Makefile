@@ -10,7 +10,7 @@ SRC_DIR ?= src
 TESTS_DIR ?= tests
 PROJECT_NAME ?= my-project
 PROJECT_DESCRIPTION ?= Describe your project here.
-REQUIREMENTS_PATH ?= docs/REQUIREMENTS_new.md
+REQUIREMENTS_PATH ?= docs/REQUIREMENTS.md
 WORKFLOW_GUARDIAN_NAME ?= Workflow Guardian
 WORKFLOW_GUARDIAN_REF ?= Workflow Guardian agent (`.github/agents/workflow-guardian.agent.md`)
 BUG_TRIAGE_NAME ?= Bug Triage
@@ -162,7 +162,7 @@ lint: check-agents-sync
 fix:
 	uv run ruff check --fix .
 	uv run ruff format .
-	uv run pymarkdown --config .pymarkdown fix \
+	uv run pymarkdown --config .pymarkdown --return-code-scheme minimal fix \
 		$(shell find . -name "*.md" -not -path "./.venv/*" -not -path "./.github/*" -not -path "./.butler/.github/*" -not -path "./libs/*" -not -path "./.claude/*")
 
 ## Auto-fix and re-stage already-staged files (run before git commit)
@@ -170,7 +170,7 @@ stage:
 	@STAGED=$$(git diff --name-only --cached); \
 	uv run ruff check --fix .; \
 	uv run ruff format .; \
-	uv run pymarkdown --config .pymarkdown fix \
+	uv run pymarkdown --config .pymarkdown --return-code-scheme minimal fix \
 		$$(find . -name "*.md" -not -path "./.venv/*" -not -path "./.butler/.github/*" -not -path "./libs/*" -not -path "./.claude/*"); \
 	[ -n "$$STAGED" ] && echo "$$STAGED" | xargs git add -- || true; \
 	git update-index -q --refresh
