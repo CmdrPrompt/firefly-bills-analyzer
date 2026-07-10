@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a payee's dominant category for bill naming, tolerating a minority of
   miscategorized outliers via the new `CATEGORY_MAJORITY_THRESHOLD` setting
   (`category_filter.resolve_category_name`). (TASK-006)
+- Identify recurring payment patterns per payee (`analyzer.identify_recurring`),
+  classifying frequency (monthly, quarterly, half-yearly, yearly, irregular) from
+  the median interval between transactions and scoring a confidence value that
+  combines occurrence count, interval regularity, and amount consistency, with a
+  category-match boost and a configurable penalty (`UNCATEGORIZED_CONFIDENCE_PENALTY`)
+  for uncategorized payees. (TASK-003)
 
 ## [0.1.0] - 2026-03-27
 

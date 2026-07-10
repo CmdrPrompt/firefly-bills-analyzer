@@ -26,6 +26,7 @@ class Config:
     high_confidence_threshold: float
     category_confidence_boost: float
     category_majority_threshold: float
+    uncategorized_confidence_penalty: float
     uncategorized_behavior: str
     include_categories: list[str]
     exclude_categories: list[str]
@@ -66,6 +67,9 @@ class Config:
             category_confidence_boost=float(os.environ.get("CATEGORY_CONFIDENCE_BOOST", "0.15")),
             category_majority_threshold=float(
                 os.environ.get("CATEGORY_MAJORITY_THRESHOLD", "0.80")
+            ),
+            uncategorized_confidence_penalty=float(
+                os.environ.get("UNCATEGORIZED_CONFIDENCE_PENALTY", "0.10")
             ),
             uncategorized_behavior=os.environ.get("UNCATEGORIZED_BEHAVIOR", "neutral"),
             include_categories=_csv("INCLUDE_CATEGORIES"),
