@@ -4,6 +4,22 @@
 
 todo
 
+## Requirements
+
+**Binding:** REQ-007
+**BDD mode:** BDD-ABSENT
+**Depends on:** none
+**Precedence:** The requirements above are the binding definition of this task.
+The story and scenarios below are derived from them. On any discrepancy, the
+requirements document wins. Stop and report discrepancies; do not build from
+the story.
+
+## Story (context, not binding)
+
+As a consumer application (e.g. firefly-bills-analyzer), I want a method to
+create a new bill via `FireflyClient`, so that I can programmatically
+register recurring bills without duplicating HTTP calls.
+
 ## Description
 
 Add `FireflyClient.create_bill(bill)` — a method that POSTs a new bill to
@@ -11,7 +27,14 @@ Add `FireflyClient.create_bill(bill)` — a method that POSTs a new bill to
 `firefly-bills-analyzer` (UC4) that is not yet exposed by the client.
 
 A new `BillPayload` TypedDict is introduced for the input type, carrying the
-fields the Firefly III API requires.
+fields the Firefly III API requires: `name`, `amount_min`, `amount_max`,
+`date`, `repeat_freq`, `active`.
+
+Error handling mirrors the create/POST pattern already established by
+`FireflyClient.create_transaction()` (REQ-002 / UC-002-3, delivered in
+TASK-002): HTTP 200 and 201 are treated as success, any other status raises
+`FireflyConnectionError`. TASK-002 is already merged to `main`, so this is a
+design precedent to follow, not a blocking dependency for this task.
 
 ## Branch
 
@@ -19,22 +42,76 @@ fields the Firefly III API requires.
 **Switch/create:** `git checkout -b task/006-create-bill`
 **Make target:** `make branch-task f=TASK-006`
 
-## Acceptance criteria
+## Acceptance criteria (Gherkin)
 
-- [ ] `src/firefly_python_api/_types.py` defines `BillPayload` as a `TypedDict`
-      with required fields `name: str`, `amount_min: str`, `amount_max: str`,
-      `date: str` (`YYYY-MM-DD`), `repeat_freq: str`, `active: bool`
-- [ ] `BillPayload` is exported from `firefly_python_api.__init__`
-- [ ] `FireflyClient.create_bill(bill: BillPayload) -> None` POSTs to
-      `POST /api/v1/bills`; HTTP 200 and 201 are treated as success; any other
-      status raises `FireflyConnectionError`
-- [ ] `repeat_freq` accepted values match Firefly III's enum:
-      `weekly`, `monthly`, `quarterly`, `half-year`, `yearly`
-- [ ] `tests/test_api_methods.py` covers: successful creation (201), duplicate
-      name (422 → `FireflyConnectionError`), and network error
-- [ ] `tests/test_types.py` covers `BillPayload` construction
-- [ ] `mypy --strict` passes on `src/`
-- [ ] `make lint && make test` pass with coverage >= baseline
+Scenarios are inline (BDD-ABSENT) and lift-ready for `.feature` extraction if
+BDD tooling is adopted later.
+
+- [ ] Scenario: Bill creation succeeds on HTTP 200
+      Given a valid `BillPayload`
+      When `create_bill(payload)` is called and the API responds with HTTP 200
+      Then the call completes without raising an exception
+
+- [ ] Scenario: Bill creation succeeds on HTTP 201
+      Given a valid `BillPayload`
+      When `create_bill(payload)` is called and the API responds with HTTP 201
+      Then the call completes without raising an exception
+
+- [ ] Scenario: Bill creation fails on duplicate bill name (422)
+      Given a `BillPayload` whose `name` duplicates an existing bill
+      When `create_bill(payload)` is called and the API responds with HTTP 422
+      Then a `FireflyConnectionError` is raised
+
+- [ ] Scenario: Bill creation fails on any other non-success status
+      Given a valid `BillPayload`
+      When `create_bill(payload)` is called and the API responds with a status
+      other than 200 or 201
+      Then a `FireflyConnectionError` is raised
+
+- [ ] Scenario: Bill creation fails on a network/connection error
+      Given a valid `BillPayload`
+      When `create_bill(payload)` is called and the underlying HTTP request
+      fails with a connection error
+      Then a `FireflyConnectionError` is raised
+
+- [ ] Scenario: BillPayload defines the required fields
+      Given the `BillPayload` `TypedDict` in `src/firefly_python_api/_types.py`
+      Then it declares required fields `name: str`, `amount_min: str`,
+      `amount_max: str`, `date: str` (`YYYY-MM-DD`), `repeat_freq: str`,
+      `active: bool`
+
+- [ ] Scenario: repeat_freq is not validated client-side
+      Given a `BillPayload` with any `repeat_freq` value
+      When `create_bill(payload)` is called
+      Then the client sends the value to the API without validating it against
+      the accepted enum (`weekly`, `monthly`, `quarterly`, `half-year`,
+      `yearly`); invalid values are rejected by the Firefly III API, not the
+      client
+
+- [ ] Scenario: BillPayload is importable from the package
+      Given the `firefly_python_api` package
+      When `BillPayload` is imported from `firefly_python_api`
+      Then the import succeeds
+
+- [ ] Scenario: Type checking and quality gates pass
+      Given the completed implementation of `create_bill` and `BillPayload`
+      When `mypy --strict` is run on `src/`, and `make lint && make test` are
+      run
+      Then `mypy --strict` passes, `make lint && make test` pass, and unit
+      test coverage does not drop below the task-start baseline
+
+## Out of scope
+
+- Bill update, delete, or single-bill read operations — only `get_bills()`
+  (REQ-003 / UC-003-1) exists and is unaffected by this task.
+- Client-side validation of `repeat_freq` values — per UC-007-2, invalid
+  values are rejected by the Firefly III API, not the client.
+- Any `BillPayload` field not listed in UC-007-2 (`name`, `amount_min`,
+  `amount_max`, `date`, `repeat_freq`, `active`).
+
+## Blockers
+
+None.
 
 ## Completion
 
