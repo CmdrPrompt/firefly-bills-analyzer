@@ -10,7 +10,7 @@ and is the single authoritative ordering.
 | Seq | Task | Depends on | Status | Condition |
 | --- | ---- | ---------- | ------ | --------- |
 | 1 | [TASK-001](TASK-001-project-scaffold.md) Project scaffold and configuration layer | — | done | — |
-| 2 | [TASK-002](TASK-002-fetch-transactions.md) Fetch withdrawal transactions (UC1) | TASK-001 | todo | Requires `get_withdrawal_transactions()` in `firefly-python-api` (that repo's TASK-005) |
+| 2 | [TASK-002](TASK-002-fetch-transactions.md) Fetch withdrawal transactions (UC1) | TASK-001 | done | Requires `get_withdrawal_transactions()` in `firefly-python-api` (that repo's TASK-005) |
 | 3 | [TASK-006](TASK-006-category-filtering.md) Filter transactions by category (UC6) | TASK-002 | todo | Confirm Open Item #7 before implementing `resolve_category_name` |
 | 4 | [TASK-003](TASK-003-identify-recurring-payments.md) Identify recurring payments (UC2) | TASK-002, TASK-006 | todo | — |
 | 5 | [TASK-004](TASK-004-create-bills.md) Create bills in Firefly III (UC4) | TASK-003 | todo | Requires `create_bill()` in `firefly-python-api` (open that repo's TASK-006 if missing) |

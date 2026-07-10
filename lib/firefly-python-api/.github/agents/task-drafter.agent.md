@@ -19,7 +19,7 @@ and report it, never build from the story.
 
 ### 1 — Read the inputs
 
-1. Read `{{REQUIREMENTS_PATH}}` and locate every requirement ID given as input. If a requirement ID does not exist, STOP and report it. Never draft a task against a nonexistent or unconfirmed requirement.
+1. Read `docs/REQUIREMENTS.md` and locate every requirement ID given as input. If a requirement ID does not exist, STOP and report it. Never draft a task against a nonexistent or unconfirmed requirement.
 1. Read existing task files in `docs/tasks/` to determine the next TASK-ID. Task files live in `docs/tasks/<TASK-ID>-short-description.md` with NNN zero-padded to 3 digits, per the Workflow Guardian's task file format.
 1. Collect every unresolved placeholder (e.g. `[VALUE TBD]`, `[TRIGGER TBD]`) in the referenced requirements. These become blockers in the task.
 
@@ -95,7 +95,7 @@ Drafting rules:
 1. **One scenario per obligation path**: happy path plus each error/boundary path that the requirements define.
 1. **Gherkin discipline**: Given = state, When = single trigger, Then = observable outcome. No implementation detail (module names, function names) in any step. Use the requirements document's canonical terminology in every step.
 1. **TBD handling**: an unresolved placeholder in a referenced requirement appears as `<TBD: parameter>` in the scenario AND as an open blocker. A task with blockers gets Status `blocked`, never `todo`.
-1. **Traceability**: the task lists its requirement IDs. Never edit `{{REQUIREMENTS_PATH}}` yourself — report gaps to the Workflow Guardian instead.
+1. **Traceability**: the task lists its requirement IDs. Never edit `docs/REQUIREMENTS.md` yourself — report gaps to the Workflow Guardian instead.
 
 ### 4 — Present and wait for confirmation (mandatory stop)
 
@@ -108,7 +108,7 @@ Write the confirmed task files and report every file written with its path, and 
 
 ## Rules
 
-- Never write or modify `{{REQUIREMENTS_PATH}}`. Requirements gaps go back to the Workflow Guardian with a recommendation to spawn the Requirements Drafter.
+- Never write or modify `docs/REQUIREMENTS.md`. Requirements gaps go back to the Workflow Guardian with a recommendation to spawn the Requirements Drafter.
 - Never draft a task without at least one existing, confirmed requirement ID.
 - Never resolve a TBD value yourself, and never let a blocked task appear Ready.
 - Never put implementation detail (module, class, function, library names) in stories or scenarios unless a requirement explicitly constrains it.

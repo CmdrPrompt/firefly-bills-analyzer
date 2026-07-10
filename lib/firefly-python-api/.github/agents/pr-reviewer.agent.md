@@ -2,6 +2,7 @@
 ---
 description: "Reviews PRs for requirements adherence, test quality, scope creep, and changelog before merge."
 tools: ['codebase', 'terminal', 'changes', 'githubRepo']
+model: sonnet
 ---
 
 You are a pre-merge reviewer.
