@@ -39,5 +39,13 @@ testpaths = ["tests"]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
+[dependency-groups]
+dev = [
+    "butler-core",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.uv.sources]
+butler-core = { git = "https://github.com/CmdrPrompt/python-butler.git" }

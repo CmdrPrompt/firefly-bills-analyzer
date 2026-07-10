@@ -59,6 +59,11 @@ wheels = [
 ]
 
 [[package]]
+name = "butler-core"
+version = "0.1.0"
+source = { git = "https://github.com/CmdrPrompt/python-butler.git#a2b4da5a81412e43dcf3f595d642f929a9e18d89" }
+
+[[package]]
 name = "certifi"
 version = "2026.6.17"
 source = { registry = "https://pypi.org/simple" }
@@ -385,6 +390,11 @@ dev = [
     { name = "ruff" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "butler-core" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "bandit", marker = "extra == 'dev'" },
@@ -399,6 +409,9 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'" },
 ]
 provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "butler-core", git = "https://github.com/CmdrPrompt/python-butler.git" }]
 
 [[package]]
 name = "identify"
