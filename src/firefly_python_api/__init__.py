@@ -6,20 +6,24 @@ from firefly_python_api._exceptions import FireflyConnectionError
 from firefly_python_api._types import (
     AssetAccount,
     BillData,
+    BillPayload,
     BudgetData,
     BudgetLimitData,
     CategoryData,
     TransactionPayload,
+    TransactionRead,
 )
 
 __all__ = [
     "AssetAccount",
     "BillData",
+    "BillPayload",
     "BudgetData",
     "BudgetLimitData",
     "CategoryData",
     "FireflyClient",
     "FireflyConnectionError",
     "TransactionPayload",
+    "TransactionRead",
     "load_config",
 ]

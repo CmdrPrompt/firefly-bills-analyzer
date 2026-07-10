@@ -4,8 +4,8 @@ version = "0.1.0"
 description = "Python client library for the Firefly III REST API — shared HTTP layer with credential management and API coverage for accounts, transactions, and reporting resources."
 requires-python = ">=3.11"
 dependencies = [
-    "requests>=2.32",
-    "python-dotenv>=1.0",
+    "requests",
+    "python-dotenv",
 ]
 
 [project.optional-dependencies]
@@ -17,16 +17,9 @@ dev = [
     "complexipy",
     "pytest",
     "pytest-cov",
-    "types-requests",
     "pre-commit",
+    "hypothesis",
 ]
-
-[build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools.packages.find]
-where = ["src"]
 
 [tool.ruff]
 line-length = 100
@@ -42,3 +35,18 @@ skips = []
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+    "butler-core",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.uv.sources]
+butler-core = { git = "https://github.com/CmdrPrompt/python-butler.git" }
