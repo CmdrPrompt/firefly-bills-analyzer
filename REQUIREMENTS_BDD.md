@@ -34,7 +34,7 @@ removed or renamed.
 - pytest-bdd tooling in scaffold templates
 - New Makefile targets for BDD execution
 - Gherkin acceptance criteria in the task template
-- Updates to five agents: requirements-drafter, workflow-guardian,
+- Updates to six agents: requirements-drafter, task-drafter, workflow-guardian,
   implementation-worker, pr-reviewer, characterization-test-writer
 - BDD conventions in `CLAUDE.md` and Copilot instruction templates
 - Generator support so `make init-project` and
@@ -112,19 +112,44 @@ the `.feature` files belonging to the task.
 
 ### 4.5 Agent updates
 
-**BDD-030** requirements-drafter: WHEN drafting a task, the agent SHALL
-express every acceptance criterion as a Gherkin scenario and SHALL write
-the corresponding feature file(s) as part of the task deliverable. EARS
-patterns map as: precondition to Given, trigger to When, system response
-to Then.
+**BDD-030** *(deprecated — superseded by BDD-036, split into a dedicated
+task-drafter agent)* requirements-drafter: WHEN drafting a task, the agent
+SHALL express every acceptance criterion as a Gherkin scenario and SHALL
+write the corresponding feature file(s) as part of the task deliverable.
+EARS patterns map as: precondition to Given, trigger to When, system
+response to Then.
 
-**BDD-031** requirements-drafter: IF a criterion cannot be expressed as an
-automatable scenario, THEN the agent SHALL mark it `@manual` with a stated
-verification method, and SHALL flag this to the user for confirmation.
+**BDD-031** *(deprecated — superseded by BDD-036/037, split into a
+dedicated task-drafter agent)* requirements-drafter: IF a criterion cannot
+be expressed as an automatable scenario, THEN the agent SHALL mark it
+`@manual` with a stated verification method, and SHALL flag this to the
+user for confirmation.
+
+**BDD-036** task-drafter (new agent, separate from requirements-drafter):
+WHEN given a set of confirmed REQ-IDs, the agent SHALL slice the referenced
+requirements into INVEST-compliant task files under `docs/tasks/`, deriving
+each Gherkin scenario mechanically from the requirement's precondition
+(Given), trigger (When), and obligation/measurable values (Then). The
+agent SHALL NOT draft or modify requirement text itself; requirements gaps
+are reported back to workflow-guardian for a requirements-drafter round.
+
+**BDD-037** task-drafter: IF a referenced requirement carries a
+`[VALUE TBD]`/`[TRIGGER TBD]` placeholder, THEN the resulting task file
+SHALL be marked Status `blocked` and SHALL list the placeholder as an open
+Blocker; the agent SHALL NOT resolve the placeholder itself, and SHALL NOT
+mark a task `todo` or `in-progress` while any blocker remains open.
 
 **BDD-032** workflow-guardian: The agent SHALL NOT approve the start of
-implementation unless (a) the task's feature files exist, (b) `make bdd`
-shows the task's scenarios failing or unbound, confirming red state.
+implementation unless (a) the task's feature files exist (or, in
+BDD-PLANNED/BDD-ABSENT mode per task-drafter's scenario handling, the task
+file's inline Gherkin scenarios exist), (b) the task's Status is not
+`blocked`, and (c) where `make bdd` is available, it shows the task's
+scenarios failing or unbound, confirming red state.
+
+**BDD-038** workflow-guardian: The agent SHALL delegate task-file drafting
+to task-drafter (never to requirements-drafter, and never itself except as
+an explicitly logged fallback) after requirements confirmation and before
+spawning implementation-worker.
 
 **BDD-033** implementation-worker: The agent SHALL work outside-in: first
 bind step definitions so scenarios fail for the right reason, then drive
@@ -199,3 +224,4 @@ path for regenerating agent files with BDD support in existing projects.
 | Version | Date | Change |
 |---------|------|--------|
 | 1.0.0 | 2026-07-08 | Initial draft |
+| 1.1.0 | 2026-07-10 | Split task-drafting out of requirements-drafter into a new task-drafter agent (BDD-036..038); deprecated BDD-030/031 (TASK-042) |

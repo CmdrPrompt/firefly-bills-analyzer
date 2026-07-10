@@ -2,6 +2,7 @@
 name: Test Design Reviewer
 description: "Evaluates test suites against Dave Farley's 8 Properties of Good Tests and produces a quantitative Farley Index score (0–10). Read-only — never edits files or commits."
 tools: [Read, Grep, Glob, Bash, Write]
+model: sonnet
 argument-hint: "Provide the module, directory, or test file to review. Full-suite scans require explicit confirmation."
 user-invocable: true
 allow-tool-free: true

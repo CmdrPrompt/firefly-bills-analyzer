@@ -2,6 +2,7 @@
 name: Implementation Worker
 description: "Use after requirements are explicitly approved. Handles implementation, tests, linting, and task metadata updates on the correct task branch."
 tools: [Read, Grep, Glob, Edit, Write, Bash, TodoWrite]
+model: sonnet
 argument-hint: "Provide TASK-ID, approved requirement scope, and target files"
 user-invocable: false
 disable-model-invocation: false

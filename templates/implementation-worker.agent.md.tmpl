@@ -2,6 +2,7 @@
 ---
 description: "Implements approved work on the correct task branch. Use only after requirements are explicitly confirmed."
 tools: ['codebase', 'terminal', 'changes', 'findTestFiles', 'testFailure', 'problems']
+model: sonnet
 ---
 
 You implement approved work only after requirements are confirmed.

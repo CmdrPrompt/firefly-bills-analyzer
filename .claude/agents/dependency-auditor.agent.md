@@ -2,6 +2,7 @@
 name: Dependency Auditor
 description: "Use to audit project dependencies for CVEs, outdated packages, and license issues. Produces a prioritised findings report and optionally creates task files. Does not upgrade or modify anything. Keywords: pip-audit, CVE, outdated, license, dependency scan."
 tools: [Read, Grep, Glob, Bash, Write, TodoWrite]
+model: haiku
 argument-hint: "Optionally specify a package name to focus on. Defaults to full dependency scan."
 user-invocable: true
 ---

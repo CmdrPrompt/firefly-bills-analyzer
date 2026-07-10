@@ -14,6 +14,7 @@ from butler_core.git_ops import (
     open_pr_for,
     stage_for,
 )
+from butler_core.sync import sync_makefile
 from butler_core.tasks import (
     DEFAULT_TASKS_DIR,
     TaskNotFoundError,
@@ -61,6 +62,11 @@ def _build_parser() -> argparse.ArgumentParser:
     uninstall_parser.add_argument("--project-root", default=".")
     uninstall_parser.add_argument("--dry-run", action="store_true")
     uninstall_parser.add_argument("--force", action="store_true")
+
+    sync_parser = subparsers.add_parser("sync")
+    sync_parser.add_argument("--project-root", default=".")
+    sync_parser.add_argument("--dry-run", action="store_true")
+    sync_parser.add_argument("--force", action="store_true")
 
     return parser
 
@@ -125,6 +131,12 @@ def _cmd_uninstall(args: argparse.Namespace) -> None:
         print(action)
 
 
+def _cmd_sync(args: argparse.Namespace) -> None:
+    project_root = Path(args.project_root)
+    result = sync_makefile(project_root, dry_run=args.dry_run, force=args.force)
+    print(result.message)
+
+
 _TASK_HANDLERS = {
     "list": _cmd_list,
     "show": _cmd_show,
@@ -145,6 +157,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "uninstall":
             _cmd_uninstall(args)
+        elif args.command == "sync":
+            _cmd_sync(args)
         else:
             _TASK_HANDLERS[args.task_command](args)
     except (

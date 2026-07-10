@@ -2,6 +2,7 @@
 name: PR Reviewer
 description: "Use before merging any PR. Reviews open PRs for requirements adherence, test quality, scope creep, and commit discipline. Reports findings — does not fix anything. Keywords: review PR, pre-merge check, scope creep, test quality, changelog."
 tools: [Read, Grep, Glob, Bash]
+model: sonnet
 argument-hint: "Provide TASK-ID or PR number to review"
 user-invocable: true
 ---

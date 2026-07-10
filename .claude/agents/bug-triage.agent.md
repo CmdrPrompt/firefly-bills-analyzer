@@ -2,6 +2,7 @@
 name: Bug Triage
 description: "Use to proactively hunt for bugs without fixing them. Analyses code against the requirements document, produces a prioritised bug list, and creates task files in docs/tasks/ for each confirmed bug. Does not write code or fix anything."
 tools: [Read, Grep, Glob, Write, TodoWrite]
+model: sonnet
 argument-hint: "Optionally specify a module or area to focus on. Defaults to full codebase scan."
 user-invocable: true
 disable-model-invocation: false

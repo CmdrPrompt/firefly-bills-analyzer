@@ -300,6 +300,112 @@ class TestUninstall:
         assert (tmp_path / ".butler").exists(), "nothing should be removed on refusal"
 
 
+class TestSync:
+    def test_dry_run_reports_up_to_date_when_content_matches(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from butler_core.sync import bundled_makefile_path
+
+        local = tmp_path / ".butler" / "Makefile"
+        local.parent.mkdir(parents=True)
+        local.write_text(bundled_makefile_path().read_text())
+
+        exit_code = main(["sync", "--project-root", str(tmp_path), "--dry-run"])
+
+        assert exit_code == 0
+        out = capsys.readouterr().out
+        assert "already up to date" in out
+        assert local.read_text() == bundled_makefile_path().read_text()
+
+    def test_dry_run_reports_difference_without_modifying(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        local = tmp_path / ".butler" / "Makefile"
+        local.parent.mkdir(parents=True)
+        local.write_text("stale content\n")
+
+        exit_code = main(["sync", "--project-root", str(tmp_path), "--dry-run"])
+
+        assert exit_code == 0
+        out = capsys.readouterr().out
+        assert "would overwrite" in out.lower()
+        assert local.read_text() == "stale content\n"
+
+    def test_apply_overwrites_makefile_when_content_differs(self, tmp_path: Path) -> None:
+        from butler_core.sync import bundled_makefile_path
+
+        local = tmp_path / ".butler" / "Makefile"
+        local.parent.mkdir(parents=True)
+        local.write_text("stale content\n")
+
+        exit_code = main(["sync", "--project-root", str(tmp_path), "--force"])
+
+        assert exit_code == 0
+        assert local.read_text() == bundled_makefile_path().read_text()
+
+    def test_apply_leaves_up_to_date_makefile_untouched(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from butler_core.sync import bundled_makefile_path
+
+        local = tmp_path / ".butler" / "Makefile"
+        local.parent.mkdir(parents=True)
+        local.write_text(bundled_makefile_path().read_text())
+
+        exit_code = main(["sync", "--project-root", str(tmp_path)])
+
+        assert exit_code == 0
+        out = capsys.readouterr().out
+        assert "already up to date" in out
+
+    @patch("butler_core.sync.subprocess.run")
+    def test_refuses_when_working_tree_dirty_without_force(
+        self,
+        mock_run: MagicMock,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        mock_run.return_value = MagicMock(returncode=0, stdout=" M some_file.py\n")
+        local = tmp_path / ".butler" / "Makefile"
+        local.parent.mkdir(parents=True)
+        local.write_text("stale content\n")
+
+        exit_code = main(["sync", "--project-root", str(tmp_path)])
+
+        assert exit_code == 1
+        err = capsys.readouterr().err
+        assert "uncommitted" in err.lower()
+        assert local.read_text() == "stale content\n"
+
+    @patch("butler_core.sync.subprocess.run")
+    def test_force_overrides_dirty_tree_check(self, mock_run: MagicMock, tmp_path: Path) -> None:
+        from butler_core.sync import bundled_makefile_path
+
+        mock_run.return_value = MagicMock(returncode=0, stdout=" M some_file.py\n")
+        local = tmp_path / ".butler" / "Makefile"
+        local.parent.mkdir(parents=True)
+        local.write_text("stale content\n")
+
+        exit_code = main(["sync", "--project-root", str(tmp_path), "--force"])
+
+        assert exit_code == 0
+        assert local.read_text() == bundled_makefile_path().read_text()
+
+    @patch("butler_core.sync.subprocess.run")
+    def test_dry_run_and_force_together_do_not_modify_files(
+        self, mock_run: MagicMock, tmp_path: Path
+    ) -> None:
+        mock_run.return_value = MagicMock(returncode=0, stdout=" M some_file.py\n")
+        local = tmp_path / ".butler" / "Makefile"
+        local.parent.mkdir(parents=True)
+        local.write_text("stale content\n")
+
+        exit_code = main(["sync", "--project-root", str(tmp_path), "--dry-run", "--force"])
+
+        assert exit_code == 0
+        assert local.read_text() == "stale content\n"
+
+
 class TestErrorHandling:
     def test_fails_cleanly_when_task_not_found(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

@@ -2,6 +2,32 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added a `butler sync` CLI command that refreshes a consumer project's vendored
+  `.butler/Makefile` to match the version bundled in the currently installed `butler` package,
+  comparing content by hash so it only overwrites when the files actually differ (`--dry-run` to
+  preview, `--force` to override the dirty-working-tree guard). Consumer projects that end up
+  pinned to a stale vendored Makefile snapshot -- as `firefly-python-api` was before TASK-043 --
+  now have a supported way to correct the drift without manually diffing and patching files by
+  hand. (TASK-045)
+- Added a `task-drafter` agent (Claude Code and GitHub Copilot flavors) that turns confirmed
+  requirements into INVEST-compliant task files with Gherkin acceptance criteria, splitting this
+  responsibility out of `requirements-drafter`. `workflow-guardian` now delegates task-file
+  drafting to it and gates implementation on the task's Status not being `blocked`. (TASK-042)
+- Added regression tests (`tests/test_no_make_recursion.py`) protecting the non-recursive
+  `butler task <cmd>` <-> vendored Makefile architecture: a static/AST scan asserts
+  `butler_core.git_ops`'s `branch_for`, `stage_for`, `commit_for`, `open_pr_for`, and
+  `merge_pr_for` never construct a `subprocess` call whose first argument is `"make"`, and
+  end-to-end tests assert `butler task branch|stage|commit|pr|merge` complete without spawning a
+  nested `butler` or `make` process. No production code changed; this formalizes behavior that
+  already existed as of TASK-023 so it cannot silently regress. (TASK-043)
+- Added a test (`tests/test_makefile_cli_flag_drift.py`) that parses every `butler ...` invocation
+  in the root `Makefile`, extracts the flags they pass (currently `--tasks-dir`), and cross-checks
+  them against the CLI's argparse definition in `src/butler_cli/__main__.py`, failing `make test`
+  if the Makefile ever passes a flag the installed CLI no longer accepts. No production code
+  changed; this guards against silent drift going forward. (TASK-044)
+
 ### Fixed
 
 - `make validate-agents` now flags an `.agent.md` file with a missing `tools:` key as an error
@@ -51,6 +77,10 @@
 
 ### Added
 
+- Generated `CLAUDE.md` and Workflow Guardian agent definitions now include a Cross-Workspace
+  Boundary section/gate: code must never be written in a sibling or dependency repo from the
+  current workspace, and task-file/requirements-doc edits in another workspace require the
+  user's explicit prior approval before editing. (TASK-041)
 - Added `make validate-agents` (`scripts/validate_agents.py`, stdlib-only): validates the YAML
   frontmatter of every `.claude/agents/*.agent.md`: required keys present, `tools:` non-empty and
   containing only real Claude Code tool names (with did-you-mean hints for case errors, and

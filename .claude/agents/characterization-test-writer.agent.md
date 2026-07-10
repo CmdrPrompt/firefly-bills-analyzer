@@ -2,6 +2,7 @@
 name: Characterization Test Writer
 description: "Use when adding tests to previously untested code. Follows the characterization-first workflow: analyse existing behavior, write tests that document it as-is, present findings to user, then hand off to Guardian for refactoring."
 tools: [Read, Grep, Glob, Edit, Write, Bash, TodoWrite]
+model: sonnet
 argument-hint: "Provide the module or function to characterize, and the TASK-ID"
 user-invocable: true
 disable-model-invocation: false

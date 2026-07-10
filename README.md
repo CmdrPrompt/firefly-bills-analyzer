@@ -211,20 +211,21 @@ Both commands exit with an error if `CLAUDE.md` already exists. Pass `FORCE=1` t
 
 ## Agents
 
-Nine agents cover the full development workflow, available in both Claude Code and GitHub Copilot.
+Ten agents cover the full development workflow, available in both Claude Code and GitHub Copilot.
 
 ```
-requirements-drafter → workflow-guardian → test-writer → implementation-worker → pr-reviewer → merge
-                               ↑
-             bug-triage ───────┤
- characterization-test-writer ─┘
-             test-design-reviewer  (on demand)
-             dependency-auditor    (periodic / pre-release)
+requirements-drafter → task-drafter → workflow-guardian → test-writer → implementation-worker → pr-reviewer → merge
+                                              ↑
+                            bug-triage ───────┤
+                characterization-test-writer ─┘
+                            test-design-reviewer  (on demand)
+                            dependency-auditor    (periodic / pre-release)
 ```
 
 | Agent | When | Purpose |
 |---|---|---|
 | `requirements-drafter` | Before coding | Turns vague ideas into confirmed, testable requirements |
+| `task-drafter` | After requirements confirmed | Slices confirmed requirements into INVEST task files with Gherkin acceptance criteria |
 | `workflow-guardian` | Gate | Enforces task branches, TDD, and commit discipline |
 | `test-writer` | After requirement confirmed | Writes failing (red) tests before any production code exists |
 | `implementation-worker` | Coding | Implements approved work, runs lint/test, commits |

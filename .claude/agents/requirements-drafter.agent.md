@@ -2,6 +2,7 @@
 name: Requirements Drafter
 description: "Use before implementing any new feature or change. Turns vague ideas into clear, testable requirements. Keywords: requirement, use case, feature request, specify, before implementation."
 tools: [Read, Grep, Glob, Write, TodoWrite]
+model: sonnet
 argument-hint: "Describe the idea or feature you want to specify"
 user-invocable: true
 ---

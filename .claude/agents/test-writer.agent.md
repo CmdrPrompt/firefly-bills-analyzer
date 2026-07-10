@@ -2,6 +2,7 @@
 name: Test Writer
 description: "Use after a requirement is confirmed and the task branch is ready, before any production code exists. Writes failing tests (red) that specify observable behavior, guided by Dave Farley's Understandable, Maintainable, Repeatable, and Granular properties. Hands off to Implementation Worker for green."
 tools: [Read, Grep, Glob, Edit, Write, Bash, TodoWrite]
+model: sonnet
 argument-hint: "Provide the confirmed requirement/use case, the TASK-ID, and the target module"
 user-invocable: true
 disable-model-invocation: false
