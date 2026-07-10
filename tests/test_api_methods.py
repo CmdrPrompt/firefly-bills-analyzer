@@ -295,3 +295,199 @@ class TestGetSummary:
         with patch.object(client.session, "get", return_value=resp):
             with pytest.raises(FireflyConnectionError):
                 client.get_summary("2024-01-01", "2024-12-31")
+
+
+# ---------------------------------------------------------------------------
+# get_withdrawal_transactions
+# ---------------------------------------------------------------------------
+
+
+class TestGetWithdrawalTransactions:
+    def test_returns_transactions_from_single_page(self):
+        client = make_client()
+        payload = {
+            "data": [
+                {
+                    "attributes": {
+                        "transactions": [
+                            {
+                                "date": "2024-03-15T00:00:00+00:00",
+                                "amount": "42.50",
+                                "destination_name": "Grocery Store",
+                                "category_name": "Groceries",
+                            }
+                        ]
+                    }
+                }
+            ],
+            "meta": {"pagination": {"total_pages": 1}},
+        }
+        with patch.object(client.session, "get", return_value=mock_response(payload)) as mock_get:
+            result = client.get_withdrawal_transactions("2024-01-01", "2024-12-31")
+        mock_get.assert_called_once_with(
+            "https://firefly.example.com/api/v1/transactions",
+            params={
+                "type": "withdrawal",
+                "start": "2024-01-01",
+                "end": "2024-12-31",
+                "page": 1,
+            },
+        )
+        assert result == [
+            {
+                "date": "2024-03-15",
+                "amount": "42.50",
+                "destination_name": "Grocery Store",
+                "category_name": "Groceries",
+            }
+        ]
+
+    def test_fetches_all_pages(self):
+        client = make_client()
+        page1 = {
+            "data": [
+                {
+                    "attributes": {
+                        "transactions": [
+                            {
+                                "date": "2024-01-05T10:00:00+00:00",
+                                "amount": "10.00",
+                                "destination_name": "Shop A",
+                                "category_name": "Misc",
+                            }
+                        ]
+                    }
+                }
+            ],
+            "meta": {"pagination": {"total_pages": 2}},
+        }
+        page2 = {
+            "data": [
+                {
+                    "attributes": {
+                        "transactions": [
+                            {
+                                "date": "2024-02-05T10:00:00+00:00",
+                                "amount": "20.00",
+                                "destination_name": "Shop B",
+                                "category_name": "Misc",
+                            }
+                        ]
+                    }
+                }
+            ],
+            "meta": {"pagination": {"total_pages": 2}},
+        }
+        with patch.object(
+            client.session, "get", side_effect=[mock_response(page1), mock_response(page2)]
+        ) as mock_get:
+            result = client.get_withdrawal_transactions("2024-01-01", "2024-12-31")
+        assert mock_get.call_count == 2
+        assert mock_get.call_args_list == [
+            call(
+                "https://firefly.example.com/api/v1/transactions",
+                params={
+                    "type": "withdrawal",
+                    "start": "2024-01-01",
+                    "end": "2024-12-31",
+                    "page": 1,
+                },
+            ),
+            call(
+                "https://firefly.example.com/api/v1/transactions",
+                params={
+                    "type": "withdrawal",
+                    "start": "2024-01-01",
+                    "end": "2024-12-31",
+                    "page": 2,
+                },
+            ),
+        ]
+        assert result == [
+            {
+                "date": "2024-01-05",
+                "amount": "10.00",
+                "destination_name": "Shop A",
+                "category_name": "Misc",
+            },
+            {
+                "date": "2024-02-05",
+                "amount": "20.00",
+                "destination_name": "Shop B",
+                "category_name": "Misc",
+            },
+        ]
+
+    def test_flattens_multi_split_transactions(self):
+        client = make_client()
+        payload = {
+            "data": [
+                {
+                    "attributes": {
+                        "transactions": [
+                            {
+                                "date": "2024-03-15T00:00:00+00:00",
+                                "amount": "10.00",
+                                "destination_name": "Shop A",
+                                "category_name": "Misc",
+                            },
+                            {
+                                "date": "2024-03-15T00:00:00+00:00",
+                                "amount": "20.00",
+                                "destination_name": "Shop B",
+                                "category_name": "Groceries",
+                            },
+                        ]
+                    }
+                }
+            ],
+            "meta": {"pagination": {"total_pages": 1}},
+        }
+        with patch.object(client.session, "get", return_value=mock_response(payload)):
+            result = client.get_withdrawal_transactions("2024-01-01", "2024-12-31")
+        assert len(result) == 2
+        assert result[0]["amount"] == "10.00"
+        assert result[1]["amount"] == "20.00"
+
+    def test_defaults_missing_optional_fields_to_none(self):
+        client = make_client()
+        payload = {
+            "data": [
+                {
+                    "attributes": {
+                        "transactions": [
+                            {
+                                "date": "2024-03-15T00:00:00+00:00",
+                                "amount": "10.00",
+                            }
+                        ]
+                    }
+                }
+            ],
+            "meta": {"pagination": {"total_pages": 1}},
+        }
+        with patch.object(client.session, "get", return_value=mock_response(payload)):
+            result = client.get_withdrawal_transactions("2024-01-01", "2024-12-31")
+        assert result == [
+            {
+                "date": "2024-03-15",
+                "amount": "10.00",
+                "destination_name": None,
+                "category_name": None,
+            }
+        ]
+
+    def test_returns_empty_list_when_no_transactions(self):
+        client = make_client()
+        payload = {"data": [], "meta": {"pagination": {"total_pages": 1}}}
+        with patch.object(client.session, "get", return_value=mock_response(payload)):
+            result = client.get_withdrawal_transactions("2024-01-01", "2024-12-31")
+        assert result == []
+
+    def test_raises_on_http_error(self):
+        client = make_client()
+        resp = MagicMock()
+        resp.raise_for_status.side_effect = requests.HTTPError("500")
+        with patch.object(client.session, "get", return_value=resp):
+            with pytest.raises(FireflyConnectionError):
+                client.get_withdrawal_transactions("2024-01-01", "2024-12-31")

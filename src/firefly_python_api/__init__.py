@@ -10,6 +10,7 @@ from firefly_python_api._types import (
     BudgetLimitData,
     CategoryData,
     TransactionPayload,
+    TransactionRead,
 )
 
 __all__ = [
@@ -21,5 +22,6 @@ __all__ = [
     "FireflyClient",
     "FireflyConnectionError",
     "TransactionPayload",
+    "TransactionRead",
     "load_config",
 ]

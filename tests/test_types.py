@@ -9,6 +9,7 @@ from firefly_python_api import (
     BudgetLimitData,
     CategoryData,
     TransactionPayload,
+    TransactionRead,
 )
 
 
@@ -30,6 +31,9 @@ class TestTypesAreImportable:
 
     def test_category_data_is_importable(self):
         assert CategoryData is not None
+
+    def test_transaction_read_is_importable(self):
+        assert TransactionRead is not None
 
 
 class TestAssetAccount:
@@ -78,3 +82,27 @@ class TestResourceDataTypes:
     def test_category_data(self):
         item: CategoryData = {"id": "4", "attributes": {"name": "Transport"}}
         assert item["id"] == "4"
+
+
+class TestTransactionRead:
+    def test_valid_instance_with_values(self):
+        item: TransactionRead = {
+            "date": "2024-03-15",
+            "amount": "100.00",
+            "destination_name": "Grocery Store",
+            "category_name": "Groceries",
+        }
+        assert item["date"] == "2024-03-15"
+        assert item["amount"] == "100.00"
+        assert item["destination_name"] == "Grocery Store"
+        assert item["category_name"] == "Groceries"
+
+    def test_valid_instance_with_none_optional_fields(self):
+        item: TransactionRead = {
+            "date": "2024-03-15",
+            "amount": "100.00",
+            "destination_name": None,
+            "category_name": None,
+        }
+        assert item["destination_name"] is None
+        assert item["category_name"] is None

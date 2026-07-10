@@ -14,7 +14,31 @@ from firefly_python_api._types import (
     BudgetLimitData,
     CategoryData,
     TransactionPayload,
+    TransactionRead,
 )
+
+
+def _split_to_transaction_read(split: dict[str, Any]) -> TransactionRead:
+    """Flatten a single Firefly III transaction split into a :class:`TransactionRead`.
+
+    Parameters
+    ----------
+    split:
+        One entry from a Firefly III transaction object's
+        ``attributes.transactions`` list.
+
+    Returns
+    -------
+    TransactionRead
+        ``date`` truncated to ``YYYY-MM-DD``; ``destination_name`` and
+        ``category_name`` default to ``None`` when absent from ``split``.
+    """
+    return TransactionRead(
+        date=split["date"][:10],
+        amount=split["amount"],
+        destination_name=split.get("destination_name"),
+        category_name=split.get("category_name"),
+    )
 
 
 class FireflyClient:
@@ -218,3 +242,41 @@ class FireflyClient:
             f"{self.url}/api/v1/summary/basic",
             params={"start": start, "end": end},
         )
+
+    # ------------------------------------------------------------------
+    # REQ-006 — withdrawal transactions
+    # ------------------------------------------------------------------
+
+    def get_withdrawal_transactions(self, start: str, end: str) -> list[TransactionRead]:
+        """Return all withdrawal transactions in a date range, fetching every page.
+
+        Each Firefly III transaction object may contain multiple splits under
+        ``attributes.transactions``; each split is flattened into its own
+        :class:`TransactionRead` entry.
+
+        Parameters
+        ----------
+        start:
+            Start date in ``YYYY-MM-DD`` format.
+        end:
+            End date in ``YYYY-MM-DD`` format.
+
+        Returns
+        -------
+        list[TransactionRead]
+            Flattened withdrawal transaction splits.
+        """
+        transactions: list[TransactionRead] = []
+        page = 1
+        while True:
+            data = self._get(
+                f"{self.url}/api/v1/transactions",
+                params={"type": "withdrawal", "start": start, "end": end, "page": page},
+            )
+            for item in data["data"]:
+                for split in item["attributes"]["transactions"]:
+                    transactions.append(_split_to_transaction_read(split))
+            if page >= data["meta"]["pagination"]["total_pages"]:
+                break
+            page += 1
+        return transactions

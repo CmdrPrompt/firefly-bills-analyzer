@@ -69,3 +69,18 @@ class CategoryData(TypedDict):
 
     id: str
     attributes: dict[str, Any]
+
+
+class TransactionRead(TypedDict):
+    """A single flattened withdrawal split returned by
+    :meth:`FireflyClient.get_withdrawal_transactions`.
+    """
+
+    date: str
+    """Transaction date truncated to ``YYYY-MM-DD``."""
+    amount: str
+    """Absolute amount as a decimal string, e.g. ``"100.00"``."""
+    destination_name: str | None
+    """Destination account/payee name, or ``None`` when absent."""
+    category_name: str | None
+    """Category name, or ``None`` when absent or uncategorized."""

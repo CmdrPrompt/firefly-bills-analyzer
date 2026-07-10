@@ -2,7 +2,7 @@
 
 ## Status
 
-in-progress
+done
 
 ## Requirements
 
@@ -44,20 +44,20 @@ fields that the bills analyzer needs: `date`, `amount`, `destination_name`, and
 
 Scenarios are lift-ready for `.feature` extraction if BDD tooling is adopted later.
 
-- [ ] Scenario: Fetch withdrawal transactions across multiple pages (UC-006-1)
+- [x] Scenario: Fetch withdrawal transactions across multiple pages (UC-006-1)
       Given a date range `start` and `end` in `YYYY-MM-DD` format
       When `get_withdrawal_transactions(start, end)` is called
       Then it requests `GET /api/v1/transactions?type=withdrawal&start={start}&end={end}&page=N`
       And it follows all pages until `total_pages` is reached
       And it returns a `list[TransactionRead]`
 
-- [ ] Scenario: Flatten multi-split transactions into individual entries (UC-006-2)
+- [x] Scenario: Flatten multi-split transactions into individual entries (UC-006-2)
       Given a Firefly III transaction object whose `attributes.transactions` contains
       multiple splits
       When `get_withdrawal_transactions(start, end)` processes that transaction object
       Then each split is flattened into its own `TransactionRead` entry in the returned list
 
-- [ ] Scenario: `TransactionRead` shape and date truncation (UC-006-3)
+- [x] Scenario: `TransactionRead` shape and date truncation (UC-006-3)
       Given a Firefly III API response containing a withdrawal transaction split with a
       full ISO-8601 datetime in its `date` field
       When that split is converted into a `TransactionRead`
@@ -66,7 +66,7 @@ Scenarios are lift-ready for `.feature` extraction if BDD tooling is adopted lat
       And `destination_name: str | None`
       And `category_name: str | None`
 
-- [ ] Scenario: Default missing optional fields to None (UC-006-3)
+- [x] Scenario: Default missing optional fields to None (UC-006-3)
       Given a Firefly III API response for a withdrawal transaction split where
       `destination_name` and/or `category_name` are absent
       When that split is converted into a `TransactionRead`
@@ -74,12 +74,12 @@ Scenarios are lift-ready for `.feature` extraction if BDD tooling is adopted lat
       absent `destination_name`
       And `category_name` set to `None` for any absent `category_name`
 
-- [ ] Scenario: `TransactionRead` is exported from the package (UC-006-4)
+- [x] Scenario: `TransactionRead` is exported from the package (UC-006-4)
       Given the `firefly_python_api` package
       When a consumer imports from `firefly_python_api`
       Then `TransactionRead` is importable from `firefly_python_api.__init__`
 
-- [ ] Scenario: Type checking and test suite pass (constraints)
+- [x] Scenario: Type checking and test suite pass (constraints)
       Given the implementation of `TransactionRead` and `get_withdrawal_transactions`
       When `mypy --strict` is run on `src/`
       Then it passes with no errors
@@ -100,18 +100,53 @@ None
 
 ## Completion
 
-**Date:**
-**Summary:**
+**Date:** 2026-07-10
+**Summary:** Added `FireflyClient.get_withdrawal_transactions(start, end)`, a paginated
+method that fetches withdrawal transactions from `GET /api/v1/transactions` and
+flattens each split into a `TransactionRead` record (`date` truncated to
+`YYYY-MM-DD`, `amount`, `destination_name`, `category_name`, the latter two
+defaulting to `None` when absent). `TransactionRead` is exported from
+`firefly_python_api`. Added a private `_split_to_transaction_read` helper covered
+by Hypothesis property tests, plus unit tests for pagination, multi-split
+flattening, and missing-field defaulting. `mypy --strict`, ruff, bandit, and
+complexipy all pass; test coverage remains at 100% (67 unit tests, up from 53).
+Test Design Reviewer scored the added test suite 7.6/10 (Farley Index); no
+correctness bugs found, only minor granularity/coupling nits (e.g. two
+pagination tests assert both outgoing request params and transformed result
+in one test body; `assert_called_once_with`/`call_args_list` pin exact param
+dict shape). Judged non-blocking per the Test review gate (stylistic, not
+correctness) and left as-is; not addressed in this task.
+
+**Note on infra fixes bundled into this branch (separate commits, not part of
+this task's own diff):** `make branch-task`/`make commit-current-task` were
+blocked at task start by an infinite-recursion bug in the `python-butler-cli`
+distribution (`butler task <cmd>` <-> Makefile targets calling each other).
+Root-caused and reported as TASK-043 in the `python-butler` source repo
+(task-file only, per cross-workspace boundary policy — no code changes made
+there). The user separately fixed it upstream (TASK-043/044/045 in
+`python-butler`, republished as the `butler-core` package). This branch's dev
+dependency was switched from the stale `python-butler-cli` to
+`butler-core @ git+https://github.com/CmdrPrompt/python-butler.git`, which
+also surfaced two new, TASK-005-unrelated `make lint` gates from the updated
+`.butler/Makefile`: `check-agents-sync` (expects a `claude-agents/` mirror of
+`.claude/agents/`, added) and a pymarkdown crash on a stray, outdated
+`CLAUDE copy.md` file with a space in its name (removed, content already
+superseded by current `CLAUDE.md`). Both committed separately from this
+task's feature commit.
 **Files changed:**
 
 - `src/firefly_python_api/_types.py` — modified (TransactionRead added)
-- `src/firefly_python_api/_client.py` — modified (get_withdrawal_transactions added)
+- `src/firefly_python_api/_client.py` — modified (get_withdrawal_transactions and
+  `_split_to_transaction_read` added)
 - `src/firefly_python_api/__init__.py` — modified (TransactionRead exported)
 - `tests/test_api_methods.py` — modified (new tests)
 - `tests/test_types.py` — modified (TransactionRead tests)
+- `tests/test_transaction_flatten.py` — added (Hypothesis property tests)
+- `pyproject.toml` — modified (hypothesis added as a dev dependency)
+- `uv.lock` — modified (lockfile update for hypothesis)
 - `CHANGELOG.md` — modified
 - `docs/tasks/TASK-005-fetch-withdrawal-transactions.md` — modified
 
 **Branch:** `git checkout task/005-fetch-withdrawal-transactions`
-**Stage:** `git add src/firefly_python_api/_types.py src/firefly_python_api/_client.py src/firefly_python_api/__init__.py tests/test_api_methods.py tests/test_types.py CHANGELOG.md docs/tasks/TASK-005-fetch-withdrawal-transactions.md`
+**Stage:** `git add src/firefly_python_api/_types.py src/firefly_python_api/_client.py src/firefly_python_api/__init__.py tests/test_api_methods.py tests/test_types.py tests/test_transaction_flatten.py pyproject.toml uv.lock CHANGELOG.md docs/tasks/TASK-005-fetch-withdrawal-transactions.md`
 **Commit:** `git commit -m "Add get_withdrawal_transactions() and TransactionRead type (TASK-005)"`

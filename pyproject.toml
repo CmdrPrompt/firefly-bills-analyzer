@@ -18,6 +18,7 @@ dev = [
     "pytest",
     "pytest-cov",
     "pre-commit",
+    "hypothesis",
 ]
 
 [tool.ruff]
