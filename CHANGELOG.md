@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (CLI entry-point with `--dry-run`, `--auto-approve`, `--clear-cache` flags). (TASK-001)
 - `python-dotenv` added as runtime dependency for automatic `.env` loading. (TASK-001)
 - `firefly-python-api` added as a git subtree under `lib/firefly-python-api/`. (TASK-001)
+- Fetch withdrawal transactions from Firefly III for the configured lookback window
+  (`fetcher.fetch_transactions`); connection failures exit with a human-readable
+  message instead of a stack trace, and all API calls are logged at DEBUG level. (TASK-002)
 
 ## [0.1.0] - 2026-03-27
 

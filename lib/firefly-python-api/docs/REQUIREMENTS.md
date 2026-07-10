@@ -122,3 +122,53 @@ of any consumer project's configuration flow.
 - No new runtime dependencies.
 - `mypy --strict` must pass.
 - Unit test coverage must not drop below baseline.
+
+## REQ-006 Withdrawal Transaction Fetching
+
+**As a** consumer application (e.g. firefly-bills-analyzer),
+**I want** a method that returns all withdrawal transactions in a date range as typed data,
+**so that** I can analyze spending/recurring payments without reimplementing pagination
+or Firefly III's split-transaction structure.
+
+### Use cases
+
+- UC-006-1: `get_withdrawal_transactions(start, end)` — paginated
+  `GET /api/v1/transactions?type=withdrawal&start=YYYY-MM-DD&end=YYYY-MM-DD&page=N`;
+  follows all pages until `total_pages` is reached; returns `list[TransactionRead]`.
+- UC-006-2: Each Firefly III transaction object may contain multiple splits under
+  `attributes.transactions`; each split is flattened into its own `TransactionRead` entry.
+- UC-006-3: `TransactionRead` is a `TypedDict` with `date: str` (truncated to `YYYY-MM-DD`),
+  `amount: str`, `destination_name: str | None`, `category_name: str | None` — the latter
+  two default to `None` when absent from the API response.
+- UC-006-4: `TransactionRead` is exported from `firefly_python_api`.
+
+### Constraints
+
+- No new runtime dependencies.
+- `mypy --strict` must pass.
+- Unit test coverage must not drop below baseline.
+
+## REQ-007 Bill Creation
+
+**As a** consumer application (e.g. firefly-bills-analyzer),
+**I want** a method to create a new bill via `FireflyClient`,
+**so that** I can programmatically register recurring bills without duplicating HTTP calls.
+
+### Use cases
+
+- UC-007-1: `create_bill(bill)` — `POST /api/v1/bills`; treats HTTP 200 and 201 as
+  success; raises `FireflyConnectionError` on any other status code (including 422
+  for a duplicate bill name).
+- UC-007-2: `create_bill(payload)` accepts a `BillPayload` `TypedDict` with required
+  fields: `name: str`, `amount_min: str`, `amount_max: str`, `date: str`
+  (`YYYY-MM-DD`), `repeat_freq: str`, `active: bool`. `repeat_freq` values accepted
+  by the Firefly III API are `weekly`, `monthly`, `quarterly`, `half-year`, `yearly`;
+  the client does not validate this value before sending — invalid values are
+  rejected by the API.
+- UC-007-3: `BillPayload` is importable from `firefly_python_api`.
+
+### Constraints
+
+- No new runtime dependencies.
+- `mypy --strict` must pass.
+- Unit test coverage must not drop below baseline.
