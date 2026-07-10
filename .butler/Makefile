@@ -122,7 +122,8 @@ install:
 
 ## Fail if claude-agents/ and .claude/agents/ have drifted apart
 check-agents-sync:
-	@status=0; \
+	@[ -d claude-agents ] || exit 0; \
+	status=0; \
 	for f in claude-agents/*.agent.md; do \
 		base=$$(basename "$$f"); \
 		other=".claude/agents/$$base"; \
