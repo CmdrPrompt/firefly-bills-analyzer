@@ -61,7 +61,7 @@ wheels = [
 [[package]]
 name = "butler-core"
 version = "0.1.0"
-source = { git = "https://github.com/CmdrPrompt/python-butler.git#969b88d2e6bd41539183b48554c22947aca854f9" }
+source = { git = "https://github.com/CmdrPrompt/python-butler.git#c73e0c7e4df857fea8e725c0ec5ee70a82cf82cf" }
 
 [[package]]
 name = "certifi"

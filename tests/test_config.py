@@ -37,6 +37,7 @@ def test_defaults() -> None:
     assert cfg.export_format == "none"
     assert cfg.uncategorized_behavior == "neutral"
     assert cfg.category_majority_threshold == 0.80
+    assert cfg.uncategorized_confidence_penalty == 0.10
     assert cfg.web_port == 5000
     assert cfg.web_host == "127.0.0.1"
 

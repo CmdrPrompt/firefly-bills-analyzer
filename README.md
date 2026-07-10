@@ -24,7 +24,7 @@ Analyzes your Firefly III transaction history to automatically identify recurrin
 ## Subproject governance
 
 The `lib/firefly-python-api` directory is a separate upstream repository:
-https://github.com/CmdrPrompt/firefly-python-api
+<https://github.com/CmdrPrompt/firefly-python-api>
 
 Treat it as an independent project with its own requirements source, agent
 instructions, and workflow rules. Changes to the analyzer project should not
