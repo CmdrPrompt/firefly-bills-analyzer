@@ -2,7 +2,7 @@
 
 ## Status
 
-done
+todo
 
 ## Requirements
 
@@ -130,3 +130,4 @@ start/end arguments; two new tests cover the callback driving the bar and
 **Branch:** `git checkout task/013-cli-fetch-progress-bar`
 **Stage:** `git add src/firefly_bills_analyzer/fetcher.py pyproject.toml uv.lock tests/test_fetcher.py CHANGELOG.md docs/tasks/TASK-013-cli-fetch-progress-bar.md docs/tasks/README.md`
 **Commit:** `git commit -m "Add CLI progress bar for transaction fetch (TASK-013)"`
+
