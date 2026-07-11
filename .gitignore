@@ -14,7 +14,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+lib/*
+!/lib/firefly-python-api/
 lib64/
 parts/
 sdist/
