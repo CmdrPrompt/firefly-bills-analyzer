@@ -100,8 +100,14 @@ class FireflyClient:
         except requests.RequestException as exc:
             raise FireflyConnectionError(f"POST {endpoint} failed: {exc}") from exc
         if response.status_code not in expected_statuses:
+            try:
+                body = cast(dict[str, Any], response.json())
+            except ValueError:
+                body = None
             raise FireflyConnectionError(
-                f"POST {endpoint} failed: unexpected status {response.status_code}"
+                f"POST {endpoint} failed: unexpected status {response.status_code}",
+                status_code=response.status_code,
+                response_body=body,
             )
 
     # ------------------------------------------------------------------
