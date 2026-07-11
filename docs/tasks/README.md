@@ -15,13 +15,13 @@ and is the single authoritative ordering.
 | 4 | [TASK-003](TASK-003-identify-recurring-payments.md) Identify recurring payments (UC2) | TASK-002, TASK-006 | done | — |
 | 5 | [TASK-004](TASK-004-create-bills.md) Create bills in Firefly III (UC4) | TASK-003 | done | Required `create_bill()` and its `status_code`/`response_body` exception attributes in `firefly-python-api` (that repo's TASK-006 and TASK-007) |
 | 6 | [TASK-008](TASK-008-category-aware-bill-naming.md) Include category name in bill name (UC6) | TASK-004, TASK-006 | done | — |
-| 7 | [TASK-007](TASK-007-cache-layer.md) Local file cache layer (UC7) | TASK-002, TASK-004 | deferred | Open Item #8 resolved 2026-07-11: deprioritized/skipped for the terminal-only MVP, contingent on Open Item #5 (web UI) — revisit if a web UI task is created |
-| 8 | [TASK-005](TASK-005-cli-and-dry-run.md) CLI orchestration, review flow, and dry-run (UC3 + UC5) | TASK-002, TASK-003, TASK-004, TASK-006, TASK-008 | done | Assembles the full pipeline. TASK-007 skipped, so `--clear-cache` is a no-op with a "caching not implemented" message |
-| 9 | [TASK-011](TASK-011-source-account-display.md) Display and export source account information (UC2/UC3/UC5) | TASK-003, TASK-005 | done | Extends the pipeline with source account resolution and display per FR-30a/b/d; test coverage for FR-31 (CLI file path printing) |
-| 10 | [TASK-012](TASK-012-amount-clustering-and-billing-events.md) Amount clustering and billing event collapse (UC2) | TASK-003, TASK-004, TASK-008, TASK-011 | todo | Splits payee groups into amount clusters, collapses same-date transactions into billing events, computes statistics over events (not raw transactions), and disambiguates multi-cluster bill names per FR-32a/b/c and FR-33a |
+| 7 | [TASK-005](TASK-005-cli-and-dry-run.md) CLI orchestration, review flow, and dry-run (UC3 + UC5) | TASK-002, TASK-003, TASK-004, TASK-006, TASK-008 | done | Assembles the full pipeline. TASK-007 was skipped at the time, so `--clear-cache` shipped as a no-op with a "caching not implemented" message |
+| 8 | [TASK-011](TASK-011-source-account-display.md) Display and export source account information (UC2/UC3/UC5) | TASK-003, TASK-005 | done | Extends the pipeline with source account resolution and display per FR-30a/b/d; test coverage for FR-31 (CLI file path printing) |
+| 9 | [TASK-012](TASK-012-amount-clustering-and-billing-events.md) Amount clustering and billing event collapse (UC2) | TASK-003, TASK-004, TASK-008, TASK-011 | todo | Splits payee groups into amount clusters, collapses same-date transactions into billing events, computes statistics over events (not raw transactions), and disambiguates multi-cluster bill names per FR-32a/b/c and FR-33a |
 | — | [TASK-009](TASK-009-performance-benchmark.md) Automated performance benchmark (NFR-05) | TASK-003 | done | Independent of the pipeline — run any time after TASK-003; closed Open Item #6 |
 | — | [TASK-010](TASK-010-real-data-benchmark.md) Calibrate performance benchmark against real transaction data (UC8) | TASK-002, TASK-009 | done | Independent of the pipeline — manual, opt-in, requires real Firefly III credentials; closed Open Item #9 |
 | — | [TASK-013](TASK-013-cli-fetch-progress-bar.md) CLI progress bar for transaction fetch (UC1) | TASK-002, TASK-005 | done | `firefly-python-api`'s REQ-008/TASK-011 (`on_page` callback on `get_withdrawal_transactions()`) implemented and merged upstream (PR #11); `lib/firefly-python-api` re-synced here via `git subtree pull`; `fetch_transactions()` now drives a `tqdm` progress bar per page |
+| — | [TASK-007](TASK-007-cache-layer.md) Local file cache layer (UC7) | TASK-002, TASK-004 | todo | Un-deferred 2026-07-11 (Open Item #8 further resolved, spec v0.2.15): TTL-aware disk cache for transactions/bills, motivated by faster local development/test cycles against real Firefly III data, independent of the (still-deferred) web UI; upgrades `--clear-cache` from its current no-op |
 
 ## Dependency graph
 
@@ -34,7 +34,7 @@ graph LR
     T003 --> T004[TASK-004<br/>bills creator]
     T004 --> T008[TASK-008<br/>category naming]
     T006 --> T008
-    T002 --> T007[TASK-007<br/>cache, deferred]
+    T002 --> T007[TASK-007<br/>cache layer]
     T004 --> T007
     T008 --> T005[TASK-005<br/>CLI wiring, last]
     T003 --> T009[TASK-009<br/>benchmark, independent]
@@ -53,8 +53,9 @@ graph LR
 ## Rules
 
 - One task per branch (`task/<NNN>-short-description`), per the branch policy in `CLAUDE.md`.
-- A task may not be started before every task it depends on has status `done`,
-  except TASK-007/TASK-005 where the conditional rule above applies.
+- A task may not be started before every task it depends on has status `done`.
+  (Historical exception, now resolved: TASK-005 shipped before TASK-007,
+  which was deferred at the time — see TASK-007's own Status note.)
 - When a new task file is added, add it to the table and graph above in the same
   commit, with an explicit position in the sequence.
 - When a task's status changes, update the Status column here in the same commit

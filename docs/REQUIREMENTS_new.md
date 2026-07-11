@@ -1,6 +1,6 @@
 # Requirements Specification: Firefly III Bills Analyzer
 
-**Version:** 0.2.14
+**Version:** 0.2.15
 **Date:** 2026-07-11
 **Status:** Draft, pending owner confirmation of items marked TBD (see Open Items)
 
@@ -504,11 +504,23 @@ Decisions required from the requirement owner before this specification is basel
 | # | Item | Affected requirements |
 | --- | ---- | --------------------- |
 | 5 | Web framework selection: Flask or FastAPI — **deferred**: no task through TASK-009 touches `app.py` or a web framework, so this costs nothing to postpone. Open question behind it: is a web UI needed at all, given `--dry-run` + `EXPORT_FORMAT=csv` already covers category filtering (`.env`), cache clearing (`--clear-cache`), and reviewing suggestions in a spreadsheet? The concrete gap if the web UI is dropped is FR-17b's inline edit + an import-edited-CSV-back-into-the-app path, which is unspecified today. Revisit after the CLI (through TASK-009) has been used in practice | NFR-02 |
-| 8 | **Partially resolved (2026-07-11):** the cache layer (TASK-007, backing FR-21/22/23/FR-24a/FR-24b/NFR-09) is deprioritized/skipped for the terminal-only MVP — it was motivated by the web UI's repeated polling (UC7), and the web UI itself is already deferred (Open Item #5). These requirements remain written as "shall" for a future web UI but are not implemented by TASK-005; `--clear-cache` is a no-op per the amended FR-25. Revisit alongside Open Item #5 if/when a web UI task is created. NFR-06 (no external CDN) remains open for the same reason — still only meaningful once a web UI task exists | FR-21, FR-22, FR-23, FR-24a, FR-24b, FR-25, NFR-06, NFR-09 |
+| 8 | **Further resolved (2026-07-11):** TASK-007 (cache layer) is un-deferred for its CLI-relevant scope. New motivation, independent of the web UI: fetching real transaction history from a remote Firefly III instance is slow enough (dozens of paginated requests) that re-fetching on every local development/test run against real data is a real cost; caching transactions and bills to disk removes that cost for repeated `--dry-run` runs during development. FR-21 (transactions + bills subsets), FR-22 (their two TTLs), FR-23, FR-25, and NFR-09 are therefore active requirements for the terminal-only MVP, implemented by TASK-007. FR-21's remaining two data sets (categories, payees) remain deferred — they are only consumed via the `/api/categories` web endpoint, which does not exist without a web UI. FR-24a/FR-24b (the web UI's "Clear cache" button) and NFR-06 (no external CDN) remain deferred for the same reason, contingent on Open Item #5 | FR-21, FR-22, FR-23, FR-24a, FR-24b, FR-25, NFR-06, NFR-09 |
 
 ---
 
 ## Changelog
+
+### 0.2.15 (2026-07-11)
+
+- Further resolved Open Item #8: un-deferred TASK-007 (cache layer) for its
+  CLI-relevant scope (transactions and bills caching, FR-21/22/23/25/NFR-09).
+  New motivation, independent of the web UI: repeated local development/test
+  runs against a real Firefly III instance re-fetch the same paginated
+  transaction history every time, which is slow enough to be a real
+  development cost; a TTL-aware disk cache removes it for repeated `--dry-run`
+  runs. Categories/payees caching (the rest of FR-21) and the web UI's "Clear
+  cache" button (FR-24a/b) remain deferred, contingent on Open Item #5 (no
+  web UI exists yet to consume them).
 
 ### 0.2.14 (2026-07-11)
 

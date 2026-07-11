@@ -2,13 +2,16 @@
 
 ## Status
 
-deferred
+todo
 
-**2026-07-11:** Deprioritized/skipped for the terminal-only MVP per resolution
-of Open Item #8 — caching was motivated by web UI polling (UC7), and the web
-UI itself is deferred (Open Item #5). TASK-005 proceeds without this task;
-`--clear-cache` is a no-op per amended FR-25. Revisit alongside Open Item #5
-if a web UI task is created.
+**2026-07-11:** Un-deferred per further resolution of Open Item #8 (spec
+v0.2.15). New motivation, independent of the web UI: repeated local
+development/test runs against a real Firefly III instance re-fetch the same
+paginated transaction history every time; a TTL-aware disk cache removes
+that cost for repeated `--dry-run` runs during development. Scope is
+unchanged from the original description below — transactions and bills
+caching only; categories/payees caching and the web UI's "Clear cache"
+button remain deferred, contingent on Open Item #5.
 
 ## Description
 
@@ -37,19 +40,9 @@ no effect — this task makes the flag functional by deleting cache files
 during startup (FR-25).
 
 **Depends on:** TASK-002 (`fetcher.py`) and TASK-004 (`bills_creator.py`),
-which this task makes cache-aware. Implement after TASK-008 and before
-TASK-005, so the final CLI wiring (TASK-005) assembles a pipeline where
-fetch, filter, analyze, create, and cache-clear are all already in place.
-
-**⚠ Open Item #8 (spec):** FR-21/22/23/NFR-09 are written as hard "shall"
-requirements, but the caching mechanism was originally motivated by the web
-UI's repeated polling (UC7's `/api/categories` and `/api/analyze` endpoints),
-not a one-shot CLI run. If the web UI ends up deferred or dropped
-(Open Item #5), confirm with the user whether this task is still worth
-building before TASK-005, or whether it should be deprioritized/skipped for
-the terminal-only MVP. Do not assume caching is mandatory here just because
-the spec says
-"shall" — that obligation level itself hasn't been individually confirmed.
+which this task makes cache-aware. TASK-005 (CLI wiring) already shipped
+without this task; `--clear-cache` upgrades from its current no-op to
+actually deleting cache files once this task lands.
 
 Covers UC7, FR-21, FR-22, FR-23, FR-25, NFR-09.
 
