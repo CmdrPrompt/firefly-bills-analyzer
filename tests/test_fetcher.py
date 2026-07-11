@@ -60,9 +60,52 @@ def test_start_and_end_dates_derived_from_lookback_months() -> None:
         with patch("firefly_bills_analyzer.fetcher._today", return_value=date(2026, 7, 10)):
             fetch_transactions(_make_config(lookback_months=24))
 
-    mock_client_cls.return_value.get_withdrawal_transactions.assert_called_once_with(
-        "2024-07-10", "2026-07-10"
-    )
+    args, kwargs = mock_client_cls.return_value.get_withdrawal_transactions.call_args
+    assert args == ("2024-07-10", "2026-07-10")
+    assert callable(kwargs["on_page"])
+
+
+def test_on_page_callback_drives_progress_bar() -> None:
+    def fake_get_withdrawal_transactions(
+        start: str, end: str, on_page: object = None
+    ) -> list[object]:
+        assert callable(on_page)
+        on_page(1, 3)  # type: ignore[operator]
+        on_page(2, 3)  # type: ignore[operator]
+        on_page(3, 3)  # type: ignore[operator]
+        return []
+
+    with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
+        mock_client_cls.return_value.get_withdrawal_transactions.side_effect = (
+            fake_get_withdrawal_transactions
+        )
+        with patch("firefly_bills_analyzer.fetcher.tqdm") as mock_tqdm:
+            bar = mock_tqdm.return_value.__enter__.return_value
+            bar.total = None  # real tqdm starts with total=None when not passed at construction
+            fetch_transactions(_make_config())
+
+    assert bar.total == 3
+    assert bar.update.call_count == 3
+
+
+def test_progress_bar_total_set_only_once() -> None:
+    def fake_get_withdrawal_transactions(
+        start: str, end: str, on_page: object = None
+    ) -> list[object]:
+        on_page(1, 2)  # type: ignore[operator]
+        on_page(2, 999)  # type: ignore[operator]  # must not overwrite total set by the first call
+        return []
+
+    with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
+        mock_client_cls.return_value.get_withdrawal_transactions.side_effect = (
+            fake_get_withdrawal_transactions
+        )
+        with patch("firefly_bills_analyzer.fetcher.tqdm") as mock_tqdm:
+            bar = mock_tqdm.return_value.__enter__.return_value
+            bar.total = None
+            fetch_transactions(_make_config())
+
+    assert bar.total == 2
 
 
 def test_empty_result_returns_empty_list() -> None:

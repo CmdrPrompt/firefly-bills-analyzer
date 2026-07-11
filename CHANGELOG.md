@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Fetching transactions now shows a CLI progress bar (pages fetched out of
+  the total), driven by `firefly-python-api`'s per-page `on_page` callback.
+  (TASK-013)
+
 - Recurring patterns now resolve and report the source account they are paid
   from (`analyzer.identify_recurring`): a single dominant account name, or a
   `(varies)` indicator when a payee's transactions span more than one source
