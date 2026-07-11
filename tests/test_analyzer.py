@@ -1,4 +1,5 @@
 import time
+from collections import Counter
 from datetime import date, timedelta
 
 from firefly_python_api import TransactionRead
@@ -44,13 +45,18 @@ def _make_config(**overrides: object) -> Config:
 
 
 def _transaction(
-    day: date, amount: str, destination_name: str | None, category_name: str | None
+    day: date,
+    amount: str,
+    destination_name: str | None,
+    category_name: str | None,
+    source_name: str | None = None,
 ) -> TransactionRead:
     return TransactionRead(
         date=day.isoformat(),
         amount=amount,
         destination_name=destination_name,
         category_name=category_name,
+        source_name=source_name,
     )
 
 
@@ -296,6 +302,94 @@ def test_uncategorized_neutral_penalty_lowers_pattern_confidence() -> None:
 # ---------------------------------------------------------------------------
 # Performance sanity check (NFR-05, full benchmark owned by TASK-009)
 # ---------------------------------------------------------------------------
+
+
+def test_source_account_resolved_when_all_transactions_share_source() -> None:
+    config = _make_config(min_occurrences=2)
+    start = date(2026, 1, 1)
+    transactions = [
+        _transaction(
+            start + timedelta(days=30 * i), "9.99", "Netflix", "Streaming", source_name="Checking"
+        )
+        for i in range(4)
+    ]
+
+    patterns = identify_recurring(transactions, config)
+
+    assert len(patterns) == 1
+    assert patterns[0].source_account_name == "Checking"
+    assert patterns[0].source_account_varies is False
+
+
+def test_source_account_is_mode_when_transactions_span_two_sources() -> None:
+    config = _make_config(min_occurrences=2)
+    start = date(2026, 1, 1)
+    transactions = [
+        _transaction(start, "9.99", "Netflix", "Streaming", source_name="Checking"),
+        _transaction(
+            start + timedelta(days=30), "9.99", "Netflix", "Streaming", source_name="Checking"
+        ),
+        _transaction(
+            start + timedelta(days=60), "9.99", "Netflix", "Streaming", source_name="Savings"
+        ),
+    ]
+
+    patterns = identify_recurring(transactions, config)
+
+    assert len(patterns) == 1
+    assert patterns[0].source_account_name == "Checking"
+    assert patterns[0].source_account_varies is True
+
+
+def test_source_account_none_when_no_transactions_have_a_source_name() -> None:
+    config = _make_config(min_occurrences=2)
+    start = date(2026, 1, 1)
+    transactions = [
+        _transaction(start + timedelta(days=30 * i), "9.99", "Netflix", "Streaming")
+        for i in range(4)
+    ]
+
+    patterns = identify_recurring(transactions, config)
+
+    assert len(patterns) == 1
+    assert patterns[0].source_account_name is None
+    assert patterns[0].source_account_varies is False
+
+
+@given(
+    st.lists(
+        st.one_of(st.none(), st.sampled_from(["Checking", "Savings", "Cash"])),
+        min_size=2,
+        max_size=20,
+    )
+)
+def test_source_account_resolution_is_statistical_mode_of_non_none_values(
+    source_names: list[str | None],
+) -> None:
+    config = _make_config(min_occurrences=2)
+    start = date(2026, 1, 1)
+    transactions = [
+        _transaction(
+            start + timedelta(days=i), "9.99", "Netflix", "Streaming", source_name=source_name
+        )
+        for i, source_name in enumerate(source_names)
+    ]
+
+    patterns = identify_recurring(transactions, config)
+
+    assert len(patterns) == 1
+    pattern = patterns[0]
+
+    non_none = [s for s in source_names if s is not None]
+    distinct = set(non_none)
+
+    if not non_none:
+        assert pattern.source_account_name is None
+        assert pattern.source_account_varies is False
+    else:
+        expected_mode = Counter(non_none).most_common(1)[0][0]
+        assert pattern.source_account_name == expected_mode
+        assert pattern.source_account_varies == (len(distinct) > 1)
 
 
 def test_analysis_of_24_months_completes_quickly() -> None:

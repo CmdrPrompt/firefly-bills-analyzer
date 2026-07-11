@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from firefly_python_api import TransactionRead
 
-from firefly_bills_analyzer.__main__ import main
+from firefly_bills_analyzer.__main__ import _format_suggestion, main
 from firefly_bills_analyzer.analyzer import RecurringPattern
 from firefly_bills_analyzer.bills_creator import BillOutcome
 
@@ -23,7 +23,12 @@ _TRANSACTION: TransactionRead = TransactionRead(
 )
 
 
-def _pattern(name: str = "Netflix", confidence: float = 0.9) -> RecurringPattern:
+def _pattern(
+    name: str = "Netflix",
+    confidence: float = 0.9,
+    source_account_name: str | None = None,
+    source_account_varies: bool = False,
+) -> RecurringPattern:
     return RecurringPattern(
         destination_name=name,
         category_name=None,
@@ -34,6 +39,8 @@ def _pattern(name: str = "Netflix", confidence: float = 0.9) -> RecurringPattern
         median_interval_days=30.0,
         frequency="monthly",
         confidence=confidence,
+        source_account_name=source_account_name,
+        source_account_varies=source_account_varies,
     )
 
 
@@ -65,6 +72,26 @@ def _pipeline(
             "export": export,
             "client": client,
         }
+
+
+class TestFormatSuggestionSourceAccount:
+    def test_includes_account_name_when_resolved_and_not_varying(self) -> None:
+        pattern = _pattern(source_account_name="Checking", source_account_varies=False)
+
+        assert "from Checking" in _format_suggestion(pattern)
+
+    def test_includes_varies_indicator_when_source_account_varies(self) -> None:
+        pattern = _pattern(source_account_name="Checking", source_account_varies=True)
+
+        assert "from (varies)" in _format_suggestion(pattern)
+
+    def test_omits_source_account_text_when_not_resolved(self) -> None:
+        pattern = _pattern(source_account_name=None, source_account_varies=False)
+
+        formatted = _format_suggestion(pattern)
+
+        assert "from " not in formatted
+        assert pattern.destination_name in formatted
 
 
 class TestConfigError:
@@ -112,6 +139,16 @@ class TestAutoApprove:
         approved = mocks["create"].call_args.args[0]
         assert [p.destination_name for p in approved] == ["Netflix"]
 
+    def test_prints_source_account_name_for_each_suggestion(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        patterns = [_pattern("Netflix", confidence=0.9, source_account_name="Checking")]
+        with _pipeline(patterns=patterns):
+            code = main(["--auto-approve"])
+
+        assert code == 0
+        assert "from Checking" in capsys.readouterr().out
+
 
 class TestInteractiveReview:
     def test_yes_approves_entry(self) -> None:
@@ -152,6 +189,16 @@ class TestInteractiveReview:
         assert code == 0
         mocks["create"].assert_not_called()
 
+    def test_prints_source_account_name_for_each_suggestion(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        patterns = [_pattern("Netflix", confidence=0.9, source_account_name="Checking")]
+        with _pipeline(patterns=patterns), patch("builtins.input", return_value="y"):
+            code = main([])
+
+        assert code == 0
+        assert "from Checking" in capsys.readouterr().out
+
 
 class TestDryRun:
     def test_passes_dry_run_true_to_create_bills(self) -> None:
@@ -168,6 +215,14 @@ class TestDryRun:
         assert code == 0
         mocks["export"].assert_called_once()
         assert mocks["export"].call_args.args[1] == "csv"
+
+    def test_prints_exported_file_path(self, capsys: pytest.CaptureFixture) -> None:
+        with _pipeline(env={"EXPORT_FORMAT": "csv"}) as mocks:
+            code = main(["--dry-run", "--auto-approve"])
+
+        assert code == 0
+        exported_path = mocks["export"].call_args.args[2]
+        assert f"Exported 1 pattern(s) to {exported_path}" in capsys.readouterr().out
 
 
 class TestClearCache:
