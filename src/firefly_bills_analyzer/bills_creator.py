@@ -36,6 +36,13 @@ class BillOutcome:
     message: str
 
 
+def _bill_name(pattern: RecurringPattern) -> str:
+    """Build the bill name, appending the resolved category name if any (FR-13b)."""
+    if pattern.category_name is None:
+        return pattern.destination_name
+    return f"{pattern.destination_name} ({pattern.category_name})"
+
+
 def _amount_range(mean: float, margin: float) -> tuple[str, str]:
     """Compute the ``±margin`` amount range around ``mean``, rounded to 2 decimals (FR-06)."""
     amount_min = round(mean * (1 - margin), 2)
@@ -81,6 +88,11 @@ def create_bills(
 ) -> list[BillOutcome]:
     """Create a Firefly III bill for each approved ``pattern`` (UC4).
 
+    When ``pattern.category_name`` is set (a majority category was resolved
+    for the payee, FR-13b), it is appended to the bill name as
+    ``"{payee} ({category})"``; duplicate matching (FR-05a) compares against
+    this final, category-aware name.
+
     Duplicate detection follows FR-05a-d: an existing bill is a duplicate when
     its name equals the candidate's, compared case-sensitively after trimming.
     A duplicate with identical amount range and ``repeat_freq`` reports
@@ -94,7 +106,7 @@ def create_bills(
     outcomes: list[BillOutcome] = []
 
     for pattern in patterns:
-        name = pattern.destination_name
+        name = _bill_name(pattern)
         repeat_freq = _REPEAT_FREQ_MAP.get(pattern.frequency, pattern.frequency)
         amount_min, amount_max = _amount_range(pattern.amount_mean, config.amount_margin)
 

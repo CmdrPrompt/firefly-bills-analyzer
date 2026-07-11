@@ -106,6 +106,68 @@ class TestHappyPath:
         assert payload["repeat_freq"] == "half-year"
 
 
+class TestCategoryAwareNaming:
+    def test_single_category_payee_name_includes_category(self) -> None:
+        client = _client()
+        config = _make_config()
+        outcomes = create_bills(
+            [_pattern(amount_mean=10.00, category_name="Subscriptions")],
+            client,
+            config,
+            dry_run=False,
+        )
+        assert outcomes[0].name == "Netflix (Subscriptions)"
+        payload = client.create_bill.call_args.args[0]
+        assert payload["name"] == "Netflix (Subscriptions)"
+
+    def test_no_category_payee_name_unchanged(self) -> None:
+        client = _client()
+        config = _make_config()
+        outcomes = create_bills(
+            [_pattern(amount_mean=10.00, category_name=None)], client, config, dry_run=False
+        )
+        assert outcomes[0].name == "Netflix"
+
+    def test_no_majority_category_payee_name_unchanged(self) -> None:
+        # resolve_category_name already resolved this to None upstream (FR-13b);
+        # bills_creator must not add a category suffix when category_name is None.
+        client = _client()
+        config = _make_config()
+        outcomes = create_bills(
+            [_pattern(amount_mean=10.00, category_name=None)], client, config, dry_run=False
+        )
+        assert outcomes[0].name == "Netflix"
+
+    def test_category_aware_name_used_for_duplicate_matching(self) -> None:
+        existing = [_bill("Netflix (Subscriptions)", "9.00", "11.00", "monthly")]
+        client = _client(bills=existing)
+        config = _make_config(amount_margin=0.10)
+        outcomes = create_bills(
+            [_pattern(amount_mean=10.00, category_name="Subscriptions")],
+            client,
+            config,
+            dry_run=False,
+        )
+        assert outcomes == [
+            BillOutcome(name="Netflix (Subscriptions)", status="exists", message="already exists")
+        ]
+        client.create_bill.assert_not_called()
+
+    def test_category_aware_name_does_not_match_plain_name_duplicate(self) -> None:
+        existing = [_bill("Netflix", "9.00", "11.00", "monthly")]
+        client = _client(bills=existing)
+        config = _make_config(amount_margin=0.10)
+        outcomes = create_bills(
+            [_pattern(amount_mean=10.00, category_name="Subscriptions")],
+            client,
+            config,
+            dry_run=False,
+        )
+        assert outcomes[0].name == "Netflix (Subscriptions)"
+        assert outcomes[0].status == "created"
+        client.create_bill.assert_called_once()
+
+
 class TestExactDuplicate:
     def test_matching_name_amounts_and_frequency_reports_exists_no_post(self) -> None:
         existing = [_bill("Netflix", "9.00", "11.00", "monthly")]
