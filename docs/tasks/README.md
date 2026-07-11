@@ -18,7 +18,7 @@ and is the single authoritative ordering.
 | 7 | [TASK-007](TASK-007-cache-layer.md) Local file cache layer (UC7) | TASK-002, TASK-004 | todo | **Conditional** — resolve Open Item #8 (and its dependency on Open Item #5) first; may be skipped for the terminal-only MVP |
 | 8 | [TASK-005](TASK-005-cli-and-dry-run.md) CLI orchestration, review flow, and dry-run (UC3 + UC5) | TASK-002, TASK-003, TASK-004, TASK-006, TASK-008, (TASK-007 if built) | todo | Always last — assembles the full pipeline. If TASK-007 was skipped, `--clear-cache` becomes a no-op with a "caching not implemented" message |
 | — | [TASK-009](TASK-009-performance-benchmark.md) Automated performance benchmark (NFR-05) | TASK-003 | done | Independent of the pipeline — run any time after TASK-003; closed Open Item #6 |
-| — | [TASK-010](TASK-010-real-data-benchmark.md) Calibrate performance benchmark against real transaction data (UC8) | TASK-002, TASK-009 | todo | Independent of the pipeline — manual, opt-in, requires real Firefly III credentials; owns closing Open Item #9 |
+| — | [TASK-010](TASK-010-real-data-benchmark.md) Calibrate performance benchmark against real transaction data (UC8) | TASK-002, TASK-009 | done | Independent of the pipeline — manual, opt-in, requires real Firefly III credentials; closed Open Item #9 |
 
 ## Dependency graph
 

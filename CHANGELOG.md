@@ -45,6 +45,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `benchmark_results.json`, and fails if the largest dataset exceeds the
   60-second bound. At 20,000 transactions the analysis completed in ~0.10s.
   (TASK-009)
+- Opt-in, read-only developer script (`make benchmark-real`) to calibrate the
+  NFR-05 reference volume against a real Firefly III instance instead of
+  synthetic data; never writes to Firefly III. Based on the requirement
+  owner's real transaction history (2,207 withdrawal transactions over ~16
+  months, extrapolated to ~3,300 over 24 months), NFR-05's reference volume
+  is now 5,000 transactions (including a 50% safety margin), replacing the
+  provisional 20,000 figure. (TASK-010)
 
 ## [0.1.0] - 2026-03-27
 
