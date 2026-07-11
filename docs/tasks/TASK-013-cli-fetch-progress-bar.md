@@ -71,23 +71,23 @@ Add `tqdm` to `dependencies` in `pyproject.toml` (currently
 
 ## Acceptance criteria
 
-- [ ] Scenario: Progress bar advances one step per fetched page
+- [x] Scenario: Progress bar advances one step per fetched page
       Given a Firefly III response spanning 3 pages
       When `fetcher.fetch_transactions()` runs
       Then `get_withdrawal_transactions()` is called with an `on_page` callback
       And invoking that callback as `on_page(1, 3)`, `on_page(2, 3)`, `on_page(3, 3)` drives a `tqdm` progress bar from 0 to 3 steps, setting its total to 3 on the first call
 
-- [ ] Scenario: Returned transactions are unaffected
+- [x] Scenario: Returned transactions are unaffected
       Given a fake `get_withdrawal_transactions()` returning a fixed transaction list and invoking `on_page` for each simulated page
       When `fetcher.fetch_transactions()` completes
       Then the returned `list[TransactionRead]` equals exactly what the fake returned, unchanged by the progress bar wiring
 
-- [ ] Scenario: `tqdm` is a declared runtime dependency
+- [x] Scenario: `tqdm` is a declared runtime dependency
       Given `pyproject.toml`
       When dependencies are inspected
       Then `tqdm` is listed alongside `python-dotenv` and `firefly-python-api`
 
-- [ ] `make lint && make test` pass with coverage >= baseline
+- [x] `make lint && make test` pass with coverage >= baseline
 
 ## Out of scope
 
@@ -97,20 +97,37 @@ Add `tqdm` to `dependencies` in `pyproject.toml` (currently
 
 ## Blockers
 
-**Blocked** on `firefly-python-api`'s REQ-008 (TASK-011 in that repo,
-`/Users/thomas/Code/VSCode/firefly-III/firefly-python-api/docs/tasks/TASK-011-progress-callback.md`,
-status `todo`) being implemented and merged, and on `lib/firefly-python-api`
-in this repo being re-synced from the upstream package afterward. The
-graceful-fallback design above means this task's own code can still be
-written and tested against a stub/fake client exposing `on_page` before the
-real upstream implementation lands, but the end-to-end real-instance
-behavior cannot be verified until the sync happens.
+None. Was blocked on `firefly-python-api`'s REQ-008/TASK-011; resolved
+2026-07-11 (upstream PR #11 merged, `lib/firefly-python-api` re-synced via
+`git subtree pull`, `.venv` rebuilt).
 
 ## Completion
 
-**Date:**
-**Summary:**
+**Date:** 2026-07-11
+**Summary:** `fetcher.fetch_transactions()` now wraps
+`client.get_withdrawal_transactions()` in a `tqdm` progress bar, passing an
+`on_page(page, total_pages)` callback that sets the bar's `total` on the
+first call and advances it by one step per page. Verified against the real
+Firefly III instance (`.env` credentials) with a 1-month lookback: the bar
+rendered and completed correctly. `tqdm` added as a runtime dependency,
+`types-tqdm` as a dev dependency for `mypy --strict`. Existing
+`test_start_and_end_dates_derived_from_lookback_months` updated to assert
+`on_page` is passed as a callable kwarg alongside the unchanged positional
+start/end arguments; two new tests cover the callback driving the bar and
+`total` being set only once.
 **Files changed:**
-**Branch:**
-**Stage:**
-**Commit:**
+
+- `src/firefly_bills_analyzer/fetcher.py` — modified (`tqdm` progress bar
+  wired through `on_page`)
+- `pyproject.toml` — modified (`tqdm` runtime dependency, `types-tqdm` dev
+  dependency)
+- `tests/test_fetcher.py` — modified (updated existing assertion, two new
+  tests)
+- `CHANGELOG.md` — modified
+- `docs/tasks/TASK-013-cli-fetch-progress-bar.md` — modified
+- `docs/tasks/README.md` — modified (status, resolved blocker note)
+
+**Branch:** `git checkout task/013-cli-fetch-progress-bar`
+**Stage:** `git add src/firefly_bills_analyzer/fetcher.py pyproject.toml uv.lock tests/test_fetcher.py CHANGELOG.md docs/tasks/TASK-013-cli-fetch-progress-bar.md docs/tasks/README.md`
+**Commit:** `git commit -m "Add CLI progress bar for transaction fetch (TASK-013)"`
+

@@ -8,6 +8,7 @@ from datetime import date
 from typing import cast
 
 from firefly_python_api import FireflyClient, FireflyConnectionError, TransactionRead
+from tqdm import tqdm
 
 from firefly_bills_analyzer.config import Config
 
@@ -55,7 +56,14 @@ def fetch_transactions(config: Config) -> list[TransactionRead]:
 
     logger.debug("Calling get_withdrawal_transactions(%s, %s)", start_str, end_str)
     try:
-        transactions = client.get_withdrawal_transactions(start_str, end_str)
+        with tqdm(desc="Fetching transactions", unit="page") as bar:
+
+            def on_page(page: int, total_pages: int) -> None:
+                if bar.total is None:
+                    bar.total = total_pages
+                bar.update(1)
+
+            transactions = client.get_withdrawal_transactions(start_str, end_str, on_page=on_page)
     except FireflyConnectionError as exc:
         logger.debug("get_withdrawal_transactions failed: %s", exc)
         raise SystemExit(f"Could not fetch transactions from Firefly III: {exc}") from exc
