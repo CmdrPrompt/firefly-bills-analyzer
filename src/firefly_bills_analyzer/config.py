@@ -23,6 +23,7 @@ class Config:
     lookback_months: int
     min_occurrences: int
     amount_margin: float
+    amount_cluster_tolerance: float
     high_confidence_threshold: float
     category_confidence_boost: float
     category_majority_threshold: float
@@ -63,6 +64,7 @@ class Config:
             lookback_months=int(os.environ.get("LOOKBACK_MONTHS", "24")),
             min_occurrences=int(os.environ.get("MIN_OCCURRENCES", "2")),
             amount_margin=float(os.environ.get("AMOUNT_MARGIN", "0.10")),
+            amount_cluster_tolerance=float(os.environ.get("AMOUNT_CLUSTER_TOLERANCE", "0.15")),
             high_confidence_threshold=float(os.environ.get("HIGH_CONFIDENCE_THRESHOLD", "0.80")),
             category_confidence_boost=float(os.environ.get("CATEGORY_CONFIDENCE_BOOST", "0.15")),
             category_majority_threshold=float(

@@ -9,6 +9,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Recurring-payment identification now splits a payee's transactions into
+  separate patterns when they reveal genuinely parallel simultaneous charges
+  billed through the same merchant or payee name (e.g. two subscriptions, or
+  two household members billed the same fee) — detected by same-date
+  co-occurrence of differing amounts, not amount variance alone, so a single
+  bill whose amount fluctuates over time (e.g. a metered electricity bill
+  priced by season and consumption) is never incorrectly fragmented. Each
+  resulting cluster is scored independently, and its bill name is
+  disambiguated with its representative amount when more than one cluster
+  qualifies for the same payee. Same-date transactions within a cluster
+  (e.g. the same fee billed once per household member) are now summed into
+  a single billing event before frequency/interval are computed, so they no
+  longer collapse the median interval to 0 and misclassify a clean monthly
+  pattern as irregular. New `AMOUNT_CLUSTER_TOLERANCE` setting controls the
+  amount-gap tolerance used when clustering. (TASK-012)
+
 - Fetching transactions now shows a CLI progress bar (pages fetched out of
   the total), driven by `firefly-python-api`'s per-page `on_page` callback.
   (TASK-013)

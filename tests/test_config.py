@@ -33,6 +33,7 @@ def test_defaults() -> None:
     assert cfg.lookback_months == 24
     assert cfg.min_occurrences == 2
     assert cfg.amount_margin == 0.10
+    assert cfg.amount_cluster_tolerance == 0.15
     assert cfg.dry_run is False
     assert cfg.export_format == "none"
     assert cfg.uncategorized_behavior == "neutral"
@@ -47,6 +48,13 @@ def test_category_majority_threshold_override() -> None:
     with patch.dict(os.environ, env, clear=True):
         cfg = Config.from_env()
     assert cfg.category_majority_threshold == 0.90
+
+
+def test_amount_cluster_tolerance_override() -> None:
+    env = {**BASE_ENV, "AMOUNT_CLUSTER_TOLERANCE": "0.20"}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.amount_cluster_tolerance == 0.20
 
 
 def test_lookback_months_override() -> None:
