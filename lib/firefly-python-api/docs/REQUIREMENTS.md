@@ -166,9 +166,19 @@ or Firefly III's split-transaction structure.
   the client does not validate this value before sending — invalid values are
   rejected by the API.
 - UC-007-3: `BillPayload` is importable from `firefly_python_api`.
+- UC-007-4: When `create_bill()` raises `FireflyConnectionError` because the
+  response status was outside 200/201, the exception carries the failed
+  response's `status_code: int` and, when the response body is valid JSON,
+  `response_body: dict[str, Any]` (both default to `None`, e.g. for a
+  network-level failure with no response at all). This lets a caller
+  distinguish a 422 "name already in use" validation error from any other
+  non-2xx status without re-parsing HTTP internals itself.
 
 ### Constraints
 
 - No new runtime dependencies.
 - `mypy --strict` must pass.
 - Unit test coverage must not drop below baseline.
+- UC-007-4 must not change behavior for existing callers of `create_bill()`,
+  `create_transaction()`, or any `_get`/`_post` caller — only add attributes
+  to the exception already raised.
