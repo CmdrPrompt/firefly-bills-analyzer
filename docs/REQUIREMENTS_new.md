@@ -1,6 +1,6 @@
 # Requirements Specification: Firefly III Bills Analyzer
 
-**Version:** 0.2.8
+**Version:** 0.2.9
 **Date:** 2026-07-11
 **Status:** Draft, pending owner confirmation of items marked TBD (see Open Items)
 
@@ -303,7 +303,7 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | NFR-02  | The application shall use no external runtime dependencies other than `requests`, `python-dotenv`, and the selected web framework (`Flask` or `FastAPI`) **[FRAMEWORK TBD: select one; see Open Items]** | — |
 | NFR-03  | When a Firefly III API response is paginated, the application shall fetch all pages and aggregate the results before returning them to the caller | UC1 |
 | NFR-04  | If a common error (see Definitions) occurs, then the application shall display an error message that states the cause of the error, and shall not include a stack trace in the message | UC1 |
-| NFR-05  | When the user starts an analysis of 24 months of transaction data (reference volume: **20,000** transactions — provisional, see TASK-009's benchmark; pending confirmation against real user data), the application shall complete the analysis within 60 seconds | UC2 |
+| NFR-05  | When the user starts an analysis of 24 months of transaction data (reference volume: **5,000** transactions — extrapolated from the owner's real transaction rate, 2,207 withdrawal transactions over ~16 months (2025-01-01 to 2026-05-05) per TASK-010's benchmark, scaled to a 24-month window (~3,300) with a 50% safety margin for slower/busier server conditions), the application shall complete the analysis within 60 seconds | UC2 |
 | NFR-06  | The web UI shall load all of its assets from the local web server and shall not fetch any asset from an external CDN | UC3 |
 | NFR-07a | The web server shall listen on the port configured via `WEB_PORT`, with a default port of 5000 | — |
 | NFR-07b | The web server shall bind to the address configured via `WEB_HOST`, with a default bind address of `127.0.0.1`, including support for the value `0.0.0.0` | — |
@@ -455,11 +455,23 @@ Decisions required from the requirement owner before this specification is basel
 | --- | ---- | --------------------- |
 | 5 | Web framework selection: Flask or FastAPI — **deferred**: no task through TASK-009 touches `app.py` or a web framework, so this costs nothing to postpone. Open question behind it: is a web UI needed at all, given `--dry-run` + `EXPORT_FORMAT=csv` already covers category filtering (`.env`), cache clearing (`--clear-cache`), and reviewing suggestions in a spreadsheet? The concrete gap if the web UI is dropped is FR-17b's inline edit + an import-edited-CSV-back-into-the-app path, which is unspecified today. Revisit after the CLI (through TASK-009) has been used in practice | NFR-02 |
 | 8 | Confirm obligation levels raised or made explicit during review (all reformulated requirements use "shall"). Known candidates flagged so far: FR-21/22/23/NFR-09 (cache — see TASK-007's note, motivated by web UI polling, not a one-shot CLI run), and NFR-06 (no external CDN — only meaningful once a web UI task exists; no task covers it yet, so no task-file reminder has been written — re-flag this when a web UI task is created, contingent on Open Item #5) | All |
-| 9 | NFR-05's reference volume (20,000 transactions) was set from TASK-009's synthetic benchmark only, disconnected from any real Firefly III instance — **deferred**: a new follow-up task (UC8/FR-28) will run the same benchmark against a developer's real transaction history so the value can be confirmed or revised against real-world volume and distribution | NFR-05 |
 
 ---
 
 ## Changelog
+
+### 0.2.9 (2026-07-11)
+
+- Open Item #9 resolved: TASK-010's benchmark (`scripts/benchmark_real_data.py`,
+  run via `make benchmark-real`) ran `identify_recurring()` against the
+  requirement owner's real Firefly III transaction history — 2,207
+  withdrawal transactions spanning ~16 months (2025-01-01 to 2026-05-05, less
+  than the full 24-month lookback window) — completing in ~0.012s. Scaling
+  the measured rate (~4.5 transactions/day) to a 24-month window gives
+  ~3,300 transactions; with a 50% safety margin for slower or busier server
+  conditions, NFR-05's reference volume is now **5,000** transactions,
+  replacing the provisional 20,000 figure carried over from TASK-009's
+  synthetic-only benchmark. No longer provisional.
 
 ### 0.2.8 (2026-07-11)
 
