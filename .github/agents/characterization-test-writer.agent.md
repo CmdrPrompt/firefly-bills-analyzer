@@ -2,6 +2,7 @@
 ---
 description: "Adds characterization tests to previously untested code. Documents existing behavior as-is before any refactoring."
 tools: ['codebase', 'terminal', 'findTestFiles', 'testFailure', 'problems']
+model: sonnet
 ---
 
 You write characterization tests for previously untested code.
@@ -13,7 +14,7 @@ Document existing behavior accurately — do not assume it is correct.
 
 - Read the target function or module in full.
 - Trace all code paths: normal, edge, and error conditions.
-- Note behavior that looks incorrect or inconsistent with `Firefly_bills_analyzer_spec.md`.
+- Note behavior that looks incorrect or inconsistent with `docs/REQUIREMENTS_new.md`.
 
 ### 2 — Write characterization tests
 
