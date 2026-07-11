@@ -2,7 +2,7 @@
 
 ## Status
 
-todo
+done
 
 ## Requirements
 
@@ -22,26 +22,52 @@ As an analyst, I want transactions grouped by amount clusters within each payee 
 
 Extend the UC2 analyzer to identify distinct amount clusters within each payee group (FR-32a/b), collapse same-date transactions within each cluster into billing events (FR-33a), compute occurrence/frequency/confidence statistics over billing events rather than raw transactions (while source account resolution continues on raw transactions per FR-30a), and disambiguate multi-cluster bill names by appending each cluster's representative amount (FR-32c).
 
-### FR-32a/b: Amount clustering
+### FR-32a/b: Amount clustering (revised mid-task — see below)
 
-Add a new helper function to split a payee's transaction group into amount clusters:
+**Revision note:** the original design below (pure amount-gap clustering across
+all of a payee's transactions) was implemented first, then revised after
+owner review against real transaction data surfaced a regression: "EON" (a
+monthly electricity bill whose amount legitimately fluctuates 661–4426 kr by
+season and consumption, but never has two transactions on the same date) was
+being fragmented into several weak sub-clusters, because a pure amount-gap
+tolerance cannot distinguish a genuinely variable single bill from a payee
+that bundles multiple simultaneous charges (e.g. "Apple"'s two co-occurring
+subscriptions). The requirements document (`docs/REQUIREMENTS_new.md`
+v0.2.15) was updated accordingly and is binding; the implementation below
+reflects the revised, shipped behavior.
+
+Add a new helper function to split a payee's transaction group into amount
+clusters, based on same-date co-occurrence of differing amounts rather than
+amount variance alone:
 
 ```python
 def _split_into_amount_clusters(
-    transactions: list[TransactionRead], 
-    tolerance: float
+    transactions: list[TransactionRead],
+    tolerance: float,
 ) -> list[list[TransactionRead]]:
     """
-    Split transactions into amount clusters based on tolerance-based gap detection.
-    
-    Sort by amount ascending. Start a new cluster whenever the absolute difference
-    between two consecutive amounts exceeds tolerance × min(amount_i, amount_j).
-    Each cluster is a contiguous list of sorted transactions. Return the list of
-    clusters, preserving the original transaction objects (not copies).
+    Split a payee's transactions into amount clusters (FR-32a).
+
+    1. Group transactions by date. A date with two or more transactions of
+       differing amounts is a co-occurrence date, revealing genuinely
+       parallel simultaneous charges (e.g. two subscriptions billed through
+       the same merchant).
+    2. If the group has no co-occurrence date at all, return the whole group
+       as a single cluster, regardless of how much its amount varies across
+       different dates (this is what keeps a single variable bill, e.g. a
+       metered utility, from being fragmented).
+    3. Otherwise, cluster the amounts observed at co-occurrence dates via a
+       tolerance-based gap split (`_tolerance_gap_split`: sort ascending,
+       start a new group whenever the gap to the previous amount exceeds
+       `tolerance` times the smaller of the two), then assign every
+       transaction in the group -- including ones not on a co-occurrence
+       date -- to whichever resulting cluster's mean amount is numerically
+       closest to its own.
     """
 ```
 
 In `config.py`, add a new field:
+
 - `amount_cluster_tolerance: float` (read from `AMOUNT_CLUSTER_TOLERANCE` env var, default `0.15`)
 
 ### FR-33a: Billing event collapse
@@ -115,112 +141,107 @@ under FR-05a's name-only duplicate check.
 
 ## Acceptance criteria
 
-- [ ] Scenario: Single amount cluster (happy path, unchanged behavior)
-      Given a payee with transactions whose amounts differ by less than the tolerance
+Revised to match the shipped, co-occurrence-based FR-32a (see revision note
+above). All scenarios below are implemented in `tests/test_analyzer.py`
+and/or `tests/test_bills_creator.py`.
+
+- [x] Scenario: No co-occurrence date — payee is never split, however much its amount varies
+      Given a payee whose transactions never show two differing amounts on the same date (e.g. "EON", a metered electricity bill, 661.00-4426.00 kr across 16 monthly dates)
       When `identify_recurring()` processes the payee group
       Then the group is classified as a single amount cluster
-      And occurrence/interval/amount statistics are computed as before (unchanged from pre-FR-32 behavior)
+      And all 16 transactions are counted as one pattern with `frequency = "monthly"`
       And `amount_for_name` is `None` (no disambiguation needed)
+      (`test_split_into_amount_clusters_no_split_without_co_occurrence`, `test_widely_varying_single_amount_payee_is_not_fragmented`)
 
-- [ ] Scenario: Split into multiple amount clusters
-      Given a payee with two groups of amounts: [10.00, 11.00] and [25.00, 26.00]
+- [x] Scenario: Co-occurring differing amounts split into multiple clusters
+      Given a payee with a date where two differing amounts occur together (e.g. 10.00 and 25.00 on the same day), plus further solo-date occurrences near each amount
       And `AMOUNT_CLUSTER_TOLERANCE = 0.15` (default)
       When `identify_recurring()` processes the payee group
-      Then the group is split into two clusters (gap between 11.00 and 25.00 exceeds 15% of 11.00)
+      Then the co-occurring amounts seed two clusters, and every other transaction is assigned to whichever cluster's mean is closest
       And each cluster is analyzed independently for occurrence/frequency/confidence
+      (`test_split_into_amount_clusters_splits_on_co_occurring_amounts`, `test_payee_splits_into_two_independent_patterns_by_amount`)
 
-- [ ] Scenario: Multiple clusters with independent occurrence thresholds
+- [x] Scenario: Multiple clusters with independent occurrence thresholds
       Given a payee with two amount clusters, one with 3 occurrences and one with 2
       And `MIN_OCCURRENCES = 2` (default)
       When `identify_recurring()` processes the payee
       Then both clusters meet the occurrence threshold individually
       And two separate `RecurringPattern` entries are returned, one per cluster
+      (`test_amount_cluster_tolerance_affects_clustering`)
 
-- [ ] Scenario: Amount cluster disambiguates multi-cluster patterns
+- [x] Scenario: Amount cluster disambiguates multi-cluster patterns
       Given the same payee producing two qualifying clusters with amounts ~10 and ~25
       When `identify_recurring()` processes the payee
       Then cluster 1's pattern has `amount_for_name = "10.00"`
       And cluster 2's pattern has `amount_for_name = "25.00"`
-      And `_bill_name()` appends these to the bill names (e.g., "Payee 10.00" and "Payee 25.00")
+      And `_bill_name()` appends these to the bill names (e.g., "Netflix 10.00" and "Netflix 25.00")
+      (`test_amount_for_name_set_when_multiple_clusters_qualify`, `TestAmountClusterDisambiguation` in `test_bills_creator.py`)
 
-- [ ] Scenario: Collapse same-date transactions into a single billing event
+- [x] Scenario: Collapse same-date transactions into a single billing event
       Given a cluster with two transactions on 2026-07-11 (amounts 15.00 and 15.00)
       When `_collapse_into_billing_events()` processes the cluster
       Then a single billing event for 2026-07-11 is returned with amount = 30.00
       And the count field is 2 (informational)
+      (`test_collapse_into_billing_events_sums_same_date_transactions`)
 
-- [ ] Scenario: Multiple same-date groups in a cluster
-      Given a cluster with:
-        - Two transactions on 2026-07-11 (15.00 each)
-        - One transaction on 2026-07-18 (15.00)
-        - Two transactions on 2026-07-25 (15.00 each)
+- [x] Scenario: Multiple same-date groups in a cluster
+      Given a cluster with two transactions on 2026-07-11 (15.00 each), one on 2026-07-18 (15.00), and two on 2026-07-25 (15.00 each)
       When `_collapse_into_billing_events()` processes the cluster
-      Then three billing events are returned:
-        - 2026-07-11 with amount 30.00
-        - 2026-07-18 with amount 15.00
-        - 2026-07-25 with amount 30.00
+      Then three billing events are returned: 2026-07-11 (30.00), 2026-07-18 (15.00), 2026-07-25 (30.00)
+      (`test_collapse_into_billing_events_multiple_dates`)
 
-- [ ] Scenario: Interval calculation uses billing events, not transactions
-      Given a cluster with transactions:
-        - 2026-07-01 (10.00)
-        - 2026-07-01 (10.00) [same day, will collapse to 20.00]
-        - 2026-08-01 (10.00)
-        - 2026-09-01 (10.00)
+- [x] Scenario: Interval calculation uses billing events, not transactions
+      Given the same monthly fee billed twice on the same day every month (e.g. "SEB", 276.00 kr x2 per month for 6 months)
       When `identify_recurring()` processes the cluster
-      Then the occurrence count is 3 (three billing events)
-      And the interval calculation uses dates [2026-07-01, 2026-08-01, 2026-09-01]
-      (not the pre-collapse date list [2026-07-01, 2026-07-01, 2026-08-01, 2026-09-01])
-      And the median interval is correctly computed as 31 days (Aug→Sep, not collapsed to 0)
+      Then the occurrence count is 6 (billing events, not 12 raw transactions)
+      And the median interval is correctly computed as ~31 days and classified `monthly` (not collapsed to 0 / `irregular`)
+      (`test_same_day_transactions_collapse_for_interval_calculation`)
 
-- [ ] Scenario: Source account resolution uses pre-collapse transactions (FR-30a unaffected)
-      Given a cluster whose transactions collapse to 3 billing events
+- [x] Scenario: Source account resolution uses pre-collapse transactions (FR-30a unaffected)
+      Given a cluster whose transactions collapse to 2 billing events, drawn from 2 distinct source accounts across the 4 pre-collapse transactions
       When `identify_recurring()` resolves the source account for the pattern
-      Then source account resolution examines all pre-collapse transactions, not the 3 billing events
+      Then source account resolution examines all 4 pre-collapse transactions, not the 2 billing events
       And `source_account_name` / `source_account_varies` reflect the actual transaction distribution
+      (`test_source_account_resolution_uses_pre_collapse_transactions`)
 
-- [ ] Scenario: Amount clustering is tolerance-based and consistent
-      Hypothesis property test: for any list of transaction amounts and a tolerance T,
-      verify that `_split_into_amount_clusters()` produces clusters such that:
-        - Every two amounts within the same cluster have a relative gap ≤ T
-        - Every two amounts from different clusters have a relative gap > T
-        - The sorted order is preserved (clusters are contiguous in the sorted list)
-        - Clustering is deterministic (same input always yields the same clusters)
+- [x] Scenario: Amount clustering is deterministic and preserves all transactions
+      Hypothesis property test: for any list of (date offset, amount) pairs and a tolerance T,
+      verify that `_split_into_amount_clusters()` is deterministic, keeps every transaction exactly once, and produces no empty clusters
+      (`test_split_into_amount_clusters_preserves_all_transactions_and_is_deterministic`)
 
-- [ ] Scenario: Billing event collapse is deterministic
+- [x] Scenario: Billing event collapse is deterministic
       Hypothesis property test: for any transaction list with dates and amounts,
-      verify that `_collapse_into_billing_events()` produces events such that:
-        - All transactions with the same date are summed into one event
-        - Events are sorted by date ascending
-        - The sum of all event amounts equals the sum of all transaction amounts
-        - Collapsing is deterministic
+      verify that `_collapse_into_billing_events()` sums same-date transactions, sorts events by date, preserves the total amount, and is deterministic
+      (`test_collapse_into_billing_events_preserves_total_and_is_deterministic`)
 
-- [ ] Scenario: Multi-cluster pattern integration with category naming (FR-13b + FR-32c)
-      Given a payee with two qualifying amount clusters, each with a different majority category
+- [x] Scenario: Multi-cluster pattern integration with category naming (FR-13b + FR-32c)
+      Given a payee with two qualifying amount clusters, each with a category and an `amount_for_name`
       When `_bill_name()` formats the bills for both clusters
-      Then cluster 1's bill name is "{payee} ({category1}) {amount1}"
-      And cluster 2's bill name is "{payee} ({category2}) {amount2}"
-      And the two names do not collide
+      Then each bill name is `"{payee} ({category}) {amount}"`, and the two names do not collide
+      (`TestAmountClusterDisambiguation.test_amount_for_name_appended_after_category`, `test_two_clusters_for_same_payee_do_not_collide`)
 
-- [ ] Scenario: Single-cluster pattern has amount_for_name = None (no disambiguation)
+- [x] Scenario: Single-cluster pattern has amount_for_name = None (no disambiguation)
       Given a payee with a single amount cluster
       When `identify_recurring()` processes the payee
       Then the pattern's `amount_for_name` is `None`
       And `_bill_name()` does not append any amount (category, if any, is still appended)
+      (`test_single_amount_cluster_has_no_disambiguation`, `TestAmountClusterDisambiguation.test_no_amount_for_name_leaves_name_unchanged`)
 
-- [ ] Scenario: Below-threshold cluster does not produce a pattern
-      Given a payee with two amount clusters, one with 3 occurrences and one with 1
+- [x] Scenario: Below-threshold cluster does not produce a pattern
+      Given a payee where a co-occurrence seed cluster ends up with only 1 member after nearest-mean assignment, while the other cluster has 3
       And `MIN_OCCURRENCES = 2` (default)
       When `identify_recurring()` processes the payee
       Then only one `RecurringPattern` is returned (the 3-occurrence cluster)
       And `amount_for_name` for that pattern is `None` (not multi-cluster)
+      (`test_below_threshold_cluster_does_not_produce_pattern_or_disambiguation`)
 
-- [ ] Scenario: Amount cluster tolerance configuration
-      Given `AMOUNT_CLUSTER_TOLERANCE` set to 0.20 (20% instead of default 15%)
-      When `identify_recurring()` processes a payee with amounts [10.00, 12.00, 15.00]
-      Then the clustering behavior changes (e.g., 12.00 may move to a different cluster)
-      And the gap calculation uses the configured tolerance value
+- [x] Scenario: Amount cluster tolerance configuration
+      Given `AMOUNT_CLUSTER_TOLERANCE` set to 0.10 vs. 0.30 for the same co-occurring amounts (10.00 and 12.00)
+      When `identify_recurring()` processes the payee
+      Then the narrower tolerance splits into 2 patterns and the wider tolerance merges into 1
+      (`test_amount_cluster_tolerance_affects_clustering`, `test_split_into_amount_clusters_tolerance_is_configurable`)
 
-- [ ] `make lint && make test` pass with coverage >= baseline
+- [x] `make lint && make test` pass with coverage >= baseline (123 tests passed, 100% coverage on `analyzer.py` and `bills_creator.py`)
 
 ## Out of scope
 
@@ -235,9 +256,62 @@ None
 
 ## Completion
 
-**Date:**
-**Summary:**
+**Date:** 2026-07-11
+**Summary:** `analyzer.identify_recurring()` now splits each payee group into
+amount clusters (FR-32a/b) before computing statistics, and collapses
+same-date transactions within each cluster into billing events (FR-33a).
+Amount clustering was implemented in two passes: an initial pure amount-gap
+tolerance split (matching the original task description), then revised
+after owner review against real transaction data showed it fragmenting
+"EON" (a monthly electricity bill whose amount legitimately varies
+661-4426 kr by season/consumption, never two transactions on the same
+date) into several weak sub-clusters. The shipped design instead clusters
+only on same-date co-occurrence of differing amounts — a genuine signal of
+parallel simultaneous charges (e.g. "Apple"'s two subscriptions, or
+"Stockholm Vatten"'s water/sewage + waste-collection sub-invoices) — and
+assigns every other transaction to the nearest resulting cluster by mean
+amount; a payee with no co-occurrence date is never split. This also fixed
+an incidental bug in the original design: two "Stockholm Vatten" outlier
+dates that matched neither established cluster tightly enough were forming
+a spurious third `yearly` pattern; under nearest-mean assignment they now
+correctly join the closer real cluster.
+`RecurringPattern` gained `amount_for_name: str | None` (FR-32c), set to
+the cluster's mean amount when a payee produces more than one qualifying
+cluster; `bills_creator._bill_name()` appends it after the category suffix
+so distinct clusters never collide under FR-05a's name-only duplicate
+check. `config.py` gained `amount_cluster_tolerance` (`AMOUNT_CLUSTER_TOLERANCE`,
+default `0.15`). Verified against the owner's real Firefly III instance:
+EON returned to one 16-occurrence `monthly` pattern (87.7% confidence,
+matching pre-task behavior); Stockholm Vatten now produces two clean
+clusters instead of the original naive design's three (one spurious);
+Apple and Media och Streaming correctly split into their constituent
+subscriptions; Skandinaviska Enskilda Banken (FR-33a) reclassified from
+`irregular`/60% to `monthly`/97.5% via billing-event collapse.
 **Files changed:**
-**Branch:**
-**Stage:**
-**Commit:**
+
+- `src/firefly_bills_analyzer/analyzer.py` — modified (`_tolerance_gap_split`,
+  `_split_into_amount_clusters`, `_collapse_into_billing_events`,
+  `_qualifying_clusters`, `_build_pattern` helpers; `amount_for_name` field
+  on `RecurringPattern`; `identify_recurring()` rewired through clustering
+  and billing-event collapse)
+- `src/firefly_bills_analyzer/bills_creator.py` — modified (`_bill_name()`
+  appends `amount_for_name`)
+- `src/firefly_bills_analyzer/config.py` — modified (`amount_cluster_tolerance`
+  field and `AMOUNT_CLUSTER_TOLERANCE` env var)
+- `tests/test_analyzer.py` — modified (amount-clustering and billing-event
+  unit/property tests, `identify_recurring()` integration tests, updated
+  `_make_config` helper and one pre-existing test's fixture amounts)
+- `tests/test_bills_creator.py` — modified (`_pattern()` helper gains
+  `amount_for_name`; `TestAmountClusterDisambiguation` test class)
+- `tests/test_category_filter.py`, `tests/test_config.py`,
+  `tests/test_fetcher.py`, `tests/benchmark_analyzer.py` — modified
+  (`_make_config`/`Config(...)` helpers updated for the new required field)
+- `docs/REQUIREMENTS_new.md` — modified (spec 0.2.14 added FR-32a/b/c and
+  FR-33a; spec 0.2.15 revised FR-32a to the co-occurrence-based design)
+- `CHANGELOG.md` — modified
+- `docs/tasks/TASK-012-amount-clustering-and-billing-events.md` — modified
+- `docs/tasks/README.md` — modified (status)
+
+**Branch:** `git checkout task/012-amount-clustering-and-billing-events`
+**Stage:** `git add src/firefly_bills_analyzer/analyzer.py src/firefly_bills_analyzer/bills_creator.py src/firefly_bills_analyzer/config.py tests/test_analyzer.py tests/test_bills_creator.py tests/test_category_filter.py tests/test_config.py tests/test_fetcher.py tests/benchmark_analyzer.py docs/REQUIREMENTS_new.md CHANGELOG.md docs/tasks/TASK-012-amount-clustering-and-billing-events.md docs/tasks/README.md`
+**Commit:** `git commit -m "Split payees into amount clusters and collapse same-date billing events (TASK-012)"`

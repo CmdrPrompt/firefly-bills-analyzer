@@ -18,6 +18,7 @@ def _make_config(**overrides: object) -> Config:
         lookback_months=24,
         min_occurrences=2,
         amount_margin=0.10,
+        amount_cluster_tolerance=0.15,
         high_confidence_threshold=0.80,
         category_confidence_boost=0.15,
         category_majority_threshold=0.80,

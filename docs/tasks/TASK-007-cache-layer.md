@@ -5,7 +5,7 @@
 done
 
 **2026-07-11:** Un-deferred per further resolution of Open Item #8 (spec
-v0.2.15). New motivation, independent of the web UI: repeated local
+v0.2.16). New motivation, independent of the web UI: repeated local
 development/test runs against a real Firefly III instance re-fetch the same
 paginated transaction history every time; a TTL-aware disk cache removes
 that cost for repeated `--dry-run` runs during development. Scope is

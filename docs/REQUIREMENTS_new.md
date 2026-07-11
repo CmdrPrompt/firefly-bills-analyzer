@@ -1,6 +1,6 @@
 # Requirements Specification: Firefly III Bills Analyzer
 
-**Version:** 0.2.15
+**Version:** 0.2.16
 **Date:** 2026-07-11
 **Status:** Draft, pending owner confirmation of items marked TBD (see Open Items)
 
@@ -21,7 +21,7 @@ Terms used with a specific meaning in this specification. All requirements use t
 | Web server | The built-in HTTP server component of the application |
 | firefly-python-api | The standalone, shared Python package that owns the HTTP session toward Firefly III |
 | Recurring payment pattern | A group of transactions with the same payee and, when the payee's transactions form more than one amount cluster (FR-32a), the same amount cluster, that meets the occurrence threshold (FR-04a) |
-| Amount cluster | A subgroup of a payee's transactions whose amounts are mutually close under the tolerance-based split in FR-32a. A single payee that in practice represents more than one real recurring charge (e.g. two household members billed under the same payee, or several distinct subscriptions billed through the same merchant) typically splits into more than one amount cluster |
+| Amount cluster | A subgroup of a payee's transactions, formed per FR-32a from amounts observed on co-occurrence dates (dates with two or more differing amounts) and then extended to every transaction in the group by nearest cluster mean. A payee with no co-occurrence dates at all forms a single amount cluster regardless of how much its amount varies across different dates — this is what keeps a single bill whose amount fluctuates over time (e.g. a metered utility bill priced by season and consumption) from being fragmented, while a payee that genuinely bundles more than one simultaneous charge (e.g. two household members billed the same fee, or several subscriptions billed through the same merchant, each landing on the same date every cycle) splits into more than one amount cluster |
 | Billing event | Within an amount cluster, one or more transactions that share the exact same date, collapsed per FR-33a into a single unit whose amount is their sum. Occurrence counts, interval calculation, and amount statistics (UC2) operate on billing events, not raw transaction rows. Budget-wise, several same-day transactions for the same recurring charge (e.g. one household member's invoice and another's, billed together) represent one combined outflow, not two independent cycle points |
 | Frequency | The classification of a recurring payment pattern by median interval: monthly, quarterly, half-yearly, yearly, or irregular (FR-03) |
 | Confidence score | The value in [0.0, 1.0] computed per FR-27 |
@@ -71,12 +71,26 @@ The use cases are informative. They describe intended flows and provide context 
 
 1. Transactions are grouped by payee (`destination_name`)
 
-2. Each payee group is further split into amount clusters (FR-32a): the group's transactions
-   are sorted by amount, and a new cluster starts whenever the gap to the previous amount
-   exceeds `AMOUNT_CLUSTER_TOLERANCE` of the smaller of the two amounts. This separates
-   distinct real charges that happen to share a payee — e.g. two household members billed
-   the same fee, or several subscriptions billed through the same merchant — each of which
-   would otherwise distort the interval and amount statistics of a single combined group.
+2. Each payee group is further split into amount clusters (FR-32a) based on same-date
+   co-occurrence, not on amount variance alone:
+
+   a. The group's transactions are grouped by date. A date on which two or more
+      transactions have *differing* amounts is a co-occurrence date — it reveals that this
+      payee genuinely bundles more than one simultaneous charge (e.g. two household
+      members billed the same fee, or several subscriptions billed through the same
+      merchant, each landing on the same date every cycle)
+   b. If the payee group has no co-occurrence date at all, the whole group remains a single
+      amount cluster, regardless of how much its amount varies across different dates. This
+      is what keeps a single bill whose amount fluctuates over time — e.g. a metered
+      utility bill priced by season and consumption — from being fragmented into
+      artificial sub-clusters merely because its price changes
+   c. Otherwise, the amounts observed at co-occurrence dates are clustered using a
+      tolerance-based gap split (sort ascending, start a new cluster whenever the gap to
+      the previous amount exceeds `AMOUNT_CLUSTER_TOLERANCE` of the smaller of the two),
+      and every transaction in the group — including ones not on a co-occurrence date — is
+      then assigned to whichever resulting cluster's mean amount is numerically closest to
+      its own amount
+
    Every step below operates on the resulting payee/amount-cluster group, not the raw payee
    group
 
@@ -336,7 +350,7 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-30c | The web UI table view (FR-17a) shall include a column showing the resolved source account name (FR-30a), or a "varies" indicator when more than one distinct source account occurs in the pattern | UC3 |
 | FR-30d | The CSV and JSON export (FR-08) shall include the resolved source account name and the varies indicator (FR-30a) as fields of each exported pattern | UC5 |
 | FR-31  | When an export (FR-08) completes, the application shall inform the user of the file path it wrote: in CLI mode via a printed message, and in the web UI (when implemented) via an on-page notification or download link | UC5 |
-| FR-32a | Before computing occurrences, interval, and confidence (UC2 steps 3–6), the application shall split each payee group formed in UC2 step 1 into amount clusters: sort the group's transactions by amount, and start a new cluster whenever the absolute difference between two amount-adjacent transactions exceeds `AMOUNT_CLUSTER_TOLERANCE` times the smaller of the two amounts. Each resulting cluster is processed as an independent recurring payment pattern candidate | UC2 |
+| FR-32a | Before computing occurrences, interval, and confidence (UC2 steps 3–6), the application shall split each payee group formed in UC2 step 1 into amount clusters based on same-date co-occurrence: (a) group the payee's transactions by date and identify co-occurrence dates — dates with two or more transactions of differing amounts; (b) if no co-occurrence date exists in the group, the whole group remains a single amount cluster regardless of amount variance across dates; (c) otherwise, cluster the amounts observed at co-occurrence dates via a tolerance-based gap split (sort ascending, start a new cluster whenever the gap to the previous amount exceeds `AMOUNT_CLUSTER_TOLERANCE` times the smaller of the two), then assign every transaction in the group — including those not on a co-occurrence date — to whichever resulting cluster's mean amount is numerically closest to its own amount. Each resulting cluster is processed as an independent recurring payment pattern candidate | UC2 |
 | FR-32b | The application shall read the amount-cluster split tolerance from configuration (`AMOUNT_CLUSTER_TOLERANCE`, default `0.15`) | UC2 |
 | FR-32c | When a payee produces more than one amount cluster (FR-32a) that each independently qualify as a recurring payment pattern, the application shall disambiguate the bill name of each resulting pattern by appending its representative (mean) amount to the name produced by FR-13b, so that FR-05a's name-only duplicate check does not conflate distinct clusters | UC2, UC4 |
 | FR-33a | Within each payee/amount-cluster group (FR-32a), when two or more transactions share the exact same date, the application shall collapse them into a single billing event (see Definitions) whose amount is the sum of the collapsed transactions' amounts; occurrence count, median interval, and amount min/max/mean (UC2 steps 4–7) shall be computed over the resulting billing events rather than the pre-collapse transaction rows. Source account resolution (FR-30a) is unaffected and continues to be computed over the group's underlying transactions | UC2 |
@@ -510,7 +524,7 @@ Decisions required from the requirement owner before this specification is basel
 
 ## Changelog
 
-### 0.2.15 (2026-07-11)
+### 0.2.16 (2026-07-11)
 
 - Further resolved Open Item #8: un-deferred TASK-007 (cache layer) for its
   CLI-relevant scope (transactions and bills caching, FR-21/22/23/25/NFR-09).
@@ -521,6 +535,25 @@ Decisions required from the requirement owner before this specification is basel
   runs. Categories/payees caching (the rest of FR-21) and the web UI's "Clear
   cache" button (FR-24a/b) remain deferred, contingent on Open Item #5 (no
   web UI exists yet to consume them).
+
+### 0.2.15 (2026-07-11)
+
+- Revised FR-32a: amount clustering is now based on same-date co-occurrence of
+  differing amounts, not on amount variance alone. Verified against real
+  transaction data during owner review: "EON" (a monthly electricity bill
+  whose amount legitimately fluctuates 661–4426 kr by season and
+  consumption, never two transactions on the same date) was being
+  fragmented into several weak, low-confidence sub-clusters by the
+  original amount-gap-only clustering (FR-32a as added in 0.2.14) — the
+  same tolerance-based split that correctly separates "Apple"'s two
+  co-occurring subscriptions couldn't tell a genuinely variable single
+  bill from a payee that bundles multiple simultaneous charges. Under the
+  revised rule, a payee is only split when it has at least one date with
+  two differing amounts (revealing real parallel sub-charges); such a
+  payee's remaining transactions are then assigned to whichever cluster's
+  mean is numerically closest, rather than by amount-gap alone. A payee
+  with no co-occurrence date (like EON) is never split, restoring it to a
+  single high-confidence monthly pattern.
 
 ### 0.2.14 (2026-07-11)
 

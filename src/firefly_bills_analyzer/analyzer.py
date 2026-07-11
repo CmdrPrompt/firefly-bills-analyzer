@@ -8,6 +8,7 @@ import statistics
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date
+from typing import Any
 
 from firefly_python_api import TransactionRead
 
@@ -37,6 +38,7 @@ class RecurringPattern:
     confidence: float
     source_account_name: str | None
     source_account_varies: bool
+    amount_for_name: str | None = None
 
 
 def _resolve_source_account(
@@ -56,6 +58,104 @@ def _resolve_source_account(
     mode_name, _ = counts.most_common(1)[0]
     varies = len(counts) > 1
     return mode_name, varies
+
+
+def _tolerance_gap_split(
+    transactions: list[TransactionRead], tolerance: float
+) -> list[list[TransactionRead]]:
+    """Split transactions into contiguous groups via a tolerance-based amount-gap split.
+
+    Transactions are sorted by amount ascending; a new group starts whenever
+    the gap between two amount-adjacent transactions exceeds ``tolerance``
+    times the smaller of the two amounts. Each group is contiguous in the
+    sorted order.
+    """
+    sorted_transactions = sorted(transactions, key=lambda t: float(t["amount"]))
+
+    groups: list[list[TransactionRead]] = []
+    current: list[TransactionRead] = []
+    previous_amount: float | None = None
+    for transaction in sorted_transactions:
+        amount = float(transaction["amount"])
+        if previous_amount is not None and amount - previous_amount > tolerance * previous_amount:
+            groups.append(current)
+            current = []
+        current.append(transaction)
+        previous_amount = amount
+
+    if current:
+        groups.append(current)
+    return groups
+
+
+def _split_into_amount_clusters(
+    transactions: list[TransactionRead], tolerance: float
+) -> list[list[TransactionRead]]:
+    """Split a payee's transactions into amount clusters (FR-32a).
+
+    Clustering is based on same-date co-occurrence of differing amounts, not
+    on amount variance alone: a payee whose transactions never show more than
+    one distinct amount on the same date (e.g. a metered utility bill that
+    fluctuates by season and consumption) is never split, however much its
+    amount varies across different dates. A payee with at least one date
+    where two or more differing amounts occur together reveals genuinely
+    parallel simultaneous charges (e.g. two subscriptions billed through the
+    same merchant, or two household members billed the same fee); the
+    amounts observed at those co-occurrence dates are clustered via a
+    tolerance-based gap split, and every transaction in the group — including
+    ones not on a co-occurrence date — is then assigned to whichever
+    resulting cluster's mean amount is numerically closest to its own.
+    """
+    by_date: dict[str, list[TransactionRead]] = defaultdict(list)
+    for transaction in transactions:
+        by_date[transaction["date"]].append(transaction)
+
+    co_occurring = [
+        transaction
+        for same_day in by_date.values()
+        if len({float(t["amount"]) for t in same_day}) >= 2
+        for transaction in same_day
+    ]
+
+    if not co_occurring:
+        return [transactions]
+
+    seed_clusters = _tolerance_gap_split(co_occurring, tolerance)
+    cluster_means = [
+        statistics.mean(float(t["amount"]) for t in cluster) for cluster in seed_clusters
+    ]
+
+    assigned: list[list[TransactionRead]] = [[] for _ in seed_clusters]
+    for transaction in transactions:
+        amount = float(transaction["amount"])
+        nearest_index = min(range(len(cluster_means)), key=lambda i: abs(amount - cluster_means[i]))
+        assigned[nearest_index].append(transaction)
+
+    return assigned
+
+
+def _collapse_into_billing_events(transactions: list[TransactionRead]) -> list[dict[str, Any]]:
+    """Collapse same-date transactions within a cluster into billing events (FR-33a).
+
+    Transactions sharing the exact same date are summed into a single event,
+    since they represent one combined outflow rather than independent cycle
+    points (e.g. the same monthly fee billed once per household member).
+    Events are returned sorted by date ascending.
+    """
+    by_date: dict[str, list[TransactionRead]] = defaultdict(list)
+    for transaction in transactions:
+        by_date[transaction["date"]].append(transaction)
+
+    events = [
+        {
+            "date": day,
+            "amount": sum(float(t["amount"]) for t in same_day),
+            "count": len(same_day),
+        }
+        for day, same_day in by_date.items()
+    ]
+    events.sort(key=lambda event: str(event["date"]))
+    return events
 
 
 def _classify_frequency(median_interval_days: float) -> str:
@@ -89,14 +189,87 @@ def _confidence(
     return max(0.0, min(1.0, score))
 
 
+def _qualifying_clusters(
+    group: list[TransactionRead], config: Config
+) -> list[tuple[list[TransactionRead], list[dict[str, Any]]]]:
+    """Split a payee group into amount clusters and keep only those whose
+    billing events meet ``config.min_occurrences`` (FR-32a, FR-33a)."""
+    clusters = _split_into_amount_clusters(group, config.amount_cluster_tolerance)
+    qualifying = []
+    for cluster in clusters:
+        events = _collapse_into_billing_events(cluster)
+        if len(events) >= config.min_occurrences:
+            qualifying.append((cluster, events))
+    return qualifying
+
+
+def _build_pattern(
+    destination_name: str,
+    cluster: list[TransactionRead],
+    events: list[dict[str, Any]],
+    *,
+    multi_cluster: bool,
+    config: Config,
+) -> RecurringPattern:
+    """Build a ``RecurringPattern`` for one amount cluster's billing events."""
+    amounts = [float(event["amount"]) for event in events]
+    dates = sorted(date.fromisoformat(str(event["date"])) for event in events)
+    intervals = [(b - a).days for a, b in zip(dates, dates[1:])]
+
+    median_days = float(statistics.median(intervals)) if intervals else 0.0
+    stddev_days = statistics.pstdev(intervals) if intervals else 0.0
+    mean_amount = statistics.mean(amounts)
+    stddev_amount = statistics.pstdev(amounts)
+    category_name = resolve_category_name(cluster, config)
+    source_account_name, source_account_varies = _resolve_source_account(cluster)
+
+    confidence = _confidence(
+        occurrences=len(events),
+        median_days=median_days,
+        stddev_days=stddev_days,
+        mean_amount=mean_amount,
+        stddev_amount=stddev_amount,
+        category_name=category_name,
+        config=config,
+    )
+
+    return RecurringPattern(
+        destination_name=destination_name,
+        category_name=category_name,
+        occurrences=len(events),
+        amount_min=min(amounts),
+        amount_max=max(amounts),
+        amount_mean=mean_amount,
+        median_interval_days=median_days,
+        frequency=_classify_frequency(median_days),
+        confidence=confidence,
+        source_account_name=source_account_name,
+        source_account_varies=source_account_varies,
+        amount_for_name=f"{mean_amount:.2f}" if multi_cluster else None,
+    )
+
+
 def identify_recurring(
     transactions: list[TransactionRead], config: Config
 ) -> list[RecurringPattern]:
     """Group ``transactions`` by payee and return recurring patterns (UC2, FR-27).
 
-    Payees with fewer than ``config.min_occurrences`` transactions, or with no
-    ``destination_name``, are skipped. Results are sorted by ``confidence``
-    descending.
+    Each payee group is further split into amount clusters (FR-32a): distinct
+    real charges that happen to share a payee (e.g. several subscriptions
+    billed through the same merchant) are analyzed independently rather than
+    flattened into one noisy group. Within each cluster, transactions sharing
+    the exact same date are collapsed into a single billing event (FR-33a)
+    before occurrences, interval, and amount statistics are computed, so that
+    e.g. the same fee billed twice on one day (once per household member)
+    doesn't corrupt the interval calculation. Source account resolution
+    (FR-30a) is unaffected and continues to operate on the pre-collapse
+    transactions.
+
+    Clusters with fewer than ``config.min_occurrences`` billing events, or
+    payees with no ``destination_name``, are skipped. When a payee produces
+    more than one qualifying cluster, each resulting pattern's ``amount_for_name``
+    is set to its mean amount so bill names can be disambiguated (FR-32c);
+    otherwise it is ``None``. Results are sorted by ``confidence`` descending.
     """
     groups: dict[str, list[TransactionRead]] = defaultdict(list)
     for transaction in transactions:
@@ -110,42 +283,15 @@ def identify_recurring(
         if len(group) < config.min_occurrences:
             continue
 
-        amounts = [float(t["amount"]) for t in group]
-        dates = sorted(date.fromisoformat(t["date"]) for t in group)
-        intervals = [(b - a).days for a, b in zip(dates, dates[1:])]
+        qualifying_clusters = _qualifying_clusters(group, config)
+        multi_cluster = len(qualifying_clusters) > 1
 
-        median_days = float(statistics.median(intervals)) if intervals else 0.0
-        stddev_days = statistics.pstdev(intervals) if intervals else 0.0
-        mean_amount = statistics.mean(amounts)
-        stddev_amount = statistics.pstdev(amounts)
-        category_name = resolve_category_name(group, config)
-        source_account_name, source_account_varies = _resolve_source_account(group)
-
-        confidence = _confidence(
-            occurrences=len(group),
-            median_days=median_days,
-            stddev_days=stddev_days,
-            mean_amount=mean_amount,
-            stddev_amount=stddev_amount,
-            category_name=category_name,
-            config=config,
-        )
-
-        patterns.append(
-            RecurringPattern(
-                destination_name=destination_name,
-                category_name=category_name,
-                occurrences=len(group),
-                amount_min=min(amounts),
-                amount_max=max(amounts),
-                amount_mean=mean_amount,
-                median_interval_days=median_days,
-                frequency=_classify_frequency(median_days),
-                confidence=confidence,
-                source_account_name=source_account_name,
-                source_account_varies=source_account_varies,
+        for cluster, events in qualifying_clusters:
+            patterns.append(
+                _build_pattern(
+                    destination_name, cluster, events, multi_cluster=multi_cluster, config=config
+                )
             )
-        )
 
     patterns.sort(key=lambda p: p.confidence, reverse=True)
     return patterns
