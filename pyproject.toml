@@ -1,12 +1,9 @@
 [project]
-name = "firefly-bills-analyzer"
+name = "butler-core"
 version = "0.1.0"
-description = "Analyzes your Firefly III transaction history to automatically identify recurring payments and create subscriptions (bills) via the Firefly III API. Designed for cash flow planning across the full year, including low-frequency bills such as quarterly and annual payments."
+description = "Shared task-core for python-butler: task file parsing and git/gh operations"
 requires-python = ">=3.11"
-dependencies = [
-    "python-dotenv>=1.2.2",
-    "firefly-python-api",
-]
+dependencies = []
 
 [project.optional-dependencies]
 dev = [
@@ -17,17 +14,12 @@ dev = [
     "complexipy",
     "pytest",
     "pytest-cov",
-    "pre-commit",
     "hypothesis",
+    "pre-commit",
 ]
 
-[dependency-groups]
-dev = [
-    "butler-core @ git+https://github.com/CmdrPrompt/python-butler.git",
-]
-
-[tool.uv.sources]
-firefly-python-api = { path = "lib/firefly-python-api" }
+[project.scripts]
+butler = "butler_cli.__main__:main"
 
 [tool.ruff]
 line-length = 100
@@ -37,10 +29,6 @@ select = ["E", "F", "I"]
 
 [tool.mypy]
 strict = true
-
-[[tool.mypy.overrides]]
-module = "firefly_python_api"
-ignore_missing_imports = true
 
 [tool.bandit]
 skips = []
@@ -54,3 +42,6 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+butler_core = ["data/Makefile"]
