@@ -52,6 +52,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   months, extrapolated to ~3,300 over 24 months), NFR-05's reference volume
   is now 5,000 transactions (including a 50% safety margin), replacing the
   provisional 20,000 figure. (TASK-010)
+- `python -m firefly_bills_analyzer` now runs the full pipeline end-to-end: fetch
+  transactions, filter by category, identify recurring patterns, review and approve
+  suggestions in the terminal, then create bills or report them in dry-run mode.
+  Without `--auto-approve`, each suggestion is printed and prompted
+  `[y]es/[n]o/[a]ll/[q]uit`; with it, entries at or above `HIGH_CONFIDENCE_THRESHOLD`
+  are approved automatically. `--dry-run` runs the same review and reports the
+  outcomes without writing to Firefly III. Configuration errors and fetch failures
+  are surfaced as plain messages, not stack traces. `--clear-cache` is currently a
+  no-op with an informational message, since the cache layer (TASK-007) was
+  deprioritized for this terminal-only MVP. (TASK-005)
+- CSV/JSON export of analysis results (`exporter.export`), controlled by the
+  `EXPORT_FORMAT` setting; export path defaults to
+  `./firefly-bills-{timestamp}.{csv,json}`. (TASK-005)
+- `--help` now documents the key environment variables per run mode
+  (`FIREFLY_URL`/`FIREFLY_TOKEN`, `DRY_RUN`, `EXPORT_FORMAT`,
+  `HIGH_CONFIDENCE_THRESHOLD`, `INCLUDE_CATEGORIES`/`EXCLUDE_CATEGORIES`,
+  `UNCATEGORIZED_BEHAVIOR`) alongside the CLI flags. (TASK-005)
 
 ## [0.1.0] - 2026-03-27
 
