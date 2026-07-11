@@ -1,6 +1,6 @@
 # Requirements Specification: Firefly III Bills Analyzer
 
-**Version:** 0.2.12
+**Version:** 0.2.14
 **Date:** 2026-07-11
 **Status:** Draft, pending owner confirmation of items marked TBD (see Open Items)
 
@@ -20,7 +20,9 @@ Terms used with a specific meaning in this specification. All requirements use t
 | Web UI | The browser-based user interface served by the application's built-in web server |
 | Web server | The built-in HTTP server component of the application |
 | firefly-python-api | The standalone, shared Python package that owns the HTTP session toward Firefly III |
-| Recurring payment pattern | A group of transactions with the same payee that meets the occurrence threshold (FR-04a) |
+| Recurring payment pattern | A group of transactions with the same payee and, when the payee's transactions form more than one amount cluster (FR-32a), the same amount cluster, that meets the occurrence threshold (FR-04a) |
+| Amount cluster | A subgroup of a payee's transactions whose amounts are mutually close under the tolerance-based split in FR-32a. A single payee that in practice represents more than one real recurring charge (e.g. two household members billed under the same payee, or several distinct subscriptions billed through the same merchant) typically splits into more than one amount cluster |
+| Billing event | Within an amount cluster, one or more transactions that share the exact same date, collapsed per FR-33a into a single unit whose amount is their sum. Occurrence counts, interval calculation, and amount statistics (UC2) operate on billing events, not raw transaction rows. Budget-wise, several same-day transactions for the same recurring charge (e.g. one household member's invoice and another's, billed together) represent one combined outflow, not two independent cycle points |
 | Frequency | The classification of a recurring payment pattern by median interval: monthly, quarterly, half-yearly, yearly, or irregular (FR-03) |
 | Confidence score | The value in [0.0, 1.0] computed per FR-27 |
 | Neutral (uncategorized behavior) | Uncategorized transactions are always included in the analysis (never filtered out, regardless of `INCLUDE_CATEGORIES`/`EXCLUDE_CATEGORIES`), receive no `CATEGORY_CONFIDENCE_BOOST`, and have `UNCATEGORIZED_CONFIDENCE_PENALTY` subtracted from their pattern's confidence score per FR-27 |
@@ -51,7 +53,9 @@ The use cases are informative. They describe intended flows and provide context 
 
 1. The application calls the Firefly III REST API and fetches transactions for a configurable time window (default: 24 months)
 2. Only outgoing transactions (withdrawals) are fetched
-3. Transactions are held in memory for further analysis
+3. In CLI mode, a progress bar is displayed showing pages fetched out of the
+   total (FR-34), driven by `firefly-python-api`'s per-page progress callback
+4. Transactions are held in memory for further analysis
 
 **Alternative flow:**
 
@@ -67,19 +71,37 @@ The use cases are informative. They describe intended flows and provide context 
 
 1. Transactions are grouped by payee (`destination_name`)
 
-2. For each group the following are calculated:
+2. Each payee group is further split into amount clusters (FR-32a): the group's transactions
+   are sorted by amount, and a new cluster starts whenever the gap to the previous amount
+   exceeds `AMOUNT_CLUSTER_TOLERANCE` of the smaller of the two amounts. This separates
+   distinct real charges that happen to share a payee — e.g. two household members billed
+   the same fee, or several subscriptions billed through the same merchant — each of which
+   would otherwise distort the interval and amount statistics of a single combined group.
+   Every step below operates on the resulting payee/amount-cluster group, not the raw payee
+   group
 
-   - Number of occurrences
+3. Within each payee/amount-cluster group, transactions that share the exact same date are
+   collapsed into a single billing event (FR-33a) whose amount is their sum. Budget-wise,
+   several same-day transactions for the same recurring charge (e.g. one household member's
+   invoice and another's, billed together) represent one combined outflow — treating them as
+   separate cycle points would otherwise corrupt the interval calculation in step 5. All
+   subsequent steps operate on the resulting billing events, not the pre-collapse transaction
+   rows; source account resolution (FR-30a) is unaffected and continues to consider every
+   underlying transaction
+
+4. For each payee/amount-cluster group the following are calculated over its billing events:
+
+   - Number of occurrences (billing events)
    - Average amount (min/max)
-   - Median number of days between transactions
+   - Median number of days between billing events
    - Most common day of the month/quarter/year
    - Source account: the account name (`source_name`) that occurs most often among
-     the group's transactions, plus whether more than one distinct source account
+     the group's underlying transactions, plus whether more than one distinct source account
      occurs in the group (FR-30a)
 
-3. A pattern is classified as recurring if it meets a configurable threshold (default: at least 2 occurrences)
+5. A pattern is classified as recurring if it meets a configurable threshold (default: at least 2 occurrences)
 
-4. Frequency is estimated by comparing the median interval between transactions to the following thresholds:
+6. Frequency is estimated by comparing the median interval between billing events to the following thresholds:
 
    | Frequency   | Median interval (days)   |
    | ----------- | ------------------------ |
@@ -89,7 +111,7 @@ The use cases are informative. They describe intended flows and provide context 
    | Yearly      | 340–390                  |
    | Irregular   | outside all ranges above |
 
-5. A confidence score in [0.0, 1.0] is computed as: `confidence = 0.4 × occurrence_score + 0.4 × regularity_score + 0.2 × amount_score + category_boost − uncategorized_penalty` where:
+7. A confidence score in [0.0, 1.0] is computed as: `confidence = 0.4 × occurrence_score + 0.4 × regularity_score + 0.2 × amount_score + category_boost − uncategorized_penalty` where:
 
    - `occurrence_score = min(n / 4, 1.0)`
    - `regularity_score = max(0, 1 − stddev_days / median_days)`
@@ -97,11 +119,19 @@ The use cases are informative. They describe intended flows and provide context 
    - `category_boost = CATEGORY_CONFIDENCE_BOOST` if the payee's category is in the include list, else 0
    - `uncategorized_penalty = UNCATEGORIZED_CONFIDENCE_PENALTY` if the payee has no category and `UNCATEGORIZED_BEHAVIOR` is `neutral`, else 0
 
-6. Results are returned to the caller (web server or terminal) with the confidence score per entry
+8. When a payee produces more than one amount cluster, each cluster's bill name is
+   disambiguated by appending its representative (mean) amount, so that distinct clusters
+   never collide under FR-05a's name-only duplicate check (FR-32c)
+
+9. Results are returned to the caller (web server or terminal) with the confidence score per entry
 
 **Alternative flow:**
 
 - Too few transactions to establish a pattern: entry is flagged with low confidence
+- A payee's transactions form only one amount cluster (the common case): behavior is
+  unchanged from the pre-FR-32 grouping
+- No two transactions in a cluster share the exact same date: behavior is unchanged from the
+  pre-FR-33 per-transaction calculation (every transaction is its own billing event)
 
 ---
 
@@ -306,6 +336,11 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-30c | The web UI table view (FR-17a) shall include a column showing the resolved source account name (FR-30a), or a "varies" indicator when more than one distinct source account occurs in the pattern | UC3 |
 | FR-30d | The CSV and JSON export (FR-08) shall include the resolved source account name and the varies indicator (FR-30a) as fields of each exported pattern | UC5 |
 | FR-31  | When an export (FR-08) completes, the application shall inform the user of the file path it wrote: in CLI mode via a printed message, and in the web UI (when implemented) via an on-page notification or download link | UC5 |
+| FR-32a | Before computing occurrences, interval, and confidence (UC2 steps 3–6), the application shall split each payee group formed in UC2 step 1 into amount clusters: sort the group's transactions by amount, and start a new cluster whenever the absolute difference between two amount-adjacent transactions exceeds `AMOUNT_CLUSTER_TOLERANCE` times the smaller of the two amounts. Each resulting cluster is processed as an independent recurring payment pattern candidate | UC2 |
+| FR-32b | The application shall read the amount-cluster split tolerance from configuration (`AMOUNT_CLUSTER_TOLERANCE`, default `0.15`) | UC2 |
+| FR-32c | When a payee produces more than one amount cluster (FR-32a) that each independently qualify as a recurring payment pattern, the application shall disambiguate the bill name of each resulting pattern by appending its representative (mean) amount to the name produced by FR-13b, so that FR-05a's name-only duplicate check does not conflate distinct clusters | UC2, UC4 |
+| FR-33a | Within each payee/amount-cluster group (FR-32a), when two or more transactions share the exact same date, the application shall collapse them into a single billing event (see Definitions) whose amount is the sum of the collapsed transactions' amounts; occurrence count, median interval, and amount min/max/mean (UC2 steps 4–7) shall be computed over the resulting billing events rather than the pre-collapse transaction rows. Source account resolution (FR-30a) is unaffected and continues to be computed over the group's underlying transactions | UC2 |
+| FR-34  | In CLI mode, while `fetcher.fetch_transactions()` is fetching transaction pages from Firefly III, the application shall display a progress bar showing pages fetched out of the total page count, driven by the `on_page` callback exposed by `firefly-python-api`'s `get_withdrawal_transactions()` (that package's REQ-008); when no callback support is available (e.g. an older `firefly-python-api` version), the application shall fall back to fetching without a progress bar rather than failing | UC1 |
 
 ---
 
@@ -314,7 +349,7 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | ID      | Requirement | Trace |
 | ------- | ----------- | ----- |
 | NFR-01  | The application shall be written in Python 3.10+ | — |
-| NFR-02  | The application shall use no external runtime dependencies other than `requests`, `python-dotenv`, and the selected web framework (`Flask` or `FastAPI`) **[FRAMEWORK TBD: select one; see Open Items]** | — |
+| NFR-02  | The application shall use no external runtime dependencies other than `requests`, `python-dotenv`, `tqdm` (FR-34's CLI progress bar), and the selected web framework (`Flask` or `FastAPI`) **[FRAMEWORK TBD: select one; see Open Items]** | — |
 | NFR-03  | When a Firefly III API response is paginated, the application shall fetch all pages and aggregate the results before returning them to the caller | UC1 |
 | NFR-04  | If a common error (see Definitions) occurs, then the application shall display an error message that states the cause of the error, and shall not include a stack trace in the message | UC1 |
 | NFR-05  | When the user starts an analysis of 24 months of transaction data (reference volume: **5,000** transactions — extrapolated from the owner's real transaction rate, 2,207 withdrawal transactions over ~16 months (2025-01-01 to 2026-05-05) per TASK-010's benchmark, scaled to a 24-month window (~3,300) with a 50% safety margin for slower/busier server conditions), the application shall complete the analysis within 60 seconds | UC2 |
@@ -435,29 +470,30 @@ The application supports two run modes:
 
 ## Configuration Parameters
 
-| Parameter                          | Description                                                      | Default         |
-| ---------------------------------- | ---------------------------------------------------------------- | --------------- |
-| `FIREFLY_URL`                      | Base URL of the Firefly III instance                             | *(required)*    |
-| `FIREFLY_TOKEN`                    | Personal Access Token                                            | *(required)*    |
-| `LOOKBACK_MONTHS`                  | Months of transaction history to analyze                         | `24`            |
-| `MIN_OCCURRENCES`                  | Minimum occurrences to classify as recurring                     | `2`             |
-| `AMOUNT_MARGIN`                    | Margin for min/max amount (fraction)                             | `0.10`          |
-| `HIGH_CONFIDENCE_THRESHOLD`        | Confidence threshold for auto-approval in CLI mode               | `0.80`          |
-| `DRY_RUN`                          | Do not create any bills                                          | `false`         |
-| `EXPORT_FORMAT`                    | Export format (csv/json/none)                                    | `none`          |
-| `INCLUDE_CATEGORIES`               | Comma-separated category include list                            | *(empty = all)* |
-| `EXCLUDE_CATEGORIES`               | Comma-separated category exclude list                            | *(empty)*       |
-| `CATEGORY_CONFIDENCE_BOOST`        | Confidence boost for transactions matching the include list      | `0.15`          |
+| Parameter                          | Description                                                              | Default         |
+| ---------------------------------- | ------------------------------------------------------------------------ | --------------- |
+| `FIREFLY_URL`                      | Base URL of the Firefly III instance                                     | *(required)*    |
+| `FIREFLY_TOKEN`                    | Personal Access Token                                                    | *(required)*    |
+| `LOOKBACK_MONTHS`                  | Months of transaction history to analyze                                 | `24`            |
+| `MIN_OCCURRENCES`                  | Minimum occurrences to classify as recurring                             | `2`             |
+| `AMOUNT_MARGIN`                    | Margin for min/max amount (fraction)                                     | `0.10`          |
+| `AMOUNT_CLUSTER_TOLERANCE`         | Relative amount gap that starts a new cluster within a payee (FR-32a)    | `0.15`          |
+| `HIGH_CONFIDENCE_THRESHOLD`        | Confidence threshold for auto-approval in CLI mode                       | `0.80`          |
+| `DRY_RUN`                          | Do not create any bills                                                  | `false`         |
+| `EXPORT_FORMAT`                    | Export format (csv/json/none)                                            | `none`          |
+| `INCLUDE_CATEGORIES`               | Comma-separated category include list                                    | *(empty = all)* |
+| `EXCLUDE_CATEGORIES`               | Comma-separated category exclude list                                    | *(empty)*       |
+| `CATEGORY_CONFIDENCE_BOOST`        | Confidence boost for transactions matching the include list              | `0.15`          |
 | `CATEGORY_MAJORITY_THRESHOLD`      | Min. share of a payee's transactions in one category to name it (FR-13b) | `0.80`          |
-| `UNCATEGORIZED_BEHAVIOR`           | Handling of uncategorized transactions (include/exclude/neutral) | `neutral`       |
-| `UNCATEGORIZED_CONFIDENCE_PENALTY` | Confidence penalty for neutral uncategorized patterns (FR-27)    | `0.10`          |
-| `WEB_PORT`                         | Port the web server listens on                                   | `5000`          |
-| `WEB_HOST`                         | IP address the web server binds to                               | `127.0.0.1`     |
-| `CACHE_DIR`                        | Directory for cache files                                        | `./cache`       |
-| `CACHE_TTL_CATEGORIES`             | TTL for category cache (seconds)                                 | `86400`         |
-| `CACHE_TTL_BILLS`                  | TTL for bills cache (seconds)                                    | `3600`          |
-| `CACHE_TTL_TRANSACTIONS`           | TTL for transaction cache (seconds)                              | `3600`          |
-| `CACHE_TTL_PAYEES`                 | TTL for payee cache (seconds)                                    | `86400`         |
+| `UNCATEGORIZED_BEHAVIOR`           | Handling of uncategorized transactions (include/exclude/neutral)         | `neutral`       |
+| `UNCATEGORIZED_CONFIDENCE_PENALTY` | Confidence penalty for neutral uncategorized patterns (FR-27)            | `0.10`          |
+| `WEB_PORT`                         | Port the web server listens on                                           | `5000`          |
+| `WEB_HOST`                         | IP address the web server binds to                                       | `127.0.0.1`     |
+| `CACHE_DIR`                        | Directory for cache files                                                | `./cache`       |
+| `CACHE_TTL_CATEGORIES`             | TTL for category cache (seconds)                                         | `86400`         |
+| `CACHE_TTL_BILLS`                  | TTL for bills cache (seconds)                                            | `3600`          |
+| `CACHE_TTL_TRANSACTIONS`           | TTL for transaction cache (seconds)                                      | `3600`          |
+| `CACHE_TTL_PAYEES`                 | TTL for payee cache (seconds)                                            | `86400`         |
 
 ---
 
@@ -473,6 +509,49 @@ Decisions required from the requirement owner before this specification is basel
 ---
 
 ## Changelog
+
+### 0.2.14 (2026-07-11)
+
+- Added FR-34 and a `tqdm` runtime dependency (NFR-02): in CLI mode, fetching
+  transactions (UC1) now shows a progress bar of pages fetched out of the
+  total, driven by a per-page `on_page` callback that `firefly-python-api`
+  will expose per that package's REQ-008 (its TASK-011, not yet
+  implemented/synced into `lib/firefly-python-api` at time of writing — this
+  requirement is blocked on that dependency landing, same pattern as
+  TASK-002's dependency on that package's TASK-005). If the vendored
+  `firefly-python-api` does not yet support `on_page`, the application falls
+  back to fetching without a progress bar rather than failing, so this
+  requirement can be merged ahead of the dependency without breaking
+  existing behavior. Intent: fetching 24 months of transactions from a
+  remote Firefly III instance can take long enough that, without visible
+  progress, the CLI looks hung.
+
+### 0.2.13 (2026-07-11)
+
+- Added FR-32a/b/c and the "Amount cluster" definition: within a payee group,
+  transactions are now further split into amount clusters (tolerance
+  `AMOUNT_CLUSTER_TOLERANCE`, default 0.15) before frequency/confidence are
+  computed, and each cluster is disambiguated in the bill name by its
+  representative amount. Intent: a single `destination_name` sometimes hides
+  more than one genuinely distinct recurring charge (e.g. several
+  subscriptions billed through one merchant with different amounts); today
+  these get flattened into one noisy group whose interval/amount variance
+  sinks its confidence score and frequency classification (observed for real
+  payees analyzed during owner review: "Media och Streaming", "Apple").
+  Splitting by amount lets each real recurring charge be classified on its
+  own merits instead of being drowned out by its siblings.
+- Added FR-33a and the "Billing event" definition: within a payee/amount-
+  cluster group, transactions sharing the exact same date are now collapsed
+  into a single billing event whose amount is their sum, before occurrence
+  count, median interval, and amount statistics are computed. Intent: some
+  recurring charges are booked as more than one same-day, same-amount
+  transaction (observed for "Skandinaviska Enskilda Banken": the same monthly
+  fee billed twice on the same day, once per household member's account).
+  Treated as two independent transactions, every other interval collapses to
+  0 days, which sank the median interval to 0 and misclassified an otherwise
+  clean monthly pattern as irregular. Budget-wise the two payments are one
+  combined outflow, so they are now summed into a single billing event per
+  date before the interval and amount statistics are computed.
 
 ### 0.2.12 (2026-07-11)
 
