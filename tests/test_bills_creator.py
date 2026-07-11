@@ -61,6 +61,8 @@ def _pattern(
         median_interval_days=30,
         frequency=frequency,
         confidence=0.9,
+        source_account_name=None,
+        source_account_varies=False,
     )
 
 

@@ -5,7 +5,7 @@ frequency, and score how confidently each group represents a recurring payment.
 from __future__ import annotations
 
 import statistics
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date
 
@@ -35,6 +35,27 @@ class RecurringPattern:
     median_interval_days: float
     frequency: str
     confidence: float
+    source_account_name: str | None
+    source_account_varies: bool
+
+
+def _resolve_source_account(
+    transactions_for_payee: list[TransactionRead],
+) -> tuple[str | None, bool]:
+    """Resolve the source account name and whether it varies (FR-30a).
+
+    Returns the mode of non-``None`` ``source_name`` values and whether more
+    than one distinct value occurs. There is no majority threshold: unlike
+    category resolution, this is deterministic based on mode alone.
+    """
+    names = [t["source_name"] for t in transactions_for_payee if t["source_name"] is not None]
+    if not names:
+        return None, False
+
+    counts = Counter(names)
+    mode_name, _ = counts.most_common(1)[0]
+    varies = len(counts) > 1
+    return mode_name, varies
 
 
 def _classify_frequency(median_interval_days: float) -> str:
@@ -98,6 +119,7 @@ def identify_recurring(
         mean_amount = statistics.mean(amounts)
         stddev_amount = statistics.pstdev(amounts)
         category_name = resolve_category_name(group, config)
+        source_account_name, source_account_varies = _resolve_source_account(group)
 
         confidence = _confidence(
             occurrences=len(group),
@@ -120,6 +142,8 @@ def identify_recurring(
                 median_interval_days=median_days,
                 frequency=_classify_frequency(median_days),
                 confidence=confidence,
+                source_account_name=source_account_name,
+                source_account_varies=source_account_varies,
             )
         )
 

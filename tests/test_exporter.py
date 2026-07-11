@@ -29,12 +29,18 @@ pattern_strategy = st.builds(
     ),
     frequency=st.sampled_from(["monthly", "quarterly", "half-yearly", "yearly", "irregular"]),
     confidence=st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False),
+    source_account_name=st.one_of(
+        st.none(), st.text(min_size=1, max_size=20).filter(lambda s: s.strip() != "")
+    ),
+    source_account_varies=st.booleans(),
 )
 
 
 def _pattern(
     name: str = "Netflix",
     category_name: str | None = "Subscriptions",
+    source_account_name: str | None = None,
+    source_account_varies: bool = False,
 ) -> RecurringPattern:
     return RecurringPattern(
         destination_name=name,
@@ -46,6 +52,8 @@ def _pattern(
         median_interval_days=30.0,
         frequency="monthly",
         confidence=0.9,
+        source_account_name=source_account_name,
+        source_account_varies=source_account_varies,
     )
 
 
@@ -80,6 +88,25 @@ class TestCsv:
 
         assert rows == []
 
+    def test_includes_source_account_columns(self, tmp_path: Path) -> None:
+        path = tmp_path / "out.csv"
+        patterns = [
+            _pattern("Netflix", source_account_name="Checking", source_account_varies=False),
+            _pattern("Spotify", source_account_name="Checking", source_account_varies=True),
+        ]
+        export(patterns, "csv", path)
+
+        with path.open(newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            assert reader.fieldnames is not None
+            assert "source_account_name" in reader.fieldnames
+            assert "source_account_varies" in reader.fieldnames
+            rows = list(reader)
+
+        assert rows[0]["source_account_name"] == "Checking"
+        assert rows[0]["source_account_varies"] == "False"
+        assert rows[1]["source_account_varies"] == "True"
+
 
 class TestJson:
     def test_writes_list_of_objects(self, tmp_path: Path) -> None:
@@ -96,6 +123,18 @@ class TestJson:
         export([], "json", path)
 
         assert json.loads(path.read_text(encoding="utf-8")) == []
+
+    def test_includes_source_account_fields(self, tmp_path: Path) -> None:
+        path = tmp_path / "out.json"
+        patterns = [
+            _pattern("Netflix", source_account_name="Checking", source_account_varies=True),
+        ]
+        export(patterns, "json", path)
+
+        data = json.loads(path.read_text(encoding="utf-8"))
+
+        assert data[0]["source_account_name"] == "Checking"
+        assert data[0]["source_account_varies"] is True
 
 
 class TestUnsupportedFormat:

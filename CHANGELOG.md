@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Recurring patterns now resolve and report the source account they are paid
+  from (`analyzer.identify_recurring`): a single dominant account name, or a
+  `(varies)` indicator when a payee's transactions span more than one source
+  account. This is shown in CLI review/auto-approve suggestions and exported
+  as `source_account_name`/`source_account_varies` columns in CSV/JSON export.
+  (TASK-011)
+
 - Python package `firefly_bills_analyzer` with `config.py` (loads all env vars with
   typed defaults, raises `ConfigError` for missing required values) and `__main__.py`
   (CLI entry-point with `--dry-run`, `--auto-approve`, `--clear-cache` flags). (TASK-001)

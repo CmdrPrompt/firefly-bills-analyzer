@@ -75,8 +75,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def _format_suggestion(pattern: RecurringPattern) -> str:
     category = f" [{pattern.category_name}]" if pattern.category_name else ""
+    if pattern.source_account_varies:
+        source_account = " from (varies)"
+    elif pattern.source_account_name is not None:
+        source_account = f" from {pattern.source_account_name}"
+    else:
+        source_account = ""
     return (
-        f"{pattern.destination_name}{category}: {pattern.frequency}, "
+        f"{pattern.destination_name}{category}{source_account}: {pattern.frequency}, "
         f"{pattern.amount_min:.2f}-{pattern.amount_max:.2f} "
         f"(confidence {pattern.confidence:.0%}, {pattern.occurrences} occurrences)"
     )
