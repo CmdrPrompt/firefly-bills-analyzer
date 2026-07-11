@@ -21,3 +21,18 @@ def test_auto_approve_flag() -> None:
 def test_clear_cache_flag() -> None:
     args = build_arg_parser().parse_args(["--clear-cache"])
     assert args.clear_cache is True
+
+
+def test_help_documents_key_environment_variables() -> None:
+    help_text = build_arg_parser().format_help()
+    for var in (
+        "FIREFLY_URL",
+        "FIREFLY_TOKEN",
+        "DRY_RUN",
+        "EXPORT_FORMAT",
+        "HIGH_CONFIDENCE_THRESHOLD",
+        "INCLUDE_CATEGORIES",
+        "EXCLUDE_CATEGORIES",
+        "UNCATEGORIZED_BEHAVIOR",
+    ):
+        assert var in help_text

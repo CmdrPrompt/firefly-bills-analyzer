@@ -1,6 +1,6 @@
 # Requirements Specification: Firefly III Bills Analyzer
 
-**Version:** 0.2.9
+**Version:** 0.2.11
 **Date:** 2026-07-11
 **Status:** Draft, pending owner confirmation of items marked TBD (see Open Items)
 
@@ -287,11 +287,12 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-23  | When the application creates a new bill, the application shall invalidate the bills cache synchronously within the same creation operation, before the creation response is returned | UC7 |
 | FR-24a | The web UI shall display a "Clear cache" button | UC7 |
 | FR-24b | When the user clicks the "Clear cache" button, the application shall delete all cached data | UC7 |
-| FR-25  | When the application is started in CLI mode with the `--clear-cache` flag, the application shall delete all cache files during startup | UC7 |
+| FR-25  | When the application is started in CLI mode with the `--clear-cache` flag, the application shall delete all cache files during startup, if a cache layer is implemented; otherwise the flag shall be a no-op that prints an informational "caching not implemented" message | UC7 |
 | FR-26a | The `firefly-python-api` package shall read `FIREFLY_URL` and `FIREFLY_TOKEN` from environment variables or from a `.env` file; environment variables shall take precedence, per the same rule as FR-10 | — |
 | FR-26b | The `firefly-python-api` package shall expose a `FireflyClient` class that provides a configured `requests.Session` | — |
 | FR-27  | When the application classifies recurring payment patterns, the application shall compute the confidence score as 0.4 × occurrence score + 0.4 × regularity score + 0.2 × amount score + category boost − uncategorized penalty, and shall clamp the result to the range [0.0, 1.0], where uncategorized penalty equals `UNCATEGORIZED_CONFIDENCE_PENALTY` when the pattern's category is absent and `UNCATEGORIZED_BEHAVIOR` is `neutral`, else 0 | UC2 |
 | FR-28  | Upon developer request, a dedicated opt-in script shall fetch the user's real withdrawal transactions from the configured Firefly III instance, run `identify_recurring()` against them, and report the real transaction count and elapsed time, without creating, modifying, or deleting any data in Firefly III | UC8 |
+| FR-29  | The CLI `--help` output shall document the environment variables a user commonly needs to set per run mode, alongside the flags, so that configuration is discoverable without reading `.env.example`: `FIREFLY_URL` and `FIREFLY_TOKEN` (required), `DRY_RUN` (alternative to `--dry-run`), `EXPORT_FORMAT` (`csv`/`json`/`none`), `HIGH_CONFIDENCE_THRESHOLD` (auto-approve/review cutoff), `INCLUDE_CATEGORIES`/`EXCLUDE_CATEGORIES`, and `UNCATEGORIZED_BEHAVIOR` | UC3, UC5, UC6 |
 
 ---
 
@@ -454,11 +455,28 @@ Decisions required from the requirement owner before this specification is basel
 | # | Item | Affected requirements |
 | --- | ---- | --------------------- |
 | 5 | Web framework selection: Flask or FastAPI — **deferred**: no task through TASK-009 touches `app.py` or a web framework, so this costs nothing to postpone. Open question behind it: is a web UI needed at all, given `--dry-run` + `EXPORT_FORMAT=csv` already covers category filtering (`.env`), cache clearing (`--clear-cache`), and reviewing suggestions in a spreadsheet? The concrete gap if the web UI is dropped is FR-17b's inline edit + an import-edited-CSV-back-into-the-app path, which is unspecified today. Revisit after the CLI (through TASK-009) has been used in practice | NFR-02 |
-| 8 | Confirm obligation levels raised or made explicit during review (all reformulated requirements use "shall"). Known candidates flagged so far: FR-21/22/23/NFR-09 (cache — see TASK-007's note, motivated by web UI polling, not a one-shot CLI run), and NFR-06 (no external CDN — only meaningful once a web UI task exists; no task covers it yet, so no task-file reminder has been written — re-flag this when a web UI task is created, contingent on Open Item #5) | All |
+| 8 | **Partially resolved (2026-07-11):** the cache layer (TASK-007, backing FR-21/22/23/FR-24a/FR-24b/NFR-09) is deprioritized/skipped for the terminal-only MVP — it was motivated by the web UI's repeated polling (UC7), and the web UI itself is already deferred (Open Item #5). These requirements remain written as "shall" for a future web UI but are not implemented by TASK-005; `--clear-cache` is a no-op per the amended FR-25. Revisit alongside Open Item #5 if/when a web UI task is created. NFR-06 (no external CDN) remains open for the same reason — still only meaningful once a web UI task exists | FR-21, FR-22, FR-23, FR-24a, FR-24b, FR-25, NFR-06, NFR-09 |
 
 ---
 
 ## Changelog
+
+### 0.2.11 (2026-07-11)
+
+- Added FR-29: `--help` must document the environment variables a user needs for
+  different run modes (required credentials, dry-run, export format, confidence
+  threshold, category filters), not just the CLI flags — surfaced during TASK-005
+  usage as a usability gap (running the CLI required cross-referencing
+  `.env.example` separately).
+
+### 0.2.10 (2026-07-11)
+
+- Open Item #8 partially resolved: caching (TASK-007, FR-21/22/23/FR-24a/FR-24b/NFR-09)
+  is deprioritized/skipped for the terminal-only MVP, since it was motivated by
+  web UI polling and the web UI is already deferred (Open Item #5). FR-25
+  amended so `--clear-cache` is a no-op with an informational message when no
+  cache layer is implemented, rather than a hard failure. Clears the way for
+  TASK-005 (CLI orchestration) to proceed without TASK-007.
 
 ### 0.2.9 (2026-07-11)
 

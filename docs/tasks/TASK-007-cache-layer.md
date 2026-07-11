@@ -2,7 +2,13 @@
 
 ## Status
 
-todo
+deferred
+
+**2026-07-11:** Deprioritized/skipped for the terminal-only MVP per resolution
+of Open Item #8 — caching was motivated by web UI polling (UC7), and the web
+UI itself is deferred (Open Item #5). TASK-005 proceeds without this task;
+`--clear-cache` is a no-op per amended FR-25. Revisit alongside Open Item #5
+if a web UI task is created.
 
 ## Description
 

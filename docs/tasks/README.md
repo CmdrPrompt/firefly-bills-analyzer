@@ -15,8 +15,8 @@ and is the single authoritative ordering.
 | 4 | [TASK-003](TASK-003-identify-recurring-payments.md) Identify recurring payments (UC2) | TASK-002, TASK-006 | done | — |
 | 5 | [TASK-004](TASK-004-create-bills.md) Create bills in Firefly III (UC4) | TASK-003 | done | Required `create_bill()` and its `status_code`/`response_body` exception attributes in `firefly-python-api` (that repo's TASK-006 and TASK-007) |
 | 6 | [TASK-008](TASK-008-category-aware-bill-naming.md) Include category name in bill name (UC6) | TASK-004, TASK-006 | done | — |
-| 7 | [TASK-007](TASK-007-cache-layer.md) Local file cache layer (UC7) | TASK-002, TASK-004 | todo | **Conditional** — resolve Open Item #8 (and its dependency on Open Item #5) first; may be skipped for the terminal-only MVP |
-| 8 | [TASK-005](TASK-005-cli-and-dry-run.md) CLI orchestration, review flow, and dry-run (UC3 + UC5) | TASK-002, TASK-003, TASK-004, TASK-006, TASK-008, (TASK-007 if built) | todo | Always last — assembles the full pipeline. If TASK-007 was skipped, `--clear-cache` becomes a no-op with a "caching not implemented" message |
+| 7 | [TASK-007](TASK-007-cache-layer.md) Local file cache layer (UC7) | TASK-002, TASK-004 | deferred | Open Item #8 resolved 2026-07-11: deprioritized/skipped for the terminal-only MVP, contingent on Open Item #5 (web UI) — revisit if a web UI task is created |
+| 8 | [TASK-005](TASK-005-cli-and-dry-run.md) CLI orchestration, review flow, and dry-run (UC3 + UC5) | TASK-002, TASK-003, TASK-004, TASK-006, TASK-008 | done | Assembles the full pipeline. TASK-007 skipped, so `--clear-cache` is a no-op with a "caching not implemented" message |
 | — | [TASK-009](TASK-009-performance-benchmark.md) Automated performance benchmark (NFR-05) | TASK-003 | done | Independent of the pipeline — run any time after TASK-003; closed Open Item #6 |
 | — | [TASK-010](TASK-010-real-data-benchmark.md) Calibrate performance benchmark against real transaction data (UC8) | TASK-002, TASK-009 | done | Independent of the pipeline — manual, opt-in, requires real Firefly III credentials; closed Open Item #9 |
 
@@ -31,10 +31,9 @@ graph LR
     T003 --> T004[TASK-004<br/>bills creator]
     T004 --> T008[TASK-008<br/>category naming]
     T006 --> T008
-    T002 --> T007[TASK-007<br/>cache, conditional]
+    T002 --> T007[TASK-007<br/>cache, deferred]
     T004 --> T007
     T008 --> T005[TASK-005<br/>CLI wiring, last]
-    T007 -.->|if built| T005
     T003 --> T009[TASK-009<br/>benchmark, independent]
     T002 --> T010[TASK-010<br/>real-data benchmark]
     T009 --> T010
