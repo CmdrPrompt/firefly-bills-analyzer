@@ -7,10 +7,12 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import date
+from pathlib import Path
 from typing import Any
 
 from firefly_python_api import BillPayload, FireflyClient, FireflyConnectionError
 
+from firefly_bills_analyzer import cache
 from firefly_bills_analyzer.analyzer import RecurringPattern
 from firefly_bills_analyzer.config import Config
 
@@ -78,6 +80,17 @@ def _duplicate_outcome(
     return BillOutcome(name=name, status="exists-diff", message="; ".join(diffs))
 
 
+def _get_bills_cached(
+    client: FireflyClient, config: Config, cache_dir: Path
+) -> list[dict[str, Any]]:
+    """Return the bills list from cache when fresh, else fetch and cache it (FR-21/22)."""
+    existing_bills = cache.read("bills", config.cache_ttl_bills, cache_dir)
+    if existing_bills is None:
+        existing_bills = client.get_bills()
+        cache.write("bills", existing_bills, cache_dir)
+    return existing_bills  # type: ignore[no-any-return]
+
+
 def create_bills(
     patterns: list[RecurringPattern],
     client: FireflyClient,
@@ -102,7 +115,8 @@ def create_bills(
     (FR-05d). In dry-run mode every outcome is ``"skipped"`` and no POST is
     made (FR-07b). ``irregular`` patterns are skipped unless ``force=True``.
     """
-    existing_bills = client.get_bills()
+    cache_dir = Path(config.cache_dir)
+    existing_bills = _get_bills_cached(client, config, cache_dir)
     outcomes: list[BillOutcome] = []
 
     for pattern in patterns:
@@ -153,6 +167,7 @@ def create_bills(
             else:
                 outcomes.append(BillOutcome(name=name, status="error", message=str(exc)))
             continue
+        cache.invalidate("bills", cache_dir)
         logger.debug("Created bill %r", name)
         outcomes.append(BillOutcome(name=name, status="created", message="created"))
 

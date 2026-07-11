@@ -4,12 +4,14 @@ duplicate handling.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 from firefly_python_api import FireflyConnectionError
 from hypothesis import given
 from hypothesis import strategies as st
 
+from firefly_bills_analyzer import cache
 from firefly_bills_analyzer.analyzer import RecurringPattern
 from firefly_bills_analyzer.bills_creator import BillOutcome, create_bills
 from firefly_bills_analyzer.config import Config
@@ -87,9 +89,9 @@ def _client(bills: list[dict] | None = None, create_bill_side_effect: object = N
 
 
 class TestHappyPath:
-    def test_creates_bill_for_new_payee(self) -> None:
+    def test_creates_bill_for_new_payee(self, tmp_path: Path) -> None:
         client = _client()
-        config = _make_config(amount_margin=0.10)
+        config = _make_config(cache_dir=str(tmp_path), amount_margin=0.10)
         outcomes = create_bills([_pattern(amount_mean=10.00)], client, config, dry_run=False)
         assert outcomes == [BillOutcome(name="Netflix", status="created", message="created")]
         client.create_bill.assert_called_once()
@@ -100,18 +102,18 @@ class TestHappyPath:
         assert payload["repeat_freq"] == "monthly"
         assert payload["active"] is True
 
-    def test_frequency_maps_to_firefly_repeat_freq(self) -> None:
+    def test_frequency_maps_to_firefly_repeat_freq(self, tmp_path: Path) -> None:
         client = _client()
-        config = _make_config()
+        config = _make_config(cache_dir=str(tmp_path))
         create_bills([_pattern(frequency="half-yearly")], client, config, dry_run=False)
         payload = client.create_bill.call_args.args[0]
         assert payload["repeat_freq"] == "half-year"
 
 
 class TestCategoryAwareNaming:
-    def test_single_category_payee_name_includes_category(self) -> None:
+    def test_single_category_payee_name_includes_category(self, tmp_path: Path) -> None:
         client = _client()
-        config = _make_config()
+        config = _make_config(cache_dir=str(tmp_path))
         outcomes = create_bills(
             [_pattern(amount_mean=10.00, category_name="Subscriptions")],
             client,
@@ -122,28 +124,22 @@ class TestCategoryAwareNaming:
         payload = client.create_bill.call_args.args[0]
         assert payload["name"] == "Netflix (Subscriptions)"
 
-    def test_no_category_payee_name_unchanged(self) -> None:
+    def test_no_category_payee_name_unchanged(self, tmp_path: Path) -> None:
+        # category_name is None whether no category exists at all, or a category
+        # existed but missed the FR-13b majority threshold upstream in
+        # resolve_category_name; bills_creator sees only None either way and must
+        # not add a category suffix.
         client = _client()
-        config = _make_config()
+        config = _make_config(cache_dir=str(tmp_path))
         outcomes = create_bills(
             [_pattern(amount_mean=10.00, category_name=None)], client, config, dry_run=False
         )
         assert outcomes[0].name == "Netflix"
 
-    def test_no_majority_category_payee_name_unchanged(self) -> None:
-        # resolve_category_name already resolved this to None upstream (FR-13b);
-        # bills_creator must not add a category suffix when category_name is None.
-        client = _client()
-        config = _make_config()
-        outcomes = create_bills(
-            [_pattern(amount_mean=10.00, category_name=None)], client, config, dry_run=False
-        )
-        assert outcomes[0].name == "Netflix"
-
-    def test_category_aware_name_used_for_duplicate_matching(self) -> None:
+    def test_category_aware_name_used_for_duplicate_matching(self, tmp_path: Path) -> None:
         existing = [_bill("Netflix (Subscriptions)", "9.00", "11.00", "monthly")]
         client = _client(bills=existing)
-        config = _make_config(amount_margin=0.10)
+        config = _make_config(cache_dir=str(tmp_path), amount_margin=0.10)
         outcomes = create_bills(
             [_pattern(amount_mean=10.00, category_name="Subscriptions")],
             client,
@@ -155,10 +151,10 @@ class TestCategoryAwareNaming:
         ]
         client.create_bill.assert_not_called()
 
-    def test_category_aware_name_does_not_match_plain_name_duplicate(self) -> None:
+    def test_category_aware_name_does_not_match_plain_name_duplicate(self, tmp_path: Path) -> None:
         existing = [_bill("Netflix", "9.00", "11.00", "monthly")]
         client = _client(bills=existing)
-        config = _make_config(amount_margin=0.10)
+        config = _make_config(cache_dir=str(tmp_path), amount_margin=0.10)
         outcomes = create_bills(
             [_pattern(amount_mean=10.00, category_name="Subscriptions")],
             client,
@@ -171,20 +167,22 @@ class TestCategoryAwareNaming:
 
 
 class TestExactDuplicate:
-    def test_matching_name_amounts_and_frequency_reports_exists_no_post(self) -> None:
+    def test_matching_name_amounts_and_frequency_reports_exists_no_post(
+        self, tmp_path: Path
+    ) -> None:
         existing = [_bill("Netflix", "9.00", "11.00", "monthly")]
         client = _client(bills=existing)
-        config = _make_config(amount_margin=0.10)
+        config = _make_config(cache_dir=str(tmp_path), amount_margin=0.10)
         outcomes = create_bills([_pattern(amount_mean=10.00)], client, config, dry_run=False)
         assert outcomes == [BillOutcome(name="Netflix", status="exists", message="already exists")]
         client.create_bill.assert_not_called()
 
 
 class TestNameOnlyDuplicate:
-    def test_differing_amount_reports_exists_diff_with_values(self) -> None:
+    def test_differing_amount_reports_exists_diff_with_values(self, tmp_path: Path) -> None:
         existing = [_bill("Netflix", "5.00", "6.00", "monthly")]
         client = _client(bills=existing)
-        config = _make_config(amount_margin=0.10)
+        config = _make_config(cache_dir=str(tmp_path), amount_margin=0.10)
         outcomes = create_bills([_pattern(amount_mean=10.00)], client, config, dry_run=False)
         assert len(outcomes) == 1
         assert outcomes[0].name == "Netflix"
@@ -195,10 +193,10 @@ class TestNameOnlyDuplicate:
         assert "6.00" in outcomes[0].message
         client.create_bill.assert_not_called()
 
-    def test_differing_frequency_reports_exists_diff_with_values(self) -> None:
+    def test_differing_frequency_reports_exists_diff_with_values(self, tmp_path: Path) -> None:
         existing = [_bill("Netflix", "9.00", "11.00", "yearly")]
         client = _client(bills=existing)
-        config = _make_config(amount_margin=0.10)
+        config = _make_config(cache_dir=str(tmp_path), amount_margin=0.10)
         outcomes = create_bills([_pattern(amount_mean=10.00)], client, config, dry_run=False)
         assert outcomes[0].status == "exists-diff"
         assert "monthly" in outcomes[0].message
@@ -207,19 +205,21 @@ class TestNameOnlyDuplicate:
 
 
 class TestNameMatchTrimmingAndCase:
-    def test_surrounding_whitespace_is_trimmed_and_matches(self) -> None:
+    def test_surrounding_whitespace_is_trimmed_and_matches(self, tmp_path: Path) -> None:
         existing = [_bill("  Netflix  ", "9.00", "11.00", "monthly")]
         client = _client(bills=existing)
-        config = _make_config(amount_margin=0.10)
+        config = _make_config(cache_dir=str(tmp_path), amount_margin=0.10)
         outcomes = create_bills([_pattern(amount_mean=10.00)], client, config, dry_run=False)
         assert outcomes[0].status == "exists"
         client.create_bill.assert_not_called()
 
-    def test_case_difference_does_not_match_locally_but_422_from_api_maps_to_exists(self) -> None:
+    def test_case_difference_does_not_match_locally_but_422_from_api_maps_to_exists(
+        self, tmp_path: Path
+    ) -> None:
         existing = [_bill("netflix", "9.00", "11.00", "monthly")]
         error = FireflyConnectionError("POST failed: unexpected status 422", status_code=422)
         client = _client(bills=existing, create_bill_side_effect=error)
-        config = _make_config(amount_margin=0.10)
+        config = _make_config(cache_dir=str(tmp_path), amount_margin=0.10)
         pattern = _pattern(name="Netflix", amount_mean=10.00)
         outcomes = create_bills([pattern], client, config, dry_run=False)
         client.create_bill.assert_called_once()
@@ -227,9 +227,9 @@ class TestNameMatchTrimmingAndCase:
 
 
 class TestDryRun:
-    def test_all_outcomes_skipped_no_post(self) -> None:
+    def test_all_outcomes_skipped_no_post(self, tmp_path: Path) -> None:
         client = _client()
-        config = _make_config()
+        config = _make_config(cache_dir=str(tmp_path))
         patterns = [_pattern(), _pattern(name="Spotify")]
         outcomes = create_bills(patterns, client, config, dry_run=True)
         assert all(o.status == "skipped" for o in outcomes)
@@ -237,16 +237,16 @@ class TestDryRun:
 
 
 class TestIrregularSkip:
-    def test_irregular_pattern_is_skipped_by_default(self) -> None:
+    def test_irregular_pattern_is_skipped_by_default(self, tmp_path: Path) -> None:
         client = _client()
-        config = _make_config()
+        config = _make_config(cache_dir=str(tmp_path))
         outcomes = create_bills([_pattern(frequency="irregular")], client, config, dry_run=False)
         assert outcomes[0].status == "skipped"
         client.create_bill.assert_not_called()
 
-    def test_irregular_pattern_created_when_forced(self) -> None:
+    def test_irregular_pattern_created_when_forced(self, tmp_path: Path) -> None:
         client = _client()
-        config = _make_config()
+        config = _make_config(cache_dir=str(tmp_path))
         outcomes = create_bills(
             [_pattern(frequency="irregular")], client, config, dry_run=False, force=True
         )
@@ -256,18 +256,18 @@ class TestIrregularSkip:
 
 
 class TestApiError:
-    def test_non_name_uniqueness_error_reports_error_status(self) -> None:
+    def test_non_name_uniqueness_error_reports_error_status(self, tmp_path: Path) -> None:
         error = FireflyConnectionError("POST failed: unexpected status 500", status_code=500)
         client = _client(create_bill_side_effect=error)
-        config = _make_config()
+        config = _make_config(cache_dir=str(tmp_path))
         outcomes = create_bills([_pattern()], client, config, dry_run=False)
         assert outcomes[0].status == "error"
         assert "500" in outcomes[0].message or "POST failed" in outcomes[0].message
 
-    def test_connection_error_with_no_status_code_reports_error(self) -> None:
+    def test_connection_error_with_no_status_code_reports_error(self, tmp_path: Path) -> None:
         error = FireflyConnectionError("POST failed: refused")
         client = _client(create_bill_side_effect=error)
-        config = _make_config()
+        config = _make_config(cache_dir=str(tmp_path))
         outcomes = create_bills([_pattern()], client, config, dry_run=False)
         assert outcomes[0].status == "error"
 
@@ -287,3 +287,72 @@ def test_amount_range_is_ordered_and_close_to_mean(mean: float, margin: float) -
     # Allow a small tolerance for the 2-decimal rounding applied to each bound.
     assert float(amount_min) <= mean + 0.01
     assert float(amount_max) >= mean - 0.01
+
+
+class TestBillsCache:
+    """Cache-aware bills listing (TASK-007, FR-21/22/23)."""
+
+    def test_cache_hit_skips_get_bills(self, tmp_path: Path) -> None:
+        existing = [_bill("Netflix", "9.00", "11.00", "monthly")]
+        cache.write("bills", existing, tmp_path)
+        client = _client()  # get_bills would return [] if called
+        config = _make_config(cache_dir=str(tmp_path), amount_margin=0.10)
+
+        outcomes = create_bills([_pattern(amount_mean=10.00)], client, config, dry_run=False)
+
+        client.get_bills.assert_not_called()
+        assert outcomes == [BillOutcome(name="Netflix", status="exists", message="already exists")]
+
+    def test_cache_miss_calls_get_bills_and_writes_cache(self, tmp_path: Path) -> None:
+        existing = [_bill("Netflix", "9.00", "11.00", "monthly")]
+        client = _client(bills=existing)
+        config = _make_config(cache_dir=str(tmp_path))
+
+        create_bills([_pattern(amount_mean=10.00)], client, config, dry_run=False)
+
+        client.get_bills.assert_called_once()
+        assert cache.read("bills", config.cache_ttl_bills, tmp_path) == existing
+
+    def test_stale_cache_triggers_get_bills(self, tmp_path: Path) -> None:
+        with patch("firefly_bills_analyzer.cache.time.time", return_value=1_000_000.0):
+            cache.write("bills", [], tmp_path)
+
+        client = _client()
+        config = _make_config(cache_dir=str(tmp_path), cache_ttl_bills=3600)
+
+        with patch("firefly_bills_analyzer.cache.time.time", return_value=1_000_000.0 + 3601):
+            create_bills([_pattern(amount_mean=10.00)], client, config, dry_run=False)
+
+        client.get_bills.assert_called_once()
+
+    def test_bills_cache_at_exact_ttl_boundary_is_still_used(self, tmp_path: Path) -> None:
+        existing = [_bill("Netflix", "9.00", "11.00", "monthly")]
+        with patch("firefly_bills_analyzer.cache.time.time", return_value=1_000_000.0):
+            cache.write("bills", existing, tmp_path)
+
+        client = _client()  # get_bills would return [] if called
+        config = _make_config(cache_dir=str(tmp_path), amount_margin=0.10, cache_ttl_bills=3600)
+
+        with patch("firefly_bills_analyzer.cache.time.time", return_value=1_000_000.0 + 3600):
+            outcomes = create_bills([_pattern(amount_mean=10.00)], client, config, dry_run=False)
+
+        client.get_bills.assert_not_called()
+        assert outcomes == [BillOutcome(name="Netflix", status="exists", message="already exists")]
+
+    def test_successful_creation_invalidates_bills_cache(self, tmp_path: Path) -> None:
+        cache.write("bills", [], tmp_path)
+        client = _client()
+        config = _make_config(cache_dir=str(tmp_path))
+
+        create_bills([_pattern(amount_mean=10.00)], client, config, dry_run=False)
+
+        assert cache.read("bills", config.cache_ttl_bills, tmp_path) is None
+
+    def test_dry_run_does_not_invalidate_bills_cache(self, tmp_path: Path) -> None:
+        cache.write("bills", [], tmp_path)
+        client = _client()
+        config = _make_config(cache_dir=str(tmp_path))
+
+        create_bills([_pattern(amount_mean=10.00)], client, config, dry_run=True)
+
+        assert cache.read("bills", config.cache_ttl_bills, tmp_path) == []

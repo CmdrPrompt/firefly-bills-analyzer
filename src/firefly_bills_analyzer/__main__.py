@@ -10,10 +10,18 @@ from __future__ import annotations
 import argparse
 import sys
 from datetime import datetime
+from pathlib import Path
 
 from firefly_python_api import FireflyClient
 
-from firefly_bills_analyzer import analyzer, bills_creator, category_filter, exporter, fetcher
+from firefly_bills_analyzer import (
+    analyzer,
+    bills_creator,
+    cache,
+    category_filter,
+    exporter,
+    fetcher,
+)
 from firefly_bills_analyzer.analyzer import RecurringPattern
 from firefly_bills_analyzer.config import Config, ConfigError
 
@@ -68,7 +76,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--clear-cache",
         action="store_true",
         default=False,
-        help="clear cached data on startup before running (no-op: caching is not yet implemented)",
+        help="delete cached transactions/bills data before running",
     )
     return p
 
@@ -140,7 +148,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     if args.clear_cache:
-        print("Caching is not implemented; --clear-cache has no effect.")
+        cache.clear_all(Path(config.cache_dir))
+        print(f"Cleared cache directory: {config.cache_dir}")
 
     dry_run = args.dry_run or config.dry_run
 
