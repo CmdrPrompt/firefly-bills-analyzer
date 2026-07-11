@@ -2,7 +2,7 @@
 
 ## Status
 
-todo
+done
 
 ## Description
 
@@ -50,37 +50,37 @@ Covers UC4, FR-05a, FR-05b, FR-05c, FR-05d, FR-06, FR-07b, FR-09.
 
 ## Acceptance criteria
 
-- [ ] `src/firefly_bills_analyzer/bills_creator.py` exposes
+- [x] `src/firefly_bills_analyzer/bills_creator.py` exposes
       `BillOutcome` (dataclass with fields `name: str`,
       `status: str` — one of `"created"`, `"exists"`, `"exists-diff"`,
       `"skipped"`, `"error"` — and `message: str`). `"exists"` maps to the
       spec outcome "already exists"; `"exists-diff"` maps to
       "exists with different parameters" and its `message` lists the
       differing values (candidate vs existing amount_min/amount_max/repeat_freq)
-- [ ] `create_bills(patterns, client, config, dry_run) -> list[BillOutcome]`
+- [x] `create_bills(patterns, client, config, dry_run) -> list[BillOutcome]`
       iterates over approved patterns and returns one `BillOutcome` per entry
-- [ ] Amount min/max = `mean × (1 ∓ config.amount_margin)`, rounded to 2 decimals,
+- [x] Amount min/max = `mean × (1 ∓ config.amount_margin)`, rounded to 2 decimals,
       computed before the duplicate check so the candidate's amounts are available
       for the FR-05b/FR-05c comparison
-- [ ] Existing bills are fetched once via `client.get_bills()`; the duplicate
+- [x] Existing bills are fetched once via `client.get_bills()`; the duplicate
       check compares names case-sensitively after trimming leading and
       trailing whitespace on both sides (FR-05a). Amount and frequency are
       not part of the match
-- [ ] A duplicate whose `amount_min`, `amount_max` (compared against the
+- [x] A duplicate whose `amount_min`, `amount_max` (compared against the
       candidate's rounded values), and `repeat_freq` all equal the
       candidate's sets status `"exists"` without a POST call (FR-05b)
-- [ ] A duplicate where any of `amount_min`, `amount_max`, or `repeat_freq`
+- [x] A duplicate where any of `amount_min`, `amount_max`, or `repeat_freq`
       differs sets status `"exists-diff"` without a POST call, and the
       message includes each differing field with both values (FR-05c)
-- [ ] A POST rejected by Firefly III with a name-uniqueness validation error
+- [x] A POST rejected by Firefly III with a name-uniqueness validation error
       (422) sets status `"exists"`, not `"error"` (FR-05d); other API errors
       set status `"error"` with the cause in the message (NFR-04 applies at
       the CLI layer)
-- [ ] In dry-run mode all outcomes are `"skipped"` and no POST is made (FR-07b)
-- [ ] `irregular` patterns produce status `"skipped"` with an explanatory message
+- [x] In dry-run mode all outcomes are `"skipped"` and no POST is made (FR-07b)
+- [x] `irregular` patterns produce status `"skipped"` with an explanatory message
       unless the caller explicitly passes `force=True`
-- [ ] All API calls are logged at DEBUG level (FR-09)
-- [ ] `tests/test_bills_creator.py` mocks `FireflyClient` and covers: happy-path
+- [x] All API calls are logged at DEBUG level (FR-09)
+- [x] `tests/test_bills_creator.py` mocks `FireflyClient` and covers: happy-path
       creation; exact duplicate (name+amounts+frequency match → `"exists"`, no
       POST); name-only duplicate with differing amounts or frequency
       (→ `"exists-diff"`, no POST, differing values in message); name differing
@@ -88,20 +88,32 @@ Covers UC4, FR-05a, FR-05b, FR-05c, FR-05d, FR-06, FR-07b, FR-09.
       case difference → no local match, POST attempted, mocked 422
       name-uniqueness → `"exists"` per FR-05d); dry-run mode; irregular skip;
       and a non-name-uniqueness API error (→ `"error"`)
-- [ ] `make lint && make test` pass with coverage >= baseline
+- [x] `make lint && make test` pass with coverage >= baseline
 
 ## Completion
 
-**Date:**
-**Summary:**
+**Date:** 2026-07-11
+**Summary:** Added `bills_creator.create_bills()` (UC4): fetches existing bills once,
+computes the `±config.amount_margin` amount range (FR-06) and maps `frequency` to
+Firefly III's `repeat_freq`, then applies the FR-05a-d duplicate rules — trimmed
+case-sensitive name match decides "exists" vs "exists-diff" locally, and a 422
+name-uniqueness rejection from `create_bill()` (using the `status_code` attribute
+added upstream in firefly-python-api TASK-007) is also mapped to "exists". Dry-run
+mode short-circuits every pattern to "skipped" before any POST; `irregular`
+patterns skip by default and report "error" if forced, since there is no valid
+`repeat_freq` for them. Required syncing the `lib/firefly-python-api` subtree
+(separate commit) to pick up `create_bill()` (TASK-006) and the new
+`status_code`/`response_body` exception attributes (TASK-007), both implemented
+in the sibling repo as part of unblocking this task. 60 tests pass repo-wide
+(13 new), 100% coverage on `bills_creator.py`, `make lint && make test` clean.
 **Files changed:**
 
 - `src/firefly_bills_analyzer/bills_creator.py` — created
 - `tests/test_bills_creator.py` — created
 - `CHANGELOG.md` — modified
 - `docs/tasks/TASK-004-create-bills.md` — modified
-- `docs/tasks/README.md` — modified (status)
+- `docs/tasks/README.md` — modified (status: todo → done)
 
 **Branch:** `git checkout task/004-create-bills`
-**Stage:** `git add src/firefly_bills_analyzer/bills_creator.py tests/test_bills_creator.py CHANGELOG.md docs/tasks/TASK-004-create-bills.md`
+**Stage:** `git add src/firefly_bills_analyzer/bills_creator.py tests/test_bills_creator.py CHANGELOG.md docs/tasks/TASK-004-create-bills.md docs/tasks/README.md`
 **Commit:** `git commit -m "Add bills_creator.py for UC4 bill creation with FR-05a-d duplicate handling (TASK-004)"`
