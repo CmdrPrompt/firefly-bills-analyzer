@@ -28,6 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   combines occurrence count, interval regularity, and amount consistency, with a
   category-match boost and a configurable penalty (`UNCATEGORIZED_CONFIDENCE_PENALTY`)
   for uncategorized payees. (TASK-003)
+- Create bills in Firefly III for approved recurring patterns (`bills_creator.create_bills`),
+  computing the amount range from the configured margin and mapping frequency to
+  Firefly III's `repeat_freq`. Duplicate bills are detected by a case-sensitive,
+  trimmed name match: identical amount range and frequency report "already exists",
+  any difference reports "exists with different parameters" with the differing
+  values; a server-side name-uniqueness rejection (HTTP 422) is also reported as
+  "already exists". Dry-run mode skips all writes; `irregular` patterns are skipped
+  unless explicitly forced. (TASK-004)
 
 ## [0.1.0] - 2026-03-27
 
