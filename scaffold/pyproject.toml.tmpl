@@ -1,7 +1,7 @@
 [project]
-name = "butler-core"
+name = "{{PROJECT_NAME}}"
 version = "0.1.0"
-description = "Shared task-core for python-butler: task file parsing and git/gh operations"
+description = "{{PROJECT_DESCRIPTION}}"
 requires-python = ">=3.11"
 dependencies = []
 
@@ -14,12 +14,8 @@ dev = [
     "complexipy",
     "pytest",
     "pytest-cov",
-    "hypothesis",
     "pre-commit",
 ]
-
-[project.scripts]
-butler = "butler_cli.__main__:main"
 
 [tool.ruff]
 line-length = 100
@@ -34,14 +30,11 @@ strict = true
 skips = []
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["{{TESTS_DIR}}"]
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-data]
-butler_core = ["data/Makefile"]
+where = ["{{SRC_DIR}}"]
