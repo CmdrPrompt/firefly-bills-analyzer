@@ -15,11 +15,20 @@ dependency by consumer projects such as `firefly-bank-importer` and
   environment or a `.env` file
 - `FireflyClient.validate_connection()` — probes `/api/v1/about` and raises
   `FireflyConnectionError` on failure
+- `FireflyConnectionError` carries `status_code` and `response_body` (parsed
+  JSON, or `None`) when raised from a non-2xx response, letting callers
+  distinguish e.g. a 422 duplicate-name rejection from other failures
 - Account methods: `get_asset_accounts()` (paginated)
 - Transaction methods: `get_latest_transaction_date(account_id)`,
-  `create_transaction(payload)`
-- Reporting methods: `get_bills()`, `get_budgets()`,
+  `create_transaction(payload)`,
+  `get_withdrawal_transactions(start, end, on_page=None)` (paginated,
+  flattens multi-split transactions, optional `on_page(page, total_pages)`
+  progress callback)
+- Reporting methods: `get_bills()`, `create_bill(payload)`, `get_budgets()`,
   `get_budget_limits(budget_id)`, `get_categories()`, `get_summary()`
+- `TypedDict` types (`AssetAccount`, `BillData`, `BillPayload`, `BudgetData`,
+  `BudgetLimitData`, `CategoryData`, `TransactionPayload`, `TransactionRead`)
+  exported for IDE completion and `mypy` type checking
 
 ## Requirements
 
@@ -68,15 +77,22 @@ client = FireflyClient(url, token)
 client.validate_connection()
 
 accounts = client.get_asset_accounts()
+
+transactions = client.get_withdrawal_transactions(
+    "2024-01-01",
+    "2024-12-31",
+    on_page=lambda page, total_pages: print(f"fetched page {page}/{total_pages}"),
+)
 ```
 
 ## Development
 
 ```bash
-make install       # install dependencies and pre-commit hooks
-make test          # run tests with coverage
-make lint          # run ruff, mypy, bandit
-make help          # list all available targets
+make install          # install dependencies and pre-commit hooks
+make test             # run tests with coverage
+make test-integration  # run integration tests against a live Firefly III instance
+make lint              # run ruff, mypy, bandit
+make help              # list all available targets
 ```
 
 ## License

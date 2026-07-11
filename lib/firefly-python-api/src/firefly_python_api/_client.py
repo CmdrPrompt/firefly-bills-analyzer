@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any, Callable, cast
 
 import requests
 
@@ -299,7 +299,12 @@ class FireflyClient:
     # REQ-006 — withdrawal transactions
     # ------------------------------------------------------------------
 
-    def get_withdrawal_transactions(self, start: str, end: str) -> list[TransactionRead]:
+    def get_withdrawal_transactions(
+        self,
+        start: str,
+        end: str,
+        on_page: Callable[[int, int], None] | None = None,
+    ) -> list[TransactionRead]:
         """Return all withdrawal transactions in a date range, fetching every page.
 
         Each Firefly III transaction object may contain multiple splits under
@@ -312,6 +317,11 @@ class FireflyClient:
             Start date in ``YYYY-MM-DD`` format.
         end:
             End date in ``YYYY-MM-DD`` format.
+        on_page:
+            Optional callback invoked as ``on_page(page, total_pages)`` after
+            each page has been fetched and parsed. `page` is the 1-indexed
+            page just completed. Exceptions raised by `on_page` propagate to
+            the caller and stop further page fetches.
 
         Returns
         -------
@@ -328,7 +338,10 @@ class FireflyClient:
             for item in data["data"]:
                 for split in item["attributes"]["transactions"]:
                     transactions.append(_split_to_transaction_read(split))
-            if page >= data["meta"]["pagination"]["total_pages"]:
+            total_pages = data["meta"]["pagination"]["total_pages"]
+            if on_page is not None:
+                on_page(page, total_pages)
+            if page >= total_pages:
                 break
             page += 1
         return transactions
