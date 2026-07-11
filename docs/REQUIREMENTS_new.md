@@ -1,6 +1,6 @@
 # Requirements Specification: Firefly III Bills Analyzer
 
-**Version:** 0.2.11
+**Version:** 0.2.12
 **Date:** 2026-07-11
 **Status:** Draft, pending owner confirmation of items marked TBD (see Open Items)
 
@@ -73,6 +73,9 @@ The use cases are informative. They describe intended flows and provide context 
    - Average amount (min/max)
    - Median number of days between transactions
    - Most common day of the month/quarter/year
+   - Source account: the account name (`source_name`) that occurs most often among
+     the group's transactions, plus whether more than one distinct source account
+     occurs in the group (FR-30a)
 
 3. A pattern is classified as recurring if it meets a configurable threshold (default: at least 2 occurrences)
 
@@ -109,7 +112,9 @@ The use cases are informative. They describe intended flows and provide context 
 **Primary flow (web UI):**
 
 1. The web UI displays the analysis results in a sortable table
-2. Each row shows: payee name, category, estimated amount (min–max), frequency, next due date, confidence score
+2. Each row shows: payee name, category, estimated amount (min–max), frequency,
+   next due date, confidence score, source account (or a "varies" indicator when
+   the pattern's transactions were withdrawn from more than one account, FR-30b)
 3. High-confidence rows are pre-selected; others are unchecked
 4. The user can edit amount, frequency, and start date inline per row
 5. The user clicks "Create selected bills" to trigger UC4
@@ -119,6 +124,7 @@ The use cases are informative. They describe intended flows and provide context 
 
 - All entries above the confidence threshold are approved without interaction
 - Remaining entries are rejected or presented interactively row by row (y/n/a)
+- Each printed suggestion includes the source account (or "varies") per FR-30b
 
 ---
 
@@ -154,6 +160,7 @@ The use cases are informative. They describe intended flows and provide context 
 2. Analysis results and suggestions are displayed in the table as normal
 3. The "Create selected bills" button is replaced by "Export"; nothing is written to Firefly III
 4. The user can export suggestions as CSV or JSON via button
+5. On completion, the UI shows a notification or download link naming the exported file (FR-31)
 
 **Alternative flow (terminal):**
 
@@ -161,6 +168,7 @@ The use cases are informative. They describe intended flows and provide context 
 2. Analysis and suggestions are printed to the terminal
 3. No bills are created in Firefly III
 4. Suggestions are exported according to `EXPORT_FORMAT`
+5. The application prints the path of the exported file (FR-31)
 
 ---
 
@@ -293,6 +301,11 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-27  | When the application classifies recurring payment patterns, the application shall compute the confidence score as 0.4 × occurrence score + 0.4 × regularity score + 0.2 × amount score + category boost − uncategorized penalty, and shall clamp the result to the range [0.0, 1.0], where uncategorized penalty equals `UNCATEGORIZED_CONFIDENCE_PENALTY` when the pattern's category is absent and `UNCATEGORIZED_BEHAVIOR` is `neutral`, else 0 | UC2 |
 | FR-28  | Upon developer request, a dedicated opt-in script shall fetch the user's real withdrawal transactions from the configured Firefly III instance, run `identify_recurring()` against them, and report the real transaction count and elapsed time, without creating, modifying, or deleting any data in Firefly III | UC8 |
 | FR-29  | The CLI `--help` output shall document the environment variables a user commonly needs to set per run mode, alongside the flags, so that configuration is discoverable without reading `.env.example`: `FIREFLY_URL` and `FIREFLY_TOKEN` (required), `DRY_RUN` (alternative to `--dry-run`), `EXPORT_FORMAT` (`csv`/`json`/`none`), `HIGH_CONFIDENCE_THRESHOLD` (auto-approve/review cutoff), `INCLUDE_CATEGORIES`/`EXCLUDE_CATEGORIES`, and `UNCATEGORIZED_BEHAVIOR` | UC3, UC5, UC6 |
+| FR-30a | When the application identifies a recurring pattern (UC2), the application shall resolve a source account name for the pattern as the `source_name` value that occurs most frequently among the pattern's transactions, and shall additionally record whether more than one distinct `source_name` value occurs across the pattern's transactions | UC2 |
+| FR-30b | The CLI review output (UC3) shall display, for each suggestion, the resolved source account name (FR-30a); when more than one distinct source account occurs in the pattern, the output shall display a "varies" indicator instead of a single account name | UC3 |
+| FR-30c | The web UI table view (FR-17a) shall include a column showing the resolved source account name (FR-30a), or a "varies" indicator when more than one distinct source account occurs in the pattern | UC3 |
+| FR-30d | The CSV and JSON export (FR-08) shall include the resolved source account name and the varies indicator (FR-30a) as fields of each exported pattern | UC5 |
+| FR-31  | When an export (FR-08) completes, the application shall inform the user of the file path it wrote: in CLI mode via a printed message, and in the web UI (when implemented) via an on-page notification or download link | UC5 |
 
 ---
 
@@ -460,6 +473,20 @@ Decisions required from the requirement owner before this specification is basel
 ---
 
 ## Changelog
+
+### 0.2.12 (2026-07-11)
+
+- Added FR-30a/b/c/d: each recurring pattern now resolves the source account it
+  is most often paid from (or a "varies" indicator when the payee was paid from
+  more than one account), shown in the CLI review output, in the web UI table
+  view (once built), and included in CSV/JSON export. Intent: let the user
+  balance funds between accounts ahead of bill payment, since bills are
+  otherwise silently attributed only to a payee, not to the account the money
+  actually leaves from.
+- Added FR-31: on export completion, the application must tell the user where
+  the file went — a printed path in CLI mode, a notification/download link in
+  the web UI once built — instead of silently writing a file the user has to
+  guess the location of.
 
 ### 0.2.11 (2026-07-11)
 

@@ -17,6 +17,7 @@ and is the single authoritative ordering.
 | 6 | [TASK-008](TASK-008-category-aware-bill-naming.md) Include category name in bill name (UC6) | TASK-004, TASK-006 | done | — |
 | 7 | [TASK-007](TASK-007-cache-layer.md) Local file cache layer (UC7) | TASK-002, TASK-004 | deferred | Open Item #8 resolved 2026-07-11: deprioritized/skipped for the terminal-only MVP, contingent on Open Item #5 (web UI) — revisit if a web UI task is created |
 | 8 | [TASK-005](TASK-005-cli-and-dry-run.md) CLI orchestration, review flow, and dry-run (UC3 + UC5) | TASK-002, TASK-003, TASK-004, TASK-006, TASK-008 | done | Assembles the full pipeline. TASK-007 skipped, so `--clear-cache` is a no-op with a "caching not implemented" message |
+| 9 | [TASK-011](TASK-011-source-account-display.md) Display and export source account information (UC2/UC3/UC5) | TASK-003, TASK-005 | not started | Extends the pipeline with source account resolution and display per FR-30a/b/d; test coverage for FR-31 (CLI file path printing) |
 | — | [TASK-009](TASK-009-performance-benchmark.md) Automated performance benchmark (NFR-05) | TASK-003 | done | Independent of the pipeline — run any time after TASK-003; closed Open Item #6 |
 | — | [TASK-010](TASK-010-real-data-benchmark.md) Calibrate performance benchmark against real transaction data (UC8) | TASK-002, TASK-009 | done | Independent of the pipeline — manual, opt-in, requires real Firefly III credentials; closed Open Item #9 |
 
@@ -37,6 +38,8 @@ graph LR
     T003 --> T009[TASK-009<br/>benchmark, independent]
     T002 --> T010[TASK-010<br/>real-data benchmark]
     T009 --> T010
+    T003 --> T011[TASK-011<br/>source account display]
+    T005 --> T011
 ```
 
 ## Rules
