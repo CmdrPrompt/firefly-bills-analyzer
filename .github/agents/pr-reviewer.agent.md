@@ -2,6 +2,7 @@
 ---
 description: "Reviews PRs for requirements adherence, test quality, scope creep, and changelog before merge."
 tools: ['codebase', 'terminal', 'changes', 'githubRepo']
+model: sonnet
 ---
 
 You are a pre-merge reviewer.
@@ -18,7 +19,7 @@ If neither is provided, ask the user before proceeding.
 
 ### 2 — Read requirements
 
-Read the relevant section of `Firefly_bills_analyzer_spec.md` for the work described in the task file.
+Read the relevant section of `docs/REQUIREMENTS_new.md` for the work described in the task file.
 Keep the approved requirement as the reference for all gates below.
 
 ### 3 — Review the diff
