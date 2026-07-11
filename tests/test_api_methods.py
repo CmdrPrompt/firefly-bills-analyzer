@@ -502,6 +502,100 @@ class TestGetWithdrawalTransactions:
             with pytest.raises(FireflyConnectionError):
                 client.get_withdrawal_transactions("2024-01-01", "2024-12-31")
 
+    def test_on_page_invoked_once_per_page_in_order(self):
+        client = make_client()
+
+        def make_page(total_pages: int) -> dict:
+            return {
+                "data": [
+                    {
+                        "attributes": {
+                            "transactions": [
+                                {"date": "2024-01-05T10:00:00+00:00", "amount": "10.00"}
+                            ]
+                        }
+                    }
+                ],
+                "meta": {"pagination": {"total_pages": total_pages}},
+            }
+
+        pages = [make_page(3), make_page(3), make_page(3)]
+        on_page = MagicMock()
+        with patch.object(client.session, "get", side_effect=[mock_response(p) for p in pages]):
+            client.get_withdrawal_transactions("2024-01-01", "2024-12-31", on_page=on_page)
+        assert on_page.call_args_list == [call(1, 3), call(2, 3), call(3, 3)]
+
+    def test_on_page_omitted_leaves_behavior_unchanged(self):
+        client = make_client()
+        payload = {
+            "data": [
+                {
+                    "attributes": {
+                        "transactions": [{"date": "2024-01-05T10:00:00+00:00", "amount": "10.00"}]
+                    }
+                }
+            ],
+            "meta": {"pagination": {"total_pages": 1}},
+        }
+        with patch.object(client.session, "get", return_value=mock_response(payload)):
+            result = client.get_withdrawal_transactions("2024-01-01", "2024-12-31")
+        assert result == [
+            {
+                "date": "2024-01-05",
+                "amount": "10.00",
+                "destination_name": None,
+                "category_name": None,
+                "source_name": None,
+                "source_id": None,
+            }
+        ]
+
+    def test_on_page_invoked_once_for_single_page(self):
+        client = make_client()
+        payload = {
+            "data": [
+                {
+                    "attributes": {
+                        "transactions": [{"date": "2024-01-05T10:00:00+00:00", "amount": "10.00"}]
+                    }
+                }
+            ],
+            "meta": {"pagination": {"total_pages": 1}},
+        }
+        on_page = MagicMock()
+        with patch.object(client.session, "get", return_value=mock_response(payload)):
+            client.get_withdrawal_transactions("2024-01-01", "2024-12-31", on_page=on_page)
+        on_page.assert_called_once_with(1, 1)
+
+    def test_on_page_exception_propagates_and_stops_fetching(self):
+        client = make_client()
+
+        def make_page(total_pages: int) -> dict:
+            return {
+                "data": [
+                    {
+                        "attributes": {
+                            "transactions": [
+                                {"date": "2024-01-05T10:00:00+00:00", "amount": "10.00"}
+                            ]
+                        }
+                    }
+                ],
+                "meta": {"pagination": {"total_pages": total_pages}},
+            }
+
+        pages = [make_page(3), make_page(3), make_page(3)]
+
+        def on_page(page: int, total_pages: int) -> None:
+            raise ValueError("boom")
+
+        with patch.object(
+            client.session, "get", side_effect=[mock_response(p) for p in pages]
+        ) as mock_get:
+            with pytest.raises(ValueError, match="boom"):
+                client.get_withdrawal_transactions("2024-01-01", "2024-12-31", on_page=on_page)
+        assert mock_get.call_count == 1
+
 
 # ---------------------------------------------------------------------------
 # create_bill
