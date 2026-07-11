@@ -22,6 +22,7 @@ def _make_config(**overrides: object) -> Config:
         lookback_months=24,
         min_occurrences=2,
         amount_margin=0.10,
+        amount_cluster_tolerance=0.15,
         high_confidence_threshold=0.80,
         category_confidence_boost=0.15,
         category_majority_threshold=0.80,
@@ -50,6 +51,7 @@ def _pattern(
     amount_mean: float = 12.00,
     frequency: str = "monthly",
     occurrences: int = 4,
+    amount_for_name: str | None = None,
 ) -> RecurringPattern:
     return RecurringPattern(
         destination_name=name,
@@ -63,6 +65,7 @@ def _pattern(
         confidence=0.9,
         source_account_name=None,
         source_account_varies=False,
+        amount_for_name=amount_for_name,
     )
 
 
@@ -168,6 +171,59 @@ class TestCategoryAwareNaming:
         assert outcomes[0].name == "Netflix (Subscriptions)"
         assert outcomes[0].status == "created"
         client.create_bill.assert_called_once()
+
+
+class TestAmountClusterDisambiguation:
+    """FR-32c: distinct amount clusters for the same payee get distinct bill names."""
+
+    def test_amount_for_name_appended_after_destination_name(self) -> None:
+        client = _client()
+        config = _make_config()
+        outcomes = create_bills(
+            [_pattern(amount_mean=10.00, category_name=None, amount_for_name="10.00")],
+            client,
+            config,
+            dry_run=False,
+        )
+        assert outcomes[0].name == "Netflix 10.00"
+
+    def test_amount_for_name_appended_after_category(self) -> None:
+        client = _client()
+        config = _make_config()
+        outcomes = create_bills(
+            [_pattern(amount_mean=10.00, category_name="Subscriptions", amount_for_name="10.00")],
+            client,
+            config,
+            dry_run=False,
+        )
+        assert outcomes[0].name == "Netflix (Subscriptions) 10.00"
+
+    def test_two_clusters_for_same_payee_do_not_collide(self) -> None:
+        client = _client()
+        config = _make_config()
+        outcomes = create_bills(
+            [
+                _pattern(amount_mean=10.00, amount_for_name="10.00"),
+                _pattern(amount_mean=25.00, amount_for_name="25.00"),
+            ],
+            client,
+            config,
+            dry_run=False,
+        )
+        names = {outcome.name for outcome in outcomes}
+        assert names == {"Netflix 10.00", "Netflix 25.00"}
+        assert client.create_bill.call_count == 2
+
+    def test_no_amount_for_name_leaves_name_unchanged(self) -> None:
+        client = _client()
+        config = _make_config()
+        outcomes = create_bills(
+            [_pattern(amount_mean=10.00, category_name=None, amount_for_name=None)],
+            client,
+            config,
+            dry_run=False,
+        )
+        assert outcomes[0].name == "Netflix"
 
 
 class TestExactDuplicate:

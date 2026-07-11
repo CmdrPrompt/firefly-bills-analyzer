@@ -37,10 +37,13 @@ class BillOutcome:
 
 
 def _bill_name(pattern: RecurringPattern) -> str:
-    """Build the bill name, appending the resolved category name if any (FR-13b)."""
-    if pattern.category_name is None:
-        return pattern.destination_name
-    return f"{pattern.destination_name} ({pattern.category_name})"
+    """Build the bill name: category (FR-13b) then amount-cluster disambiguation (FR-32c)."""
+    name = pattern.destination_name
+    if pattern.category_name is not None:
+        name = f"{name} ({pattern.category_name})"
+    if pattern.amount_for_name is not None:
+        name = f"{name} {pattern.amount_for_name}"
+    return name
 
 
 def _amount_range(mean: float, margin: float) -> tuple[str, str]:
