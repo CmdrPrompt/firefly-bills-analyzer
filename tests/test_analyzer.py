@@ -11,6 +11,7 @@ from firefly_bills_analyzer.analyzer import (
     _classify_frequency,
     _collapse_into_billing_events,
     _confidence,
+    _partition_by_source_account,
     _split_into_amount_clusters,
     identify_recurring,
 )
@@ -325,7 +326,39 @@ def test_source_account_resolved_when_all_transactions_share_source() -> None:
     assert patterns[0].source_account_varies is False
 
 
-def test_source_account_is_mode_when_transactions_span_two_sources() -> None:
+def test_source_account_split_produces_separate_patterns_per_account() -> None:
+    """FR-32d: a payee whose transactions span two source accounts is
+    partitioned by account before clustering, so each account gets its own
+    pattern rather than one pattern with `source_account_varies = True`."""
+    config = _make_config(min_occurrences=2)
+    start = date(2026, 1, 1)
+    transactions = [
+        _transaction(start, "9.99", "Netflix", "Streaming", source_name="Checking"),
+        _transaction(
+            start + timedelta(days=30), "9.99", "Netflix", "Streaming", source_name="Checking"
+        ),
+        _transaction(
+            start + timedelta(days=60), "9.99", "Netflix", "Streaming", source_name="Savings"
+        ),
+        _transaction(
+            start + timedelta(days=90), "9.99", "Netflix", "Streaming", source_name="Savings"
+        ),
+    ]
+
+    patterns = identify_recurring(transactions, config)
+
+    assert len(patterns) == 2
+    by_source = {p.source_account_name: p for p in patterns}
+    assert by_source["Checking"].occurrences == 2
+    assert by_source["Checking"].source_account_varies is False
+    assert by_source["Savings"].occurrences == 2
+    assert by_source["Savings"].source_account_varies is False
+
+
+def test_source_account_subgroup_below_min_occurrences_is_dropped() -> None:
+    """FR-32d: a source-account subgroup with too few transactions to meet
+    `MIN_OCCURRENCES` on its own does not produce a pattern, even though the
+    payee as a whole has enough transactions across accounts combined."""
     config = _make_config(min_occurrences=2)
     start = date(2026, 1, 1)
     transactions = [
@@ -342,7 +375,7 @@ def test_source_account_is_mode_when_transactions_span_two_sources() -> None:
 
     assert len(patterns) == 1
     assert patterns[0].source_account_name == "Checking"
-    assert patterns[0].source_account_varies is True
+    assert patterns[0].source_account_varies is False
 
 
 def test_source_account_none_when_no_transactions_have_a_source_name() -> None:
@@ -367,9 +400,12 @@ def test_source_account_none_when_no_transactions_have_a_source_name() -> None:
         max_size=20,
     )
 )
-def test_source_account_resolution_is_statistical_mode_of_non_none_values(
+def test_source_account_partition_produces_one_pattern_per_qualifying_account(
     source_names: list[str | None],
 ) -> None:
+    """FR-32d: each distinct source account (including "no source name") that
+    meets `MIN_OCCURRENCES` on its own produces exactly one pattern, never a
+    "varies" pattern, since accounts are partitioned before clustering."""
     config = _make_config(min_occurrences=2)
     start = date(2026, 1, 1)
     transactions = [
@@ -381,19 +417,14 @@ def test_source_account_resolution_is_statistical_mode_of_non_none_values(
 
     patterns = identify_recurring(transactions, config)
 
-    assert len(patterns) == 1
-    pattern = patterns[0]
+    counts = Counter(source_names)
+    qualifying = {name for name, count in counts.items() if count >= 2}
 
-    non_none = [s for s in source_names if s is not None]
-    distinct = set(non_none)
-
-    if not non_none:
-        assert pattern.source_account_name is None
+    assert len(patterns) == len(qualifying)
+    for pattern in patterns:
+        assert pattern.source_account_name in qualifying
         assert pattern.source_account_varies is False
-    else:
-        expected_mode = Counter(non_none).most_common(1)[0][0]
-        assert pattern.source_account_name == expected_mode
-        assert pattern.source_account_varies == (len(distinct) > 1)
+        assert pattern.occurrences == counts[pattern.source_account_name]
 
 
 def test_analysis_of_24_months_completes_quickly() -> None:
@@ -416,6 +447,105 @@ def test_analysis_of_24_months_completes_quickly() -> None:
     elapsed = time.monotonic() - started
 
     assert elapsed < 60
+
+
+# ---------------------------------------------------------------------------
+# Source-account partitioning (FR-32d)
+# ---------------------------------------------------------------------------
+
+
+def test_partition_by_source_account_groups_by_source_name() -> None:
+    transactions = [
+        _transaction(date(2026, 1, 1), "12000.00", "ICA", None, source_name="SEB Räkningskonto"),
+        _transaction(date(2026, 2, 1), "12000.00", "ICA", None, source_name="SEB Räkningskonto"),
+        _transaction(date(2026, 1, 5), "50.00", "ICA", None, source_name="ICA-banken Matkonto"),
+        _transaction(date(2026, 2, 5), "60.00", "ICA", None, source_name="ICA-banken Matkonto"),
+    ]
+
+    subgroups = _partition_by_source_account(transactions)
+
+    assert len(subgroups) == 2
+    sizes = sorted(len(group) for group in subgroups)
+    assert sizes == [2, 2]
+
+
+def test_partition_by_source_account_groups_missing_source_name_together() -> None:
+    transactions = [
+        _transaction(date(2026, 1, 1), "10.00", "Payee", None, source_name=None),
+        _transaction(date(2026, 2, 1), "10.00", "Payee", None, source_name=None),
+        _transaction(date(2026, 1, 1), "10.00", "Payee", None, source_name="Checking"),
+    ]
+
+    subgroups = _partition_by_source_account(transactions)
+
+    assert len(subgroups) == 2
+    sizes = sorted(len(group) for group in subgroups)
+    assert sizes == [1, 2]
+
+
+def test_partition_by_source_account_preserves_all_transactions() -> None:
+    transactions = [
+        _transaction(date(2026, 1, 1), "10.00", "Payee", None, source_name="Checking"),
+        _transaction(date(2026, 1, 1), "10.00", "Payee", None, source_name="Savings"),
+        _transaction(date(2026, 1, 1), "10.00", "Payee", None, source_name=None),
+    ]
+
+    subgroups = _partition_by_source_account(transactions)
+
+    assert sum(len(group) for group in subgroups) == len(transactions)
+
+
+def test_source_account_partition_keeps_transfer_and_spending_as_separate_patterns() -> None:
+    """Regression for "ICA": a fixed transfer from a household account into a
+    dedicated spending account, and that spending account's own variable
+    purchases, must not be amount-clustered together merely because they
+    share a payee name; and an incidental same-day double purchase within
+    the spending account must not fragment it further (FR-32a, revised)."""
+    config = _make_config(min_occurrences=2)
+    start = date(2026, 1, 1)
+    transfer = [
+        _transaction(
+            start + timedelta(days=31 * i),
+            "12000.00",
+            "ICA",
+            "Mat och hushåll",
+            source_name="SEB Räkningskonto",
+        )
+        for i in range(4)
+    ]
+    purchase_amounts = ["588.30", "664.39", "732.72", "76.53", "102.93"]
+    purchases = [
+        _transaction(
+            start + timedelta(days=10 * i),
+            amount,
+            "ICA",
+            "Mat och hushåll",
+            source_name="ICA-banken Matkonto",
+        )
+        for i, amount in enumerate(purchase_amounts)
+    ]
+    # one incidental same-day double purchase that must not fragment the group
+    purchases.append(
+        _transaction(
+            start + timedelta(days=10),
+            "40.00",
+            "ICA",
+            "Mat och hushåll",
+            source_name="ICA-banken Matkonto",
+        )
+    )
+
+    patterns = identify_recurring(transfer + purchases, config)
+
+    assert len(patterns) == 2
+    by_source = {p.source_account_name: p for p in patterns}
+    assert by_source["SEB Räkningskonto"].occurrences == 4
+    assert by_source["SEB Räkningskonto"].amount_mean == 12000.00
+    assert by_source["SEB Räkningskonto"].source_account_varies is False
+    # 5 billing events: the day-10 incidental double purchase collapses (FR-33a)
+    # into the same-date purchase rather than adding a 6th event
+    assert by_source["ICA-banken Matkonto"].occurrences == 5
+    assert by_source["ICA-banken Matkonto"].source_account_varies is False
 
 
 # ---------------------------------------------------------------------------
@@ -453,14 +583,15 @@ def test_split_into_amount_clusters_no_split_without_co_occurrence() -> None:
 
 
 def test_split_into_amount_clusters_splits_on_co_occurring_amounts() -> None:
-    """Two differing amounts on the same date reveal genuinely parallel
-    charges (e.g. two subscriptions billed through the same merchant); other
-    transactions are assigned to whichever cluster's mean is closest."""
+    """Two differing amounts co-occurring on more than one date reveal
+    genuinely parallel, recurring charges (e.g. two subscriptions billed
+    through the same merchant); other transactions are assigned to whichever
+    cluster's mean is closest (FR-32a, corroborated split)."""
     transactions = [
         _transaction(date(2026, 1, 1), "10.00", "Payee", None),
         _transaction(date(2026, 1, 1), "25.00", "Payee", None),
         _transaction(date(2026, 2, 1), "11.00", "Payee", None),
-        _transaction(date(2026, 3, 1), "26.00", "Payee", None),
+        _transaction(date(2026, 2, 1), "26.00", "Payee", None),
     ]
 
     clusters = _split_into_amount_clusters(transactions, tolerance=0.15)
@@ -468,6 +599,38 @@ def test_split_into_amount_clusters_splits_on_co_occurring_amounts() -> None:
     assert len(clusters) == 2
     assert sorted(float(t["amount"]) for t in clusters[0]) == [10.00, 11.00]
     assert sorted(float(t["amount"]) for t in clusters[1]) == [25.00, 26.00]
+
+
+def test_split_into_amount_clusters_single_co_occurrence_date_is_not_corroborated() -> None:
+    """Regression for "ICA": a single day's coincidental extra charge must
+    not fragment an otherwise coherent group merely because it happens to
+    land on the same date as another transaction (FR-32a, revised)."""
+    transactions = [
+        _transaction(date(2026, 1, 1), "10.00", "Payee", None),
+        _transaction(date(2026, 1, 1), "25.00", "Payee", None),
+        _transaction(date(2026, 2, 1), "40.00", "Payee", None),
+        _transaction(date(2026, 3, 1), "60.00", "Payee", None),
+    ]
+
+    clusters = _split_into_amount_clusters(transactions, tolerance=0.15)
+
+    assert len(clusters) == 1
+    assert len(clusters[0]) == 4
+
+
+def test_split_into_amount_clusters_non_matching_signatures_do_not_corroborate() -> None:
+    """Two co-occurrence dates whose amounts fall into different, unrelated
+    cluster pairs do not corroborate each other."""
+    transactions = [
+        _transaction(date(2026, 1, 1), "10.00", "Payee", None),
+        _transaction(date(2026, 1, 1), "25.00", "Payee", None),
+        _transaction(date(2026, 2, 1), "10.00", "Payee", None),
+        _transaction(date(2026, 2, 1), "60.00", "Payee", None),
+    ]
+
+    clusters = _split_into_amount_clusters(transactions, tolerance=0.15)
+
+    assert len(clusters) == 1
 
 
 def test_split_into_amount_clusters_tolerance_is_configurable() -> None:
@@ -485,22 +648,24 @@ def test_split_into_amount_clusters_tolerance_is_configurable() -> None:
     assert len(wide) == 1  # gap 2.0 <= 30% of 10.00
 
 
-def test_split_into_amount_clusters_below_threshold_seed_absorbs_no_extra_members() -> None:
-    """When a co-occurrence seed cluster only ever has one member (its own
-    co-occurrence transaction), it stays a small, distinct cluster rather than
-    being merged into the larger one."""
+def test_split_into_amount_clusters_corroborated_split_keeps_small_cluster_distinct() -> None:
+    """Once corroborated (the same cluster-pair signature recurs across two
+    dates), a smaller resulting cluster stays distinct rather than being
+    merged into the larger one."""
     transactions = [
         _transaction(date(2026, 1, 1), "10.00", "Payee", None),
         _transaction(date(2026, 1, 1), "25.00", "Payee", None),
         _transaction(date(2026, 2, 1), "10.00", "Payee", None),
+        _transaction(date(2026, 2, 1), "25.00", "Payee", None),
         _transaction(date(2026, 3, 1), "10.00", "Payee", None),
+        _transaction(date(2026, 4, 1), "10.00", "Payee", None),
     ]
 
     clusters = _split_into_amount_clusters(transactions, tolerance=0.15)
 
     assert len(clusters) == 2
     sizes = sorted(len(c) for c in clusters)
-    assert sizes == [1, 3]
+    assert sizes == [2, 4]
 
 
 @given(
@@ -649,19 +814,44 @@ def test_amount_for_name_set_when_multiple_clusters_qualify() -> None:
     assert by_amount[25.00].amount_for_name == "25.00"
 
 
-def test_below_threshold_cluster_does_not_produce_pattern_or_disambiguation() -> None:
-    """A co-occurrence seed with only one member ends up in its own cluster
-    (per FR-32a's nearest-mean assignment) but fails min_occurrences on its
-    own and is dropped, leaving the well-populated cluster as the sole
-    pattern with no amount disambiguation."""
+def test_single_uncorroborated_co_occurrence_is_absorbed_not_split() -> None:
+    """Regression for "ICA": a single day's coincidental double purchase
+    (only one co-occurrence date) is not corroborated (FR-32a, revised) and
+    must not fragment an otherwise coherent group into a spurious
+    low-confidence extra pattern; all transactions stay in one pattern."""
     config = _make_config(min_occurrences=2)
+    start = date(2026, 1, 1)
+    transactions = [
+        _transaction(start, "10.00", "Apple", None),
+        _transaction(start, "25.00", "Apple", None),
+        _transaction(start + timedelta(days=30), "10.00", "Apple", None),
+        _transaction(start + timedelta(days=60), "10.00", "Apple", None),
+    ]
+
+    patterns = identify_recurring(transactions, config)
+
+    assert len(patterns) == 1
+    assert patterns[0].amount_for_name is None
+    # 3 billing events: the day-0 co-occurring pair collapses (FR-33a) into
+    # one combined-outflow event rather than seeding a second pattern
+    assert patterns[0].occurrences == 3
+    assert patterns[0].amount_mean == pytest.approx((35 + 10 + 10) / 3)
+
+
+def test_corroborated_cluster_still_respects_min_occurrences() -> None:
+    """A corroborated amount cluster (FR-32a) that nonetheless falls below
+    `MIN_OCCURRENCES` is dropped, leaving only the well-populated cluster as
+    a pattern with no amount disambiguation."""
+    config = _make_config(min_occurrences=3)
     start = date(2026, 1, 1)
     co_occurrence = [
         _transaction(start, "10.00", "Apple", None),
         _transaction(start, "25.00", "Apple", None),
+        _transaction(start + timedelta(days=30), "10.00", "Apple", None),
+        _transaction(start + timedelta(days=30), "25.00", "Apple", None),
     ]
     more_of_the_common_amount = [
-        _transaction(start + timedelta(days=30 * i), "10.00", "Apple", None) for i in range(1, 3)
+        _transaction(start + timedelta(days=30 * i), "10.00", "Apple", None) for i in range(2, 4)
     ]
 
     patterns = identify_recurring(co_occurrence + more_of_the_common_amount, config)
@@ -669,7 +859,7 @@ def test_below_threshold_cluster_does_not_produce_pattern_or_disambiguation() ->
     assert len(patterns) == 1
     assert patterns[0].amount_for_name is None
     assert patterns[0].amount_mean == 10.00
-    assert patterns[0].occurrences == 3
+    assert patterns[0].occurrences == 4
 
 
 def test_same_day_transactions_collapse_for_interval_calculation() -> None:
@@ -693,15 +883,17 @@ def test_same_day_transactions_collapse_for_interval_calculation() -> None:
     assert pattern.amount_mean == 552.00  # summed per billing event
 
 
-def test_source_account_resolution_uses_pre_collapse_transactions() -> None:
+def test_source_account_resolved_after_billing_event_collapse() -> None:
+    """FR-30a continues to resolve the source account correctly even when
+    same-date transactions collapse into billing events (FR-33a). Since
+    FR-32d already partitions by source account before clustering, the
+    cluster's pre-collapse transactions are always a single, unambiguous
+    account by construction."""
     config = _make_config(min_occurrences=2)
     start = date(2026, 1, 2)
     transactions = [
         _transaction(start, "276.00", "SEB", "Försäkring", source_name="Checking"),
-        _transaction(start, "276.00", "SEB", "Försäkring", source_name="Savings"),
-        _transaction(
-            start + timedelta(days=31), "276.00", "SEB", "Försäkring", source_name="Checking"
-        ),
+        _transaction(start, "276.00", "SEB", "Försäkring", source_name="Checking"),
         _transaction(
             start + timedelta(days=31), "276.00", "SEB", "Försäkring", source_name="Checking"
         ),
@@ -711,8 +903,8 @@ def test_source_account_resolution_uses_pre_collapse_transactions() -> None:
 
     assert len(patterns) == 1
     assert patterns[0].source_account_name == "Checking"
-    assert patterns[0].source_account_varies is True
-    assert patterns[0].occurrences == 2  # 2 billing events despite 4 raw transactions
+    assert patterns[0].source_account_varies is False
+    assert patterns[0].occurrences == 2  # 2 billing events despite 3 raw transactions
 
 
 def test_amount_cluster_tolerance_affects_clustering() -> None:
