@@ -1,6 +1,6 @@
 # Requirements Specification: Firefly III Bills Analyzer
 
-**Version:** 0.2.6
+**Version:** 0.2.8
 **Date:** 2026-07-11
 **Status:** Draft, pending owner confirmation of items marked TBD (see Open Items)
 
@@ -221,6 +221,33 @@ The use cases are informative. They describe intended flows and provide context 
 
 ---
 
+### UC8: Calibrate performance benchmark against real transaction data
+
+**Actor:** Developer
+**Precondition:** `FIREFLY_URL`/`FIREFLY_TOKEN` are configured (FR-10) and point
+to a real Firefly III instance with transaction history
+**Primary flow:**
+
+1. Developer runs a dedicated, opt-in script against their own Firefly III
+   instance
+2. The script fetches the user's real withdrawal transactions for the
+   configured lookback window (reusing `fetcher.fetch_transactions`)
+3. The script runs `identify_recurring()` against the real dataset and
+   measures elapsed time and transaction count, the same way TASK-009's
+   synthetic benchmark does
+4. The script reports the real transaction volume and elapsed time, for
+   comparison against TASK-009's synthetic results, so NFR-05's provisional
+   reference volume can be confirmed or revised against real-world data
+
+**Notes:**
+
+- Not part of `make test` or `make benchmark` (TASK-009's synthetic benchmark
+  stays credential-free and CI-safe); this is a separate, manual, opt-in
+  developer tool
+- Read-only: it must not create, modify, or delete any data in Firefly III
+
+---
+
 ## Functional Requirements
 
 Requirements follow EARS-style patterns with the system (or subsystem) as active subject. Decomposed requirements retain the original ID with an a/b suffix. Trace column references the use case each requirement is derived from.
@@ -264,6 +291,7 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-26a | The `firefly-python-api` package shall read `FIREFLY_URL` and `FIREFLY_TOKEN` from environment variables or from a `.env` file; environment variables shall take precedence, per the same rule as FR-10 | — |
 | FR-26b | The `firefly-python-api` package shall expose a `FireflyClient` class that provides a configured `requests.Session` | — |
 | FR-27  | When the application classifies recurring payment patterns, the application shall compute the confidence score as 0.4 × occurrence score + 0.4 × regularity score + 0.2 × amount score + category boost − uncategorized penalty, and shall clamp the result to the range [0.0, 1.0], where uncategorized penalty equals `UNCATEGORIZED_CONFIDENCE_PENALTY` when the pattern's category is absent and `UNCATEGORIZED_BEHAVIOR` is `neutral`, else 0 | UC2 |
+| FR-28  | Upon developer request, a dedicated opt-in script shall fetch the user's real withdrawal transactions from the configured Firefly III instance, run `identify_recurring()` against them, and report the real transaction count and elapsed time, without creating, modifying, or deleting any data in Firefly III | UC8 |
 
 ---
 
@@ -275,7 +303,7 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | NFR-02  | The application shall use no external runtime dependencies other than `requests`, `python-dotenv`, and the selected web framework (`Flask` or `FastAPI`) **[FRAMEWORK TBD: select one; see Open Items]** | — |
 | NFR-03  | When a Firefly III API response is paginated, the application shall fetch all pages and aggregate the results before returning them to the caller | UC1 |
 | NFR-04  | If a common error (see Definitions) occurs, then the application shall display an error message that states the cause of the error, and shall not include a stack trace in the message | UC1 |
-| NFR-05  | When the user starts an analysis of 24 months of transaction data (reference volume: **[VALUE TBD]** transactions), the application shall complete the analysis within 60 seconds | UC2 |
+| NFR-05  | When the user starts an analysis of 24 months of transaction data (reference volume: **20,000** transactions — provisional, see TASK-009's benchmark; pending confirmation against real user data), the application shall complete the analysis within 60 seconds | UC2 |
 | NFR-06  | The web UI shall load all of its assets from the local web server and shall not fetch any asset from an external CDN | UC3 |
 | NFR-07a | The web server shall listen on the port configured via `WEB_PORT`, with a default port of 5000 | — |
 | NFR-07b | The web server shall bind to the address configured via `WEB_HOST`, with a default bind address of `127.0.0.1`, including support for the value `0.0.0.0` | — |
@@ -426,12 +454,33 @@ Decisions required from the requirement owner before this specification is basel
 | # | Item | Affected requirements |
 | --- | ---- | --------------------- |
 | 5 | Web framework selection: Flask or FastAPI — **deferred**: no task through TASK-009 touches `app.py` or a web framework, so this costs nothing to postpone. Open question behind it: is a web UI needed at all, given `--dry-run` + `EXPORT_FORMAT=csv` already covers category filtering (`.env`), cache clearing (`--clear-cache`), and reviewing suggestions in a spreadsheet? The concrete gap if the web UI is dropped is FR-17b's inline edit + an import-edited-CSV-back-into-the-app path, which is unspecified today. Revisit after the CLI (through TASK-009) has been used in practice | NFR-02 |
-| 6 | Reference transaction volume for the 60-second performance bound — **deferred**: cannot be set credibly by guessing; TASK-009 measures elapsed time across a range of synthetic dataset sizes and resolves this item from the results | NFR-05 |
 | 8 | Confirm obligation levels raised or made explicit during review (all reformulated requirements use "shall"). Known candidates flagged so far: FR-21/22/23/NFR-09 (cache — see TASK-007's note, motivated by web UI polling, not a one-shot CLI run), and NFR-06 (no external CDN — only meaningful once a web UI task exists; no task covers it yet, so no task-file reminder has been written — re-flag this when a web UI task is created, contingent on Open Item #5) | All |
+| 9 | NFR-05's reference volume (20,000 transactions) was set from TASK-009's synthetic benchmark only, disconnected from any real Firefly III instance — **deferred**: a new follow-up task (UC8/FR-28) will run the same benchmark against a developer's real transaction history so the value can be confirmed or revised against real-world volume and distribution | NFR-05 |
 
 ---
 
 ## Changelog
+
+### 0.2.8 (2026-07-11)
+
+- Added UC8 and FR-28: a new, opt-in, credential-requiring developer script
+  (planned as TASK-010) will run the same recurring-payment analysis against
+  a developer's real Firefly III transaction history to calibrate NFR-05's
+  reference volume, which TASK-009 could only establish from synthetic data.
+  Read-only — never creates, modifies, or deletes Firefly III data. Added
+  Open Item #9 to track this.
+
+### 0.2.7 (2026-07-11)
+
+- Open Item #6 resolved: TASK-009's benchmark (`tests/benchmark_analyzer.py`,
+  run via `make benchmark`) measured `identify_recurring()` elapsed time
+  across synthetic 24-month datasets of 500, 2,000, 5,000, 10,000, and 20,000
+  transactions (a 70/30 mix of recurring payees and non-recurring noise). The
+  largest size, 20,000 transactions, completed in ~0.10s — far under the
+  60-second bound. NFR-05's `[VALUE TBD]` is now **20,000**, framed as a
+  provisional reference volume pending confirmation against real user data;
+  the current headroom suggests the bound itself may be worth revisiting once
+  real-world volumes are known.
 
 ### 0.2.6 (2026-07-11)
 

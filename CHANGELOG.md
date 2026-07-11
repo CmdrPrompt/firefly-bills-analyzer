@@ -39,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bill names now include the payee's resolved category, e.g. `"Netflix (Subscriptions)"`,
   when a majority category was found (FR-13b); duplicate-bill matching compares
   against this category-aware name. (TASK-008)
+- Automated performance benchmark for `analyzer.identify_recurring` (NFR-05),
+  run via `make benchmark`: measures elapsed time across synthetic 24-month
+  datasets of 500 to 20,000 transactions, prints a summary table, writes
+  `benchmark_results.json`, and fails if the largest dataset exceeds the
+  60-second bound. At 20,000 transactions the analysis completed in ~0.10s.
+  (TASK-009)
 
 ## [0.1.0] - 2026-03-27
 
