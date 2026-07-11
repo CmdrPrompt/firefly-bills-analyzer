@@ -36,6 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   values; a server-side name-uniqueness rejection (HTTP 422) is also reported as
   "already exists". Dry-run mode skips all writes; `irregular` patterns are skipped
   unless explicitly forced. (TASK-004)
+- Bill names now include the payee's resolved category, e.g. `"Netflix (Subscriptions)"`,
+  when a majority category was found (FR-13b); duplicate-bill matching compares
+  against this category-aware name. (TASK-008)
 
 ## [0.1.0] - 2026-03-27
 
