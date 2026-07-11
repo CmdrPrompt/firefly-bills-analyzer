@@ -141,6 +141,11 @@ or Firefly III's split-transaction structure.
   `amount: str`, `destination_name: str | None`, `category_name: str | None` — the latter
   two default to `None` when absent from the API response.
 - UC-006-4: `TransactionRead` is exported from `firefly_python_api`.
+- UC-006-5: `TransactionRead` additionally carries `source_name: str | None` and
+  `source_id: str | None` — the split's source account (the account funds are
+  drawn from), needed by consumers to plan balance transfers ahead of recurring
+  withdrawals. Both default to `None` when absent from the API response, per
+  the same rule as `destination_name`/`category_name` (UC-006-3).
 
 ### Constraints
 

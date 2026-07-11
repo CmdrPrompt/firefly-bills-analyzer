@@ -104,8 +104,19 @@ attributes to `FireflyConnectionError`, populated by `_post_expect` (used by `cr
 whenever the response status falls outside the expected set — `status_code` from
 `response.status_code`, `response_body` from `response.json()` (swallowed to `None` on a
 non-JSON body). `_get`/`_post` and their callers (`create_transaction`, all `get_*` methods)
-are untouched, so both attributes stay `None` there, matching prior behavior. 81 tests pass,
+are untouched, so both attributes stay `None` there, matching prior behavior. 82 tests pass,
 100% coverage on `src/`, `mypy --strict` and `make lint` clean.
+
+**Workflow Guardian verification notes:** independently re-ran `make test`/`mypy --strict`/
+`make lint` rather than trusting the reported figures at face value. Test Design Reviewer
+scored the added test suite 8.2/10 (Farley Index) and flagged one real (non-cosmetic) gap:
+the already-checked acceptance criterion "existing `_get`/`_post` callers are unaffected" was
+only verified for the `_get` path (via `get_bills()`); the `_post` path (`create_transaction()`)
+had no equivalent regression test. Added `test_post_caller_leaves_attributes_none` (renamed
+the existing test to `test_get_caller_leaves_attributes_none` for symmetry) to close the gap
+before accepting the criterion as verified — 82 tests total (was 81), still 100% coverage. Two
+other reviewer findings (422/500 path redundancy, `ValueError` vs. real
+`requests.JSONDecodeError` mock fidelity) were judged stylistic/non-blocking and left as-is.
 **Files changed:**
 
 - `src/firefly_python_api/_exceptions.py` — modified
