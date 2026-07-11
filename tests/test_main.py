@@ -6,12 +6,14 @@ from __future__ import annotations
 
 import os
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Iterator
 from unittest.mock import MagicMock, patch
 
 import pytest
 from firefly_python_api import TransactionRead
 
+from firefly_bills_analyzer import cache as cache_module
 from firefly_bills_analyzer.__main__ import _format_suggestion, main
 from firefly_bills_analyzer.analyzer import RecurringPattern
 from firefly_bills_analyzer.bills_creator import BillOutcome
@@ -226,12 +228,17 @@ class TestDryRun:
 
 
 class TestClearCache:
-    def test_is_a_noop_with_informational_message(self, capsys: pytest.CaptureFixture) -> None:
-        with _pipeline():
+    def test_clears_cache_directory_and_prints_confirmation(
+        self, capsys: pytest.CaptureFixture, tmp_path: Path
+    ) -> None:
+        cache_module.write("transactions", [1, 2, 3], tmp_path)
+
+        with _pipeline(env={"CACHE_DIR": str(tmp_path)}):
             code = main(["--clear-cache", "--auto-approve"])
 
         assert code == 0
-        assert "caching" in capsys.readouterr().out.lower()
+        assert cache_module.read("transactions", 3600, tmp_path) is None
+        assert str(tmp_path) in capsys.readouterr().out
 
 
 class TestBillOutcomesPrinted:

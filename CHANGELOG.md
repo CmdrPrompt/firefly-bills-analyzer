@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- TTL-aware disk cache for transactions and bills (`cache.py`), cutting
+  repeated local `--dry-run` runs against a real Firefly III instance from
+  minutes (paginated live fetch) down to under a second on a cache hit.
+  Transactions are cached per lookback window (changing `LOOKBACK_MONTHS`
+  is never served stale-window data); the bills cache is invalidated
+  immediately after creating a bill. `--clear-cache` now actually deletes
+  cached data instead of printing a no-op message. (TASK-007)
+
 - Recurring-payment identification now splits a payee's transactions into
   separate patterns when they reveal genuinely parallel simultaneous charges
   billed through the same merchant or payee name (e.g. two subscriptions, or

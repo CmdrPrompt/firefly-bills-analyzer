@@ -5,11 +5,13 @@ from __future__ import annotations
 import calendar
 import logging
 from datetime import date
+from pathlib import Path
 from typing import cast
 
 from firefly_python_api import FireflyClient, FireflyConnectionError, TransactionRead
 from tqdm import tqdm
 
+from firefly_bills_analyzer import cache
 from firefly_bills_analyzer.config import Config
 
 logger = logging.getLogger(__name__)
@@ -52,6 +54,17 @@ def fetch_transactions(config: Config) -> list[TransactionRead]:
     start_str = start.strftime("%Y-%m-%d")
     end_str = end.strftime("%Y-%m-%d")
 
+    cache_dir = Path(config.cache_dir)
+    cached = cache.read("transactions", config.cache_ttl_transactions, cache_dir)
+    if cached is not None and cached["start"] == start_str and cached["end"] == end_str:
+        logger.debug(
+            "Using cached transactions for %s..%s (%d transaction(s))",
+            start_str,
+            end_str,
+            len(cached["transactions"]),
+        )
+        return cast(list[TransactionRead], cached["transactions"])
+
     client = FireflyClient(config.firefly_url, config.firefly_token)
 
     logger.debug("Calling get_withdrawal_transactions(%s, %s)", start_str, end_str)
@@ -69,4 +82,9 @@ def fetch_transactions(config: Config) -> list[TransactionRead]:
         raise SystemExit(f"Could not fetch transactions from Firefly III: {exc}") from exc
 
     logger.debug("get_withdrawal_transactions succeeded: %d transaction(s)", len(transactions))
+    cache.write(
+        "transactions",
+        {"start": start_str, "end": end_str, "transactions": transactions},
+        cache_dir,
+    )
     return cast(list[TransactionRead], transactions)

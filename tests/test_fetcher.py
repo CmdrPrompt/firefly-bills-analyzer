@@ -1,10 +1,12 @@
 import logging
 from datetime import date
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 from firefly_python_api import FireflyConnectionError, TransactionRead
 
+from firefly_bills_analyzer import cache
 from firefly_bills_analyzer.config import Config
 from firefly_bills_analyzer.fetcher import fetch_transactions
 
@@ -38,7 +40,7 @@ def _make_config(**overrides: object) -> Config:
     return Config(**base)  # type: ignore[arg-type]
 
 
-def test_happy_path_returns_transactions() -> None:
+def test_happy_path_returns_transactions(tmp_path: Path) -> None:
     expected: list[TransactionRead] = [
         TransactionRead(
             date="2026-01-01",
@@ -49,24 +51,24 @@ def test_happy_path_returns_transactions() -> None:
     ]
     with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
         mock_client_cls.return_value.get_withdrawal_transactions.return_value = expected
-        result = fetch_transactions(_make_config())
+        result = fetch_transactions(_make_config(cache_dir=str(tmp_path)))
 
     assert result == expected
     mock_client_cls.assert_called_once_with("https://firefly.example.com", "tok")
 
 
-def test_start_and_end_dates_derived_from_lookback_months() -> None:
+def test_start_and_end_dates_derived_from_lookback_months(tmp_path: Path) -> None:
     with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
         mock_client_cls.return_value.get_withdrawal_transactions.return_value = []
         with patch("firefly_bills_analyzer.fetcher._today", return_value=date(2026, 7, 10)):
-            fetch_transactions(_make_config(lookback_months=24))
+            fetch_transactions(_make_config(lookback_months=24, cache_dir=str(tmp_path)))
 
     args, kwargs = mock_client_cls.return_value.get_withdrawal_transactions.call_args
     assert args == ("2024-07-10", "2026-07-10")
     assert callable(kwargs["on_page"])
 
 
-def test_on_page_callback_drives_progress_bar() -> None:
+def test_on_page_callback_drives_progress_bar(tmp_path: Path) -> None:
     def fake_get_withdrawal_transactions(
         start: str, end: str, on_page: object = None
     ) -> list[object]:
@@ -83,13 +85,13 @@ def test_on_page_callback_drives_progress_bar() -> None:
         with patch("firefly_bills_analyzer.fetcher.tqdm") as mock_tqdm:
             bar = mock_tqdm.return_value.__enter__.return_value
             bar.total = None  # real tqdm starts with total=None when not passed at construction
-            fetch_transactions(_make_config())
+            fetch_transactions(_make_config(cache_dir=str(tmp_path)))
 
     assert bar.total == 3
     assert bar.update.call_count == 3
 
 
-def test_progress_bar_total_set_only_once() -> None:
+def test_progress_bar_total_set_only_once(tmp_path: Path) -> None:
     def fake_get_withdrawal_transactions(
         start: str, end: str, on_page: object = None
     ) -> list[object]:
@@ -104,35 +106,129 @@ def test_progress_bar_total_set_only_once() -> None:
         with patch("firefly_bills_analyzer.fetcher.tqdm") as mock_tqdm:
             bar = mock_tqdm.return_value.__enter__.return_value
             bar.total = None
-            fetch_transactions(_make_config())
+            fetch_transactions(_make_config(cache_dir=str(tmp_path)))
 
     assert bar.total == 2
 
 
-def test_empty_result_returns_empty_list() -> None:
+def test_empty_result_returns_empty_list(tmp_path: Path) -> None:
     with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
         mock_client_cls.return_value.get_withdrawal_transactions.return_value = []
-        result = fetch_transactions(_make_config())
+        result = fetch_transactions(_make_config(cache_dir=str(tmp_path)))
 
     assert result == []
 
 
-def test_connection_error_exits_with_human_readable_message() -> None:
+def test_connection_error_exits_with_human_readable_message(tmp_path: Path) -> None:
     with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
         mock_client_cls.return_value.get_withdrawal_transactions.side_effect = (
             FireflyConnectionError("GET /api/v1/transactions failed: connection refused")
         )
         with pytest.raises(SystemExit) as exc_info:
-            fetch_transactions(_make_config())
+            fetch_transactions(_make_config(cache_dir=str(tmp_path)))
 
     assert exc_info.value.code != 0
     assert "connection refused" in str(exc_info.value)
 
 
-def test_logs_api_call_outcome_at_debug_level(caplog: pytest.LogCaptureFixture) -> None:
+def test_logs_api_call_outcome_at_debug_level(
+    caplog: pytest.LogCaptureFixture, tmp_path: Path
+) -> None:
     with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
         mock_client_cls.return_value.get_withdrawal_transactions.return_value = []
         with caplog.at_level(logging.DEBUG, logger="firefly_bills_analyzer.fetcher"):
-            fetch_transactions(_make_config())
+            fetch_transactions(_make_config(cache_dir=str(tmp_path)))
 
     assert any("get_withdrawal_transactions" in record.message for record in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# Cache-aware fetching (TASK-007, FR-21/22)
+# ---------------------------------------------------------------------------
+
+
+def test_cache_hit_skips_api_call(tmp_path: Path) -> None:
+    with patch("firefly_bills_analyzer.fetcher._today", return_value=date(2026, 7, 10)):
+        config = _make_config(lookback_months=24, cache_dir=str(tmp_path))
+        cache.write(
+            "transactions",
+            {
+                "start": "2024-07-10",
+                "end": "2026-07-10",
+                "transactions": [
+                    TransactionRead(
+                        date="2026-01-01",
+                        amount="9.99",
+                        destination_name="Netflix",
+                        category_name=None,
+                    )
+                ],
+            },
+            tmp_path,
+        )
+
+        with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
+            result = fetch_transactions(config)
+
+    mock_client_cls.assert_not_called()
+    assert result == [
+        TransactionRead(
+            date="2026-01-01", amount="9.99", destination_name="Netflix", category_name=None
+        )
+    ]
+
+
+def test_cache_miss_fetches_live_and_writes_cache(tmp_path: Path) -> None:
+    expected: list[TransactionRead] = [
+        TransactionRead(
+            date="2026-01-01", amount="9.99", destination_name="Netflix", category_name=None
+        )
+    ]
+    with patch("firefly_bills_analyzer.fetcher._today", return_value=date(2026, 7, 10)):
+        config = _make_config(lookback_months=24, cache_dir=str(tmp_path))
+        with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
+            mock_client_cls.return_value.get_withdrawal_transactions.return_value = expected
+            result = fetch_transactions(config)
+
+    assert result == expected
+    mock_client_cls.assert_called_once()
+    cached = cache.read("transactions", config.cache_ttl_transactions, tmp_path)
+    assert cached == {"start": "2024-07-10", "end": "2026-07-10", "transactions": expected}
+
+
+def test_stale_cache_triggers_live_fetch(tmp_path: Path) -> None:
+    with patch("firefly_bills_analyzer.fetcher._today", return_value=date(2026, 7, 10)):
+        config = _make_config(
+            lookback_months=24, cache_dir=str(tmp_path), cache_ttl_transactions=3600
+        )
+        with patch("firefly_bills_analyzer.cache.time.time", return_value=1_000_000.0):
+            cache.write(
+                "transactions",
+                {"start": "2024-07-10", "end": "2026-07-10", "transactions": []},
+                tmp_path,
+            )
+
+        with patch("firefly_bills_analyzer.cache.time.time", return_value=1_000_000.0 + 3601):
+            with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
+                mock_client_cls.return_value.get_withdrawal_transactions.return_value = []
+                fetch_transactions(config)
+
+    mock_client_cls.assert_called_once()
+
+
+def test_cache_for_different_window_is_ignored(tmp_path: Path) -> None:
+    """A cache entry for a different lookback window must not be served, since
+    it does not answer the current query."""
+    with patch("firefly_bills_analyzer.fetcher._today", return_value=date(2026, 7, 10)):
+        config = _make_config(lookback_months=24, cache_dir=str(tmp_path))
+        cache.write(
+            "transactions",
+            {"start": "2025-01-01", "end": "2025-12-31", "transactions": []},
+            tmp_path,
+        )
+
+        with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
+            mock_client_cls.return_value.get_withdrawal_transactions.return_value = []
+            fetch_transactions(config)
+
+    mock_client_cls.assert_called_once()

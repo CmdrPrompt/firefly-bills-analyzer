@@ -2,13 +2,16 @@
 
 ## Status
 
-deferred
+done
 
-**2026-07-11:** Deprioritized/skipped for the terminal-only MVP per resolution
-of Open Item #8 — caching was motivated by web UI polling (UC7), and the web
-UI itself is deferred (Open Item #5). TASK-005 proceeds without this task;
-`--clear-cache` is a no-op per amended FR-25. Revisit alongside Open Item #5
-if a web UI task is created.
+**2026-07-11:** Un-deferred per further resolution of Open Item #8 (spec
+v0.2.16). New motivation, independent of the web UI: repeated local
+development/test runs against a real Firefly III instance re-fetch the same
+paginated transaction history every time; a TTL-aware disk cache removes
+that cost for repeated `--dry-run` runs during development. Scope is
+unchanged from the original description below — transactions and bills
+caching only; categories/payees caching and the web UI's "Clear cache"
+button remain deferred, contingent on Open Item #5.
 
 ## Description
 
@@ -37,19 +40,9 @@ no effect — this task makes the flag functional by deleting cache files
 during startup (FR-25).
 
 **Depends on:** TASK-002 (`fetcher.py`) and TASK-004 (`bills_creator.py`),
-which this task makes cache-aware. Implement after TASK-008 and before
-TASK-005, so the final CLI wiring (TASK-005) assembles a pipeline where
-fetch, filter, analyze, create, and cache-clear are all already in place.
-
-**⚠ Open Item #8 (spec):** FR-21/22/23/NFR-09 are written as hard "shall"
-requirements, but the caching mechanism was originally motivated by the web
-UI's repeated polling (UC7's `/api/categories` and `/api/analyze` endpoints),
-not a one-shot CLI run. If the web UI ends up deferred or dropped
-(Open Item #5), confirm with the user whether this task is still worth
-building before TASK-005, or whether it should be deprioritized/skipped for
-the terminal-only MVP. Do not assume caching is mandatory here just because
-the spec says
-"shall" — that obligation level itself hasn't been individually confirmed.
+which this task makes cache-aware. TASK-005 (CLI wiring) already shipped
+without this task; `--clear-cache` upgrades from its current no-op to
+actually deleting cache files once this task lands.
 
 Covers UC7, FR-21, FR-22, FR-23, FR-25, NFR-09.
 
@@ -61,48 +54,87 @@ Covers UC7, FR-21, FR-22, FR-23, FR-25, NFR-09.
 
 ## Acceptance criteria
 
-- [ ] `src/firefly_bills_analyzer/cache.py` exposes
+- [x] `src/firefly_bills_analyzer/cache.py` exposes
       `read(name: str, ttl_seconds: int, cache_dir: Path) -> Any | None`,
       returning `None` when the file is missing or its stored timestamp is
       older than `ttl_seconds`
-- [ ] `cache.py` exposes `write(name: str, data: Any, cache_dir: Path) -> None`,
+- [x] `cache.py` exposes `write(name: str, data: Any, cache_dir: Path) -> None`,
       writing `data` plus a timestamp to `<cache_dir>/<name>.json`
-- [ ] `cache.py` exposes `invalidate(name: str, cache_dir: Path) -> None` and
+- [x] `cache.py` exposes `invalidate(name: str, cache_dir: Path) -> None` and
       `clear_all(cache_dir: Path) -> None`
-- [ ] `cache_dir` defaults to `config.cache_dir` and is created if it does not
-      exist; existing files are left untouched across restarts (NFR-09)
-- [ ] `fetcher.fetch_transactions` reads from the transactions cache when
-      fresh (`CACHE_TTL_TRANSACTIONS`) and writes to it after a live fetch
-- [ ] `bills_creator.create_bills` reads the bills list from cache when fresh
+- [x] `cache_dir` is `config.cache_dir` at every call site (`fetcher.py`,
+      `bills_creator.py`, `__main__.py`) and is created on write if it does
+      not exist; existing files are left untouched across restarts (NFR-09).
+      Deviation from the original description: `cache.py`'s own functions
+      require `cache_dir` explicitly rather than defaulting to
+      `config.cache_dir` internally, keeping the generic module decoupled
+      from `Config` — callers pass `Path(config.cache_dir)` instead
+- [x] `fetcher.fetch_transactions` reads from the transactions cache when
+      fresh (`CACHE_TTL_TRANSACTIONS`) and writes to it after a live fetch.
+      The cached entry also stores the `start`/`end` window and is ignored
+      (treated as a miss) if the configured lookback window no longer
+      matches, so changing `LOOKBACK_MONTHS` can't silently serve
+      wrong-range data
+- [x] `bills_creator.create_bills` reads the bills list from cache when fresh
       (`CACHE_TTL_BILLS`) instead of always calling `client.get_bills()`, and
       calls `cache.invalidate("bills", ...)` synchronously right after any
       successful bill creation, before returning that entry's `BillOutcome`
       (FR-23)
-- [ ] `__main__.py`'s `--clear-cache` flag calls `cache.clear_all()` on
+- [x] `__main__.py`'s `--clear-cache` flag calls `cache.clear_all()` on
       startup, before any fetch (FR-25)
-- [ ] `tests/test_cache.py` covers: fresh read, stale/expired read returning
-      `None`, missing-file read returning `None`, write-then-read round trip,
-      invalidate, and clear_all
-- [ ] `tests/test_fetcher.py` and `tests/test_bills_creator.py` gain cases for
-      the cache-hit path (no API call made) and cache-miss path
-- [ ] `make lint && make test` pass with coverage >= baseline
+- [x] `tests/test_cache.py` covers: fresh read, stale/expired read returning
+      `None`, exact-TTL-boundary read still fresh, missing-file read
+      returning `None`, corrupt-file read returning `None`, write-then-read
+      round trip, invalidate, and clear_all
+- [x] `tests/test_fetcher.py` and `tests/test_bills_creator.py` gain cases for
+      the cache-hit path (no API call made), cache-miss path, stale-cache
+      path, exact-TTL-boundary path, and (fetcher-specific) window-mismatch
+      path
+- [x] `make lint && make test` pass with coverage >= baseline
 
 ## Completion
 
-**Date:**
-**Summary:**
+**Date:** 2026-07-11
+**Summary:** Added `cache.py`, a generic TTL-aware JSON file cache
+(`read`/`write`/`invalidate`/`clear_all`) with no dependency on `Config`.
+Wired it into `fetcher.fetch_transactions` (transactions cache, keyed with
+the lookback window's start/end dates to avoid serving stale-window data)
+and `bills_creator.create_bills` (bills cache via a new `_get_bills_cached()`
+helper, invalidated synchronously right after a successful `create_bill()`
+call, per FR-23). `__main__.py`'s `--clear-cache` flag now actually deletes
+cache files instead of printing a no-op message. Verified against the real
+Firefly III instance: first run (cache miss) took ~2 minutes to fetch 45
+pages; second run (cache hit) took ~0.4 seconds — the development-velocity
+motivation behind un-deferring this task. Test Design Reviewer scored the
+task's test suite 9.1/10 on Farley's 8 properties; its two minor findings
+were fixed: a byte-identical duplicate test in `TestCategoryAwareNaming`
+was merged into one (with its intent folded into a comment), and an
+exact-TTL-boundary test was added for the bills cache specifically at the
+`create_bills()` call site (previously only covered generically in
+`test_cache.py`).
 **Files changed:**
 
 - `src/firefly_bills_analyzer/cache.py` — created
-- `src/firefly_bills_analyzer/fetcher.py` — modified (cache-aware fetch)
-- `src/firefly_bills_analyzer/bills_creator.py` — modified (cache-aware bills read + invalidation)
+- `src/firefly_bills_analyzer/fetcher.py` — modified (cache-aware fetch,
+  window-keyed)
+- `src/firefly_bills_analyzer/bills_creator.py` — modified (`_get_bills_cached()`
+  helper, cache-aware bills read + invalidation)
 - `src/firefly_bills_analyzer/__main__.py` — modified (`--clear-cache` wiring)
 - `tests/test_cache.py` — created
-- `tests/test_fetcher.py` — modified
-- `tests/test_bills_creator.py` — modified
+- `tests/test_fetcher.py` — modified (`tmp_path`-isolated `cache_dir` for all
+  tests; new cache-hit/miss/stale/window-mismatch tests)
+- `tests/test_bills_creator.py` — modified (`tmp_path`-isolated `cache_dir`
+  for all tests; new `TestBillsCache` class; merged a pre-existing duplicate
+  test)
+- `tests/test_main.py` — modified (`TestClearCache` now verifies actual
+  cache-clearing instead of the old no-op message)
 - `CHANGELOG.md` — modified
 - `docs/tasks/TASK-007-cache-layer.md` — modified
 - `docs/tasks/README.md` — modified (status)
+
+**Branch:** `git checkout task/007-cache-layer`
+**Stage:** `git add src/firefly_bills_analyzer/cache.py src/firefly_bills_analyzer/fetcher.py src/firefly_bills_analyzer/bills_creator.py src/firefly_bills_analyzer/__main__.py tests/test_cache.py tests/test_fetcher.py tests/test_bills_creator.py tests/test_main.py CHANGELOG.md docs/tasks/TASK-007-cache-layer.md docs/tasks/README.md`
+**Commit:** `git commit -m "Add TTL-aware disk cache for transactions and bills (TASK-007)"`
 
 **Branch:** `git checkout task/007-cache-layer`
 **Stage:** `git add src/firefly_bills_analyzer/cache.py src/firefly_bills_analyzer/fetcher.py src/firefly_bills_analyzer/bills_creator.py src/firefly_bills_analyzer/__main__.py tests/test_cache.py tests/test_fetcher.py tests/test_bills_creator.py CHANGELOG.md docs/tasks/TASK-007-cache-layer.md`
