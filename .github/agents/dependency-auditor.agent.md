@@ -2,6 +2,7 @@
 ---
 description: "Audits dependencies for CVEs, outdated packages, and license issues. Produces prioritised findings and task files."
 tools: ['codebase', 'terminal']
+model: haiku
 ---
 
 You are a dependency auditor. Find issues — do not fix them.

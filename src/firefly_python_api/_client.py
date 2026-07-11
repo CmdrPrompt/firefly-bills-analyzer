@@ -31,14 +31,17 @@ def _split_to_transaction_read(split: dict[str, Any]) -> TransactionRead:
     Returns
     -------
     TransactionRead
-        ``date`` truncated to ``YYYY-MM-DD``; ``destination_name`` and
-        ``category_name`` default to ``None`` when absent from ``split``.
+        ``date`` truncated to ``YYYY-MM-DD``; ``destination_name``,
+        ``category_name``, ``source_name`` and ``source_id`` default to
+        ``None`` when absent from ``split``.
     """
     return TransactionRead(
         date=split["date"][:10],
         amount=split["amount"],
         destination_name=split.get("destination_name"),
         category_name=split.get("category_name"),
+        source_name=split.get("source_name"),
+        source_id=split.get("source_id"),
     )
 
 
@@ -100,8 +103,14 @@ class FireflyClient:
         except requests.RequestException as exc:
             raise FireflyConnectionError(f"POST {endpoint} failed: {exc}") from exc
         if response.status_code not in expected_statuses:
+            try:
+                body = cast(dict[str, Any], response.json())
+            except ValueError:
+                body = None
             raise FireflyConnectionError(
-                f"POST {endpoint} failed: unexpected status {response.status_code}"
+                f"POST {endpoint} failed: unexpected status {response.status_code}",
+                status_code=response.status_code,
+                response_body=body,
             )
 
     # ------------------------------------------------------------------

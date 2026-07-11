@@ -315,6 +315,8 @@ class TestGetWithdrawalTransactions:
                                 "amount": "42.50",
                                 "destination_name": "Grocery Store",
                                 "category_name": "Groceries",
+                                "source_name": "Checking Account",
+                                "source_id": "7",
                             }
                         ]
                     }
@@ -339,6 +341,8 @@ class TestGetWithdrawalTransactions:
                 "amount": "42.50",
                 "destination_name": "Grocery Store",
                 "category_name": "Groceries",
+                "source_name": "Checking Account",
+                "source_id": "7",
             }
         ]
 
@@ -409,12 +413,16 @@ class TestGetWithdrawalTransactions:
                 "amount": "10.00",
                 "destination_name": "Shop A",
                 "category_name": "Misc",
+                "source_name": None,
+                "source_id": None,
             },
             {
                 "date": "2024-02-05",
                 "amount": "20.00",
                 "destination_name": "Shop B",
                 "category_name": "Misc",
+                "source_name": None,
+                "source_id": None,
             },
         ]
 
@@ -474,6 +482,8 @@ class TestGetWithdrawalTransactions:
                 "amount": "10.00",
                 "destination_name": None,
                 "category_name": None,
+                "source_name": None,
+                "source_id": None,
             }
         ]
 
@@ -536,6 +546,41 @@ class TestCreateBill:
             with pytest.raises(FireflyConnectionError):
                 client.create_bill(self._payload())
 
+    @pytest.mark.parametrize(
+        ("status_code", "body"),
+        [
+            pytest.param(
+                422,
+                {"message": "The name has already been taken.", "errors": {"name": ["dup"]}},
+                id="422-duplicate-name",
+            ),
+            pytest.param(500, {"message": "server error"}, id="500-generic-non-2xx"),
+        ],
+    )
+    def test_non_success_status_carries_status_code_and_response_body(
+        self, status_code: int, body: dict
+    ) -> None:
+        client = make_client()
+        resp = mock_response(body, status_code=status_code)
+        with patch.object(client.session, "post", return_value=resp):
+            with pytest.raises(FireflyConnectionError) as exc_info:
+                client.create_bill(self._payload())
+        assert exc_info.value.status_code == status_code
+        assert exc_info.value.response_body == body
+
+    def test_non_json_error_body_leaves_response_body_none(self):
+        client = make_client()
+        resp = MagicMock()
+        resp.status_code = 500
+        resp.json.side_effect = requests.exceptions.JSONDecodeError(
+            "Expecting value", "not json", 0
+        )
+        with patch.object(client.session, "post", return_value=resp):
+            with pytest.raises(FireflyConnectionError) as exc_info:
+                client.create_bill(self._payload())
+        assert exc_info.value.status_code == 500
+        assert exc_info.value.response_body is None
+
     def test_raises_on_other_non_success_status(self):
         client = make_client()
         with patch.object(client.session, "post", return_value=mock_response({}, status_code=204)):
@@ -547,6 +592,41 @@ class TestCreateBill:
         with patch.object(client.session, "post", side_effect=requests.ConnectionError("refused")):
             with pytest.raises(FireflyConnectionError):
                 client.create_bill(self._payload())
+
+    def test_connection_error_leaves_attributes_none(self):
+        client = make_client()
+        with patch.object(client.session, "post", side_effect=requests.ConnectionError("refused")):
+            with pytest.raises(FireflyConnectionError) as exc_info:
+                client.create_bill(self._payload())
+        assert exc_info.value.status_code is None
+        assert exc_info.value.response_body is None
+
+    def test_get_caller_leaves_attributes_none(self):
+        client = make_client()
+        resp = MagicMock()
+        resp.raise_for_status.side_effect = requests.HTTPError("500")
+        with patch.object(client.session, "get", return_value=resp):
+            with pytest.raises(FireflyConnectionError) as exc_info:
+                client.get_bills()
+        assert exc_info.value.status_code is None
+        assert exc_info.value.response_body is None
+
+    def test_post_caller_leaves_attributes_none(self):
+        client = make_client()
+        resp = MagicMock()
+        resp.raise_for_status.side_effect = requests.HTTPError("500")
+        with patch.object(client.session, "post", return_value=resp):
+            with pytest.raises(FireflyConnectionError) as exc_info:
+                client.create_transaction(
+                    {
+                        "type": "withdrawal",
+                        "date": "2024-03-15",
+                        "amount": "100.00",
+                        "description": "Test",
+                    }
+                )
+        assert exc_info.value.status_code is None
+        assert exc_info.value.response_body is None
 
     def test_repeat_freq_is_sent_without_validation(self):
         client = make_client()

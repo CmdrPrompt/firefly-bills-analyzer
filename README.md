@@ -1,73 +1,83 @@
-# firefly-bills-analyzer
+# firefly-python-api
 
-Analyzes your Firefly III transaction history to automatically identify recurring payments and create subscriptions (bills) via the Firefly III API. Designed for cash flow planning across the full year, including low-frequency bills such as quarterly and annual payments.
+Python client library for the [Firefly III](https://www.firefly-iii.org/) REST API.
 
-> **Status:** Under development. Not yet functional.
+Provides a shared HTTP layer with credential management and API coverage for
+accounts, transactions, and reporting resources. Designed to be used as a
+dependency by consumer projects such as `firefly-bank-importer` and
+`firefly-bills-analyzer`.
 
 ## Features
 
-- Detects recurring payments by grouping transactions per payee and analyzing frequency and amount patterns
-- Estimates recurrence as monthly, quarterly, half-yearly, or yearly
-- Assigns a confidence score to each suggestion based on pattern strength and category
-- Web UI for reviewing, adjusting, and approving suggestions before anything is written to Firefly III
-- Category-aware filtering: include or exclude transactions by Firefly III category, with optional confidence boost for known bill categories
-- Dry-run mode for reviewing suggestions without creating any bills
-- Export suggestions to CSV or JSON
-- Local disk cache to minimize API calls to Firefly III
-- CLI mode for scripted or automated use
+- `FireflyClient(url, token)` — authenticated `requests.Session` with correct
+  headers wired up automatically
+- `load_config(env_path)` — reads `FIREFLY_URL` and `FIREFLY_TOKEN` from
+  environment or a `.env` file
+- `FireflyClient.validate_connection()` — probes `/api/v1/about` and raises
+  `FireflyConnectionError` on failure
+- Account methods: `get_asset_accounts()` (paginated)
+- Transaction methods: `get_latest_transaction_date(account_id)`,
+  `create_transaction(payload)`
+- Reporting methods: `get_bills()`, `get_budgets()`,
+  `get_budget_limits(budget_id)`, `get_categories()`, `get_summary()`
 
 ## Requirements
 
-- Firefly III v6+ with REST API enabled and a Personal Access Token
-- Docker and Docker Compose
+- Python 3.11+
+- [uv](https://github.com/astral-sh/uv)
 
-## Subproject governance
+## Adding to a project (git subtree)
 
-The `lib/firefly-python-api` directory is a separate upstream repository:
-https://github.com/CmdrPrompt/firefly-python-api
+The recommended way to consume this library is as a git subtree. The library
+lives inside the consuming project at `libs/firefly-python-api/` and is
+referenced as a local path dependency — no PyPI publishing needed.
 
-Treat it as an independent project with its own requirements source, agent
-instructions, and workflow rules. Changes to the analyzer project should not
-implicitly rewrite governance files inside that subproject.
-
-## Getting started
+**Add (first time):**
 
 ```bash
-git clone https://github.com/CmdrPrompt/firefly-bills-analyzer.git 
-cd firefly-bills-analyzer
-cp .env.example .env
-# Edit .env with your Firefly III URL and token
-docker compose up -d
+git subtree add --prefix=libs/firefly-python-api \
+  https://github.com/CmdrPrompt/firefly-python-api main --squash
 ```
 
-Then open `http://localhost:5000` in your browser.
+**Reference in `pyproject.toml`:**
 
-## Configuration
+```toml
+[project]
+dependencies = [
+    "firefly-python-api",
+]
 
-All configuration is done via environment variables or a `.env` file. See `.env.example` for available options.
+[tool.uv.sources]
+firefly-python-api = { path = "libs/firefly-python-api" }
+```
 
-Key parameters:
-
-| Variable | Description | Default |
-|---|---|---|
-| `FIREFLY_URL` | Base URL of your Firefly III instance | *(required)* |
-| `FIREFLY_TOKEN` | Personal Access Token | *(required)* |
-| `LOOKBACK_MONTHS` | Months of transaction history to analyze | `24` |
-| `MIN_OCCURRENCES` | Minimum occurrences to classify as recurring | `2` |
-| `HIGH_CONFIDENCE_THRESHOLD` | Confidence threshold for auto-approval in CLI mode | `0.80` |
-| `WEB_PORT` | Port the web server listens on | `5000` |
-
-See `.env.example` for the full list.
-
-## CLI mode
+**Pull updates later:**
 
 ```bash
-docker compose run bills-analyzer python app.py --cli [--dry-run] [--auto-approve] [--clear-cache]
+git subtree pull --prefix=libs/firefly-python-api \
+  https://github.com/CmdrPrompt/firefly-python-api main --squash
 ```
 
-## TrueNAS Scale
+## Usage
 
-The container runs without modifications on TrueNAS Scale. If Firefly III is running as a separate container on the same NAS, set `FIREFLY_URL` to the NAS host IP (e.g. `http://192.168.1.x:8080`) or configure a shared Docker network in `docker-compose.yml`.
+```python
+from firefly_python_api import FireflyClient, load_config, FireflyConnectionError
+
+url, token = load_config(".env")
+client = FireflyClient(url, token)
+client.validate_connection()
+
+accounts = client.get_asset_accounts()
+```
+
+## Development
+
+```bash
+make install       # install dependencies and pre-commit hooks
+make test          # run tests with coverage
+make lint          # run ruff, mypy, bandit
+make help          # list all available targets
+```
 
 ## License
 

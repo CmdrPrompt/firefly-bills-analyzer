@@ -2,39 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
 ### Added
+- `FireflyClient(url, token)` wraps `requests.Session` with `Authorization: Bearer`, `Accept: application/json`, and `Content-Type: application/json` headers (TASK-001)
+- `FireflyClient.validate_connection()` verifies server reachability via `GET /api/v1/about`; raises `FireflyConnectionError` on network or HTTP failure (TASK-001)
+- `load_config(env_path)` reads `FIREFLY_URL` and `FIREFLY_TOKEN` from the environment or a `.env` file; raises `ValueError` when either value is absent (TASK-001)
+- `FireflyClient.get_asset_accounts()` fetches all asset accounts with automatic pagination (TASK-002)
+- `FireflyClient.get_latest_transaction_date(account_id)` returns the most recent transaction date as `YYYY-MM-DD` or `None` (TASK-002)
+- `FireflyClient.create_transaction(payload)` posts a transaction and raises `FireflyConnectionError` on failure (TASK-002)
+- `FireflyClient.get_bills()`, `get_budgets()`, `get_budget_limits(budget_id)`, `get_categories()`, and `get_summary(start, end)` provide read-only access to Firefly III reporting resources (TASK-002)
+- Read-only integration test suite (`make test-integration`) verified against a real Firefly III instance; credentials loaded from `config.json`/`secrets.json` or environment (TASK-003)
+- `TypedDict` types `AssetAccount`, `TransactionPayload`, `BillData`, `BudgetData`, `BudgetLimitData`, `CategoryData` exported from `firefly_python_api` for IDE code completion and `mypy` type checking (TASK-004)
+- `FireflyClient.get_withdrawal_transactions(start, end)` fetches all withdrawal transactions in a date range, following pagination automatically and flattening multi-split transactions into individual `TransactionRead` records (`date`, `amount`, `destination_name`, `category_name`) (TASK-005)
+- `FireflyClient.create_bill(payload)` registers a new recurring bill via `POST /api/v1/bills`, treating HTTP 200/201 as success and raising `FireflyConnectionError` on any other status (including a duplicate bill name) or network error; `BillPayload` `TypedDict` (`name`, `amount_min`, `amount_max`, `date`, `repeat_freq`, `active`) exported from `firefly_python_api` (TASK-006)
+- `FireflyConnectionError` raised by `create_bill()` on a non-2xx response now carries `status_code` and `response_body` (parsed JSON, or `None` for a non-JSON body or a network-level failure), letting callers distinguish a 422 duplicate-name rejection from other failures without re-parsing HTTP internals (TASK-007)
+- `TransactionRead` records returned by `get_withdrawal_transactions()` now also carry `source_name` and `source_id` (the account funds are withdrawn from), defaulting to `None` when absent from the API response, so consumers can plan balance transfers ahead of recurring withdrawals (TASK-010)
 
-- Python package `firefly_bills_analyzer` with `config.py` (loads all env vars with
-  typed defaults, raises `ConfigError` for missing required values) and `__main__.py`
-  (CLI entry-point with `--dry-run`, `--auto-approve`, `--clear-cache` flags). (TASK-001)
-- `python-dotenv` added as runtime dependency for automatic `.env` loading. (TASK-001)
-- `firefly-python-api` added as a git subtree under `lib/firefly-python-api/`. (TASK-001)
-- Fetch withdrawal transactions from Firefly III for the configured lookback window
-  (`fetcher.fetch_transactions`); connection failures exit with a human-readable
-  message instead of a stack trace, and all API calls are logged at DEBUG level. (TASK-002)
+### Changed
+- Test suite for `create_bill()`'s `status_code`/`response_body` exception attributes now asserts against the real `requests.exceptions.JSONDecodeError` (instead of a bare `ValueError`) for the non-JSON error body case, and consolidates the 422/500 non-success scenarios into one parametrized test with no loss of scenario traceability (TASK-008, TASK-009)
 
-## [0.1.0] - 2026-03-27
-
-### Added
-
-- Requirements specification covering UC1–UC7
-- UC1: fetch withdrawal transactions from Firefly III REST API (v1) for a configurable lookback period
-- UC2: identify recurring payment patterns per payee, estimating frequency (monthly, quarterly, half-yearly, yearly) and confidence score
-- UC3: review and approve suggestions via web UI with sortable table, inline editing of amount, frequency, and start date; CLI fallback with interactive y/n/a prompts and `--auto-approve` flag
-- UC4: create bills in Firefly III for approved suggestions, with duplicate detection and configurable amount margin
-- UC5: dry-run mode suppressing all writes to Firefly III; export of suggestions to CSV or JSON via web UI button or `EXPORT_FORMAT` env variable
-- UC6: category-based filtering via include/exclude lists and configurable confidence boost for transactions matching the include list; uncategorized transaction behavior configurable as include/exclude/neutral
-- UC7: file-based disk cache for categories, bills, transactions, and payees with per-dataset configurable TTL; immediate bills cache invalidation on bill creation; manual cache clear via web UI button and `--clear-cache` CLI flag
-- Single-page web UI served by built-in Flask or FastAPI HTTP server, with no external CDN dependencies
-- REST API endpoints: `GET /api/categories`, `POST /api/analyze`, `POST /api/bills`, `POST /api/export`, `DELETE /api/cache`
-- Docker packaging via `Dockerfile` and `docker-compose.yml` with named cache volume and localhost-only port binding
-- `.env.example` configuration template covering all parameters
-- TrueNAS Scale deployment support
-
-[Unreleased]: https://github.com/your-username/firefly-bills-analyzer/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/your-username/firefly-bills-analyzer/releases/tag/v0.1.0
+### Fixed
+- `get_summary()` now requires `start` and `end` date parameters as mandated by the Firefly III API (TASK-003)

@@ -37,6 +37,12 @@ def _split_dict(draw: st.DrawFn) -> dict[str, object]:
     category_name = draw(_optional_name)
     if category_name is not None or draw(st.booleans()):
         split["category_name"] = category_name
+    source_name = draw(_optional_name)
+    if source_name is not None or draw(st.booleans()):
+        split["source_name"] = source_name
+    source_id = draw(_optional_name)
+    if source_id is not None or draw(st.booleans()):
+        split["source_id"] = source_id
     return split
 
 
@@ -68,6 +74,22 @@ class TestSplitToTransactionRead:
     def test_present_optional_fields_are_preserved(self, split: dict[str, object]) -> None:
         split["destination_name"] = "Some Shop"
         split["category_name"] = "Some Category"
+        split["source_name"] = "Checking Account"
+        split["source_id"] = "42"
         result = _split_to_transaction_read(split)
         assert result["destination_name"] == "Some Shop"
         assert result["category_name"] == "Some Category"
+        assert result["source_name"] == "Checking Account"
+        assert result["source_id"] == "42"
+
+    @given(_split_dict())
+    def test_missing_source_name_defaults_to_none(self, split: dict[str, object]) -> None:
+        split.pop("source_name", None)
+        result = _split_to_transaction_read(split)
+        assert result["source_name"] is None
+
+    @given(_split_dict())
+    def test_missing_source_id_defaults_to_none(self, split: dict[str, object]) -> None:
+        split.pop("source_id", None)
+        result = _split_to_transaction_read(split)
+        assert result["source_id"] is None

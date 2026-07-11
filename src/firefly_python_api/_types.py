@@ -104,3 +104,7 @@ class TransactionRead(TypedDict):
     """Destination account/payee name, or ``None`` when absent."""
     category_name: str | None
     """Category name, or ``None`` when absent or uncategorized."""
+    source_name: str | None
+    """Source account name (funds are withdrawn from), or ``None`` when absent."""
+    source_id: str | None
+    """Source account ID, or ``None`` when absent."""
