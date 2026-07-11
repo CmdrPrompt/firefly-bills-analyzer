@@ -89,3 +89,6 @@ complexipy-results*.json
 
 # macOS
 .DS_Store
+
+# Performance benchmark output (make benchmark)
+benchmark_results.json
