@@ -1,6 +1,6 @@
 # Requirements Specification: Firefly III Bills Analyzer
 
-**Version:** 0.2.19
+**Version:** 0.2.20
 **Date:** 2026-07-20
 **Status:** Draft, pending owner confirmation of items marked TBD (see Open Items)
 
@@ -36,7 +36,7 @@ Terms used with a specific meaning in this specification. All requirements use t
 | Actor       | Description                                                                 |
 | ----------- | --------------------------------------------------------------------------- |
 | User        | Interacts via web browser or runs the application manually or on a schedule |
-| Web server  | Flask/FastAPI app that exposes the UI and orchestrates UC1–UC7              |
+| Web server  | Flask/FastAPI app that exposes the UI and orchestrates UC1–UC7, UC9, UC10   |
 | Firefly III | Source system for transactions and target system for bills                  |
 
 ---
@@ -287,6 +287,7 @@ The use cases are informative. They describe intended flows and provide context 
 | Existing bills | File        | 1h          |
 | Transactions   | File        | 1h          |
 | Payees         | File        | 24h         |
+| Accounts       | File        | 24h         |
 
 ---
 
@@ -413,8 +414,8 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-18  | When bill creation completes, the web UI shall display the outcome per bill (created, already exists, exists with different parameters, or error) without reloading the page | UC3 |
 | FR-19  | When the user enables the dry-run toggle in the web UI, the web UI shall activate dry-run mode | UC5 |
 | FR-20  | When the user clicks the export button in the web UI, the application shall export the analysis results to CSV format or JSON format | UC5 |
-| FR-21  | The application shall cache categories, bills, transactions, and payees as JSON files on disk | UC7 |
-| FR-22  | The application shall read a separate cache TTL from configuration for each cached data set (categories, bills, transactions, payees) | UC7 |
+| FR-21  | The application shall cache categories, bills, transactions, payees, and accounts as JSON files on disk | UC7 |
+| FR-22  | The application shall read a separate cache TTL from configuration for each cached data set (categories, bills, transactions, payees, accounts) | UC7 |
 | FR-23  | When the application creates a new bill, the application shall invalidate the bills cache synchronously within the same creation operation, before the creation response is returned | UC7 |
 | FR-24a | The web UI shall display a "Clear cache" button | UC7 |
 | FR-24b | When the user clicks the "Clear cache" button, the application shall delete all cached data | UC7 |
@@ -435,15 +436,15 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-32d | Before amount clustering (FR-32a), the application shall partition each payee group formed in UC2 step 1 by source account: transactions sharing the same `source_name` value form one subgroup, and transactions with no `source_name` form their own subgroup. FR-32a is then applied independently within each subgroup, so that transactions withdrawn through different accounts (e.g. a fixed transfer funding a spending account, versus that spending account's own purchases) are never amount-clustered together | UC2 |
 | FR-33a | Within each payee/source-account/amount-cluster group (FR-32a, FR-32d), when two or more transactions share the exact same date, the application shall collapse them into a single billing event (see Definitions) whose amount is the sum of the collapsed transactions' amounts; occurrence count, median interval, and amount min/max/mean (UC2 steps 4–7) shall be computed over the resulting billing events rather than the pre-collapse transaction rows. Source account resolution (FR-30a) is unaffected and continues to be computed over the group's underlying transactions | UC2 |
 | FR-34  | In CLI mode, while `fetcher.fetch_transactions()` is fetching transaction pages from Firefly III, the application shall display a progress bar showing pages fetched out of the total page count, driven by the `on_page` callback exposed by `firefly-python-api`'s `get_withdrawal_transactions()` (that package's REQ-008); when no callback support is available (e.g. an older `firefly-python-api` version), the application shall fall back to fetching without a progress bar rather than failing | UC1 |
-
----
-
 | FR-35a | When an account include list is configured (`INCLUDE_ACCOUNTS`), the application shall include only transactions whose source account name (`source_name`) matches the include list in the analysis | UC9 |
 | FR-35b | When an account exclude list is configured (`EXCLUDE_ACCOUNTS`), the application shall exclude transactions whose source account name (`source_name`) matches the exclude list from the analysis; exclude is applied after include when both are configured | UC9 |
 | FR-35c | When the web UI page is loaded, the web UI shall fetch the existing accounts from the Firefly III API and display them as multiselect lists | UC9 |
 | FR-36a | When a payee include list is configured (`INCLUDE_PAYEES`), the application shall include only transactions whose destination account name (`destination_name`) matches the include list in the analysis | UC10 |
 | FR-36b | When a payee exclude list is configured (`EXCLUDE_PAYEES`), the application shall exclude transactions whose destination account name (`destination_name`) matches the exclude list from the analysis; exclude is applied after include when both are configured | UC10 |
 | FR-36c | When the web UI page is loaded, the web UI shall fetch the existing payees from the Firefly III API and display them as multiselect lists | UC10 |
+
+---
+
 ## Non-functional Requirements
 
 | ID      | Requirement | Trace |
@@ -521,7 +522,8 @@ firefly_bills_analyzer/
 │   ├── categories.json
 │   ├── bills.json
 │   ├── transactions.json
-│   └── payees.json
+│   ├── payees.json
+│   └── accounts.json
 ├── .env.example         # Configuration template without sensitive values
 └── requirements.txt     # Python dependencies
 ```
@@ -620,6 +622,29 @@ Decisions required from the requirement owner before this specification is basel
 ---
 
 ## Changelog
+
+### 0.2.20 (2026-07-20)
+
+- Fixed two inconsistencies found during a post-merge requirements review of
+  v0.2.19 (which combined the diverging UC9/UC10 filtering work with the
+  independently-merged UC2 source-account-partitioning work, TASK-014):
+  - The Actors table still described the web server as orchestrating only
+    "UC1–UC7", contradicting UC9 and UC10, both of which define a web UI
+    primary flow, a dedicated endpoint (FR-35c/FR-36c), and an entry in the
+    Architecture endpoints table and web UI flow diagram. Corrected to
+    "UC1–UC7, UC9, UC10".
+  - `CACHE_TTL_ACCOUNTS` (Configuration Parameters) and `GET /api/accounts`
+    (Architecture, described as served "from cache or Firefly III") implied
+    that accounts are a cached data set, but FR-21, FR-22, and UC7's cached
+    data sets table never listed "accounts" alongside categories, bills,
+    transactions, and payees. FR-21 and FR-22 now include accounts, UC7's
+    table gained an "Accounts" row (24h TTL, matching `CACHE_TTL_ACCOUNTS`'s
+    default), and the project structure diagram now lists `accounts.json`
+    alongside the other cache files. This does not change TASK-016's scope:
+    `account_filter.py` reads `source_name` directly off already-fetched
+    transactions and never queries a standalone accounts list, so account
+    caching remains something only the (deferred) web UI's `/api/accounts`
+    endpoint consumes, per TASK-016's existing "Out of scope" section.
 
 ### 0.2.19 (2026-07-20)
 
