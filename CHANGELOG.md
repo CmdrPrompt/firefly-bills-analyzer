@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Transactions can now be filtered by source account before recurring-payment
+  analysis, via `INCLUDE_ACCOUNTS`/`EXCLUDE_ACCOUNTS` (comma-separated,
+  matched against `source_name`), letting an inherently irregular account
+  (e.g. a day-to-day groceries account) be excluded from analysis, or the
+  analysis narrowed to specific accounts. Exclude is applied after include,
+  and transactions without a resolved source account never match either
+  list. (TASK-016)
+
 - Recurring-payment identification now partitions a payee's transactions by
   source account before splitting them into amount clusters, so a fixed
   transfer that funds a spending account (e.g. a household budget top-up) is

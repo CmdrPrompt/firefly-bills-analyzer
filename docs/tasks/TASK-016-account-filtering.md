@@ -2,7 +2,7 @@
 
 ## Status
 
-not started
+done
 
 ## Requirements
 
@@ -95,26 +95,26 @@ transactions = account_filter.filter_transactions(transactions, config)
 
 ## Acceptance criteria
 
-- [ ] `src/firefly_bills_analyzer/account_filter.py` exposes
+- [x] `src/firefly_bills_analyzer/account_filter.py` exposes
       `filter_transactions(transactions, config) -> list[TransactionRead]`
-- [ ] When `config.include_accounts` is non-empty, only transactions whose
+- [x] When `config.include_accounts` is non-empty, only transactions whose
       `source_name` matches the include list are kept (FR-35a)
-- [ ] When `config.exclude_accounts` is non-empty, transactions whose
+- [x] When `config.exclude_accounts` is non-empty, transactions whose
       `source_name` matches the exclude list are dropped (FR-35b); exclude is
       applied after include when both are configured
-- [ ] Transactions with `source_name is None` are never matched by a non-empty
+- [x] Transactions with `source_name is None` are never matched by a non-empty
       include or exclude list
-- [ ] When neither list is configured, `filter_transactions` is a passthrough
-- [ ] `Config` exposes `include_accounts: list[str]` and
+- [x] When neither list is configured, `filter_transactions` is a passthrough
+- [x] `Config` exposes `include_accounts: list[str]` and
       `exclude_accounts: list[str]`, read from `INCLUDE_ACCOUNTS` and
       `EXCLUDE_ACCOUNTS` (both default empty)
-- [ ] `__main__.py`'s `main()` calls
+- [x] `__main__.py`'s `main()` calls
       `account_filter.filter_transactions(transactions, config)` after the
       existing category filter call, before `analyzer.identify_recurring()`
-- [ ] `tests/test_account_filter.py` uses **Hypothesis** for the
+- [x] `tests/test_account_filter.py` uses **Hypothesis** for the
       include/exclude/passthrough combinations, mirroring
       `tests/test_category_filter.py`'s structure
-- [ ] `make lint && make test` pass with coverage >= baseline
+- [x] `make lint && make test` pass with coverage >= baseline
 
 ## Blockers
 
@@ -122,4 +122,52 @@ None
 
 ## Completion
 
-(fill in after implementation)
+**Date:** 2026-07-20
+**Summary:** Implemented `account_filter.py` mirroring `category_filter.py`'s
+include/exclude structure (pure include/exclude, no confidence weighting).
+Added `include_accounts`/`exclude_accounts` to `Config`, read from
+`INCLUDE_ACCOUNTS`/`EXCLUDE_ACCOUNTS`. Wired
+`account_filter.filter_transactions()` into `__main__.main()` right after the
+existing category filter call. `tests/test_account_filter.py` covers
+passthrough, include, exclude, exclude-after-include, and the
+`source_name is None` non-match cases with Hypothesis. Existing `Config(...)`
+call sites across the test suite (`test_analyzer.py`, `test_bills_creator.py`,
+`test_fetcher.py`, `test_category_filter.py`, `benchmark_analyzer.py`) and the
+`test_main.py` pipeline-wiring mocks were updated for the two new required
+fields. `make lint && make test` pass (159 tests, 99% coverage); the one
+`make lint` failure (MD018 in `docs/REQUIREMENTS_new.md:662`) pre-exists on
+`main` and is unrelated to this task.
+
+**Files changed:**
+
+- `src/firefly_bills_analyzer/account_filter.py` — new (`filter_transactions()`,
+  FR-35a/FR-35b)
+- `tests/test_account_filter.py` — new (Hypothesis-based coverage of
+  passthrough, include, exclude, exclude-after-include, and
+  `source_name is None` non-match cases)
+- `src/firefly_bills_analyzer/config.py` — modified (`include_accounts`/
+  `exclude_accounts` fields, read from `INCLUDE_ACCOUNTS`/`EXCLUDE_ACCOUNTS`)
+- `src/firefly_bills_analyzer/__main__.py` — modified (wires
+  `account_filter.filter_transactions()` into `main()` after the category
+  filter call)
+- `tests/test_main.py` — modified (patches `account_filter.filter_transactions`
+  in the pipeline-wiring test fixture; asserts it's called between fetch and
+  analyze)
+- `tests/test_analyzer.py` — modified (added the two new required `Config`
+  fields to `_make_config()`)
+- `tests/test_bills_creator.py` — modified (added the two new required
+  `Config` fields to `_make_config()`)
+- `tests/test_fetcher.py` — modified (added the two new required `Config`
+  fields to `_make_config()`)
+- `tests/test_category_filter.py` — modified (added the two new required
+  `Config` fields to `_make_config()`)
+- `tests/benchmark_analyzer.py` — modified (added the two new required
+  `Config` fields to `_make_config()`)
+- `CHANGELOG.md` — modified (Unreleased entry for `INCLUDE_ACCOUNTS`/
+  `EXCLUDE_ACCOUNTS`)
+- `docs/tasks/README.md` — modified (status)
+- `docs/tasks/TASK-016-account-filtering.md` — this file
+
+**Branch:** `git checkout task/016-account-filtering`
+**Stage:** `git add src/firefly_bills_analyzer/account_filter.py tests/test_account_filter.py src/firefly_bills_analyzer/config.py src/firefly_bills_analyzer/__main__.py tests/test_main.py tests/test_analyzer.py tests/test_bills_creator.py tests/test_fetcher.py tests/test_category_filter.py tests/benchmark_analyzer.py CHANGELOG.md docs/tasks/README.md docs/tasks/TASK-016-account-filtering.md`
+**Commit:** `git commit -m "feat: add account filtering functionality (UC9) with INCLUDE_ACCOUNTS/EXCLUDE_ACCOUNTS support"`

@@ -31,6 +31,8 @@ class Config:
     uncategorized_behavior: str
     include_categories: list[str]
     exclude_categories: list[str]
+    include_accounts: list[str]
+    exclude_accounts: list[str]
     # Output
     dry_run: bool
     export_format: str
@@ -76,6 +78,8 @@ class Config:
             uncategorized_behavior=os.environ.get("UNCATEGORIZED_BEHAVIOR", "neutral"),
             include_categories=_csv("INCLUDE_CATEGORIES"),
             exclude_categories=_csv("EXCLUDE_CATEGORIES"),
+            include_accounts=_csv("INCLUDE_ACCOUNTS"),
+            exclude_accounts=_csv("EXCLUDE_ACCOUNTS"),
             dry_run=os.environ.get("DRY_RUN", "false").lower() in ("1", "true", "yes"),
             export_format=os.environ.get("EXPORT_FORMAT", "none"),
             web_port=int(os.environ.get("WEB_PORT", "5000")),
