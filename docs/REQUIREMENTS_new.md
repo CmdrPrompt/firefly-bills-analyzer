@@ -1,6 +1,6 @@
 # Requirements Specification: Firefly III Bills Analyzer
 
-**Version:** 0.2.18
+**Version:** 0.2.19
 **Date:** 2026-07-20
 **Status:** Draft, pending owner confirmation of items marked TBD (see Open Items)
 
@@ -20,8 +20,8 @@ Terms used with a specific meaning in this specification. All requirements use t
 | Web UI | The browser-based user interface served by the application's built-in web server |
 | Web server | The built-in HTTP server component of the application |
 | firefly-python-api | The standalone, shared Python package that owns the HTTP session toward Firefly III |
-| Recurring payment pattern | A group of transactions with the same payee and, when the payee's transactions form more than one amount cluster (FR-32a), the same amount cluster, that meets the occurrence threshold (FR-04a) |
-| Amount cluster | A subgroup of a payee's transactions, formed per FR-32a from amounts observed on co-occurrence dates (dates with two or more differing amounts) and then extended to every transaction in the group by nearest cluster mean. A payee with no co-occurrence dates at all forms a single amount cluster regardless of how much its amount varies across different dates — this is what keeps a single bill whose amount fluctuates over time (e.g. a metered utility bill priced by season and consumption) from being fragmented, while a payee that genuinely bundles more than one simultaneous charge (e.g. two household members billed the same fee, or several subscriptions billed through the same merchant, each landing on the same date every cycle) splits into more than one amount cluster |
+| Recurring payment pattern | A group of transactions with the same payee and, when the payee's transactions form more than one amount cluster (FR-32a, FR-32d), the same amount cluster, that meets the occurrence threshold (FR-04a) |
+| Amount cluster | A subgroup of a payee's transactions, formed by first partitioning the payee group by source account (FR-32d), then applying FR-32a independently within each source-account subgroup: amounts observed on co-occurrence dates (dates with two or more differing amounts) are clustered via a tolerance-based gap split, and every transaction in the subgroup is extended to whichever resulting cluster's mean is numerically closest — but only when the split is corroborated (FR-32a) by the same cluster combination recurring across two or more distinct co-occurrence dates. A subgroup with no co-occurrence date, or whose co-occurrence dates never share a repeating cluster combination, forms a single amount cluster regardless of how much its amount varies — this is what keeps a single bill whose amount fluctuates over time (e.g. a metered utility bill priced by season and consumption), or an account whose spending is continuously variable and rarely repeats an exact amount (e.g. day-to-day grocery purchases from a dedicated spending account), from being fragmented merely because two transactions once landed on the same date. A subgroup where the same combination of differing amounts genuinely recurs together (e.g. two household members billed the same fee, or several subscriptions billed through the same merchant, landing on the same date every cycle) splits into more than one amount cluster |
 | Billing event | Within an amount cluster, one or more transactions that share the exact same date, collapsed per FR-33a into a single unit whose amount is their sum. Occurrence counts, interval calculation, and amount statistics (UC2) operate on billing events, not raw transaction rows. Budget-wise, several same-day transactions for the same recurring charge (e.g. one household member's invoice and another's, billed together) represent one combined outflow, not two independent cycle points |
 | Frequency | The classification of a recurring payment pattern by median interval: monthly, quarterly, half-yearly, yearly, or irregular (FR-03) |
 | Confidence score | The value in [0.0, 1.0] computed per FR-27 |
@@ -71,28 +71,41 @@ The use cases are informative. They describe intended flows and provide context 
 
 1. Transactions are grouped by payee (`destination_name`)
 
-2. Each payee group is further split into amount clusters (FR-32a) based on same-date
-   co-occurrence, not on amount variance alone:
+2. Each payee group is first partitioned by source account (FR-32d), then each
+   source-account subgroup is further split into amount clusters (FR-32a) based on
+   corroborated same-date co-occurrence, not on amount variance alone:
 
-   a. The group's transactions are grouped by date. A date on which two or more
-      transactions have *differing* amounts is a co-occurrence date — it reveals that this
-      payee genuinely bundles more than one simultaneous charge (e.g. two household
-      members billed the same fee, or several subscriptions billed through the same
-      merchant, each landing on the same date every cycle)
-   b. If the payee group has no co-occurrence date at all, the whole group remains a single
-      amount cluster, regardless of how much its amount varies across different dates. This
-      is what keeps a single bill whose amount fluctuates over time — e.g. a metered
-      utility bill priced by season and consumption — from being fragmented into
-      artificial sub-clusters merely because its price changes
-   c. Otherwise, the amounts observed at co-occurrence dates are clustered using a
-      tolerance-based gap split (sort ascending, start a new cluster whenever the gap to
-      the previous amount exceeds `AMOUNT_CLUSTER_TOLERANCE` of the smaller of the two),
-      and every transaction in the group — including ones not on a co-occurrence date — is
-      then assigned to whichever resulting cluster's mean amount is numerically closest to
-      its own amount
+   a. Transactions sharing the same `source_name` value form one subgroup; transactions
+      with no `source_name` form their own subgroup. Distinct financial roles — e.g. a
+      fixed transfer from a household account into a dedicated spending account, versus
+      the spending itself — are typically withdrawn through different source accounts, so
+      partitioning here first keeps such transfers from being amount-clustered together
+      with the spending they fund
+   b. Within each source-account subgroup, transactions are grouped by date. A date on
+      which two or more transactions have *differing* amounts is a co-occurrence date
+   c. The amounts observed at co-occurrence dates are clustered using a tolerance-based
+      gap split (sort ascending, start a new candidate cluster whenever the gap to the
+      previous amount exceeds `AMOUNT_CLUSTER_TOLERANCE` of the smaller of the two); for
+      each co-occurrence date, record which candidate cluster(s) its amounts fall into
+      (its "signature")
+   d. If the subgroup has no co-occurrence date, or if no signature spanning two or more
+      candidate clusters is shared by two or more distinct co-occurrence dates, the whole
+      subgroup remains a single amount cluster, regardless of how much its amount varies
+      across different dates. This is what keeps a single bill whose amount fluctuates
+      over time — e.g. a metered utility bill priced by season and consumption — or an
+      account whose spending is continuously variable and rarely repeats an exact amount
+      — e.g. day-to-day grocery purchases from a dedicated spending account — from being
+      fragmented into artificial sub-clusters merely because two transactions once landed
+      on the same date. This reveals that the payee genuinely bundles more than one
+      simultaneous, recurring charge (e.g. two household members billed the same fee, or
+      several subscriptions billed through the same merchant, landing on the same date
+      every cycle) only when that pattern repeats
+   e. Otherwise, every transaction in the subgroup — including ones not on a co-occurrence
+      date — is assigned to whichever candidate cluster's mean amount is numerically
+      closest to its own amount
 
-   Every step below operates on the resulting payee/amount-cluster group, not the raw payee
-   group
+   Every step below operates on the resulting payee/source-account/amount-cluster group,
+   not the raw payee group
 
 3. Within each payee/amount-cluster group, transactions that share the exact same date are
    collapsed into a single billing event (FR-33a) whose amount is their sum. Budget-wise,
@@ -142,8 +155,12 @@ The use cases are informative. They describe intended flows and provide context 
 **Alternative flow:**
 
 - Too few transactions to establish a pattern: entry is flagged with low confidence
-- A payee's transactions form only one amount cluster (the common case): behavior is
-  unchanged from the pre-FR-32 grouping
+- A payee's transactions all share one source account and form only one amount cluster (the
+  common case): behavior is unchanged from the pre-FR-32/FR-32d grouping
+- A payee's transactions span more than one source account but no subgroup's co-occurrence
+  is corroborated: each source-account subgroup is analyzed as its own single-cluster
+  pattern (e.g. a fixed transfer into a spending account, and the spending account's
+  purchases, become two separate patterns)
 - No two transactions in a cluster share the exact same date: behavior is unchanged from the
   pre-FR-33 per-transaction calculation (every transaction is its own billing event)
 
@@ -412,20 +429,21 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-30c | The web UI table view (FR-17a) shall include a column showing the resolved source account name (FR-30a), or a "varies" indicator when more than one distinct source account occurs in the pattern | UC3 |
 | FR-30d | The CSV and JSON export (FR-08) shall include the resolved source account name and the varies indicator (FR-30a) as fields of each exported pattern | UC5 |
 | FR-31  | When an export (FR-08) completes, the application shall inform the user of the file path it wrote: in CLI mode via a printed message, and in the web UI (when implemented) via an on-page notification or download link | UC5 |
-| FR-32a | Before computing occurrences, interval, and confidence (UC2 steps 3–6), the application shall split each payee group formed in UC2 step 1 into amount clusters based on same-date co-occurrence: (a) group the payee's transactions by date and identify co-occurrence dates — dates with two or more transactions of differing amounts; (b) if no co-occurrence date exists in the group, the whole group remains a single amount cluster regardless of amount variance across dates; (c) otherwise, cluster the amounts observed at co-occurrence dates via a tolerance-based gap split (sort ascending, start a new cluster whenever the gap to the previous amount exceeds `AMOUNT_CLUSTER_TOLERANCE` times the smaller of the two), then assign every transaction in the group — including those not on a co-occurrence date — to whichever resulting cluster's mean amount is numerically closest to its own amount. Each resulting cluster is processed as an independent recurring payment pattern candidate | UC2 |
+| FR-32a | Before computing occurrences, interval, and confidence (UC2 steps 3–6), the application shall split each payee/source-account subgroup (FR-32d) into amount clusters based on corroborated same-date co-occurrence: (a) group the subgroup's transactions by date and identify co-occurrence dates — dates with two or more transactions of differing amounts; (b) cluster the amounts observed at co-occurrence dates via a tolerance-based gap split (sort ascending, start a new candidate cluster whenever the gap to the previous amount exceeds `AMOUNT_CLUSTER_TOLERANCE` times the smaller of the two), and for each co-occurrence date record its signature — the set of candidate clusters its amounts fall into; (c) the split is corroborated only if some signature spanning two or more candidate clusters is shared by two or more distinct co-occurrence dates; if the subgroup has no co-occurrence date at all, or no signature is corroborated, the whole subgroup remains a single amount cluster regardless of amount variance across dates; (d) otherwise, assign every transaction in the subgroup — including those not on a co-occurrence date — to whichever candidate cluster's mean amount is numerically closest to its own amount. Each resulting cluster is processed as an independent recurring payment pattern candidate | UC2 |
 | FR-32b | The application shall read the amount-cluster split tolerance from configuration (`AMOUNT_CLUSTER_TOLERANCE`, default `0.15`) | UC2 |
 | FR-32c | When a payee produces more than one amount cluster (FR-32a) that each independently qualify as a recurring payment pattern, the application shall disambiguate the bill name of each resulting pattern by appending its representative (mean) amount to the name produced by FR-13b, so that FR-05a's name-only duplicate check does not conflate distinct clusters | UC2, UC4 |
-| FR-33a | Within each payee/amount-cluster group (FR-32a), when two or more transactions share the exact same date, the application shall collapse them into a single billing event (see Definitions) whose amount is the sum of the collapsed transactions' amounts; occurrence count, median interval, and amount min/max/mean (UC2 steps 4–7) shall be computed over the resulting billing events rather than the pre-collapse transaction rows. Source account resolution (FR-30a) is unaffected and continues to be computed over the group's underlying transactions | UC2 |
+| FR-32d | Before amount clustering (FR-32a), the application shall partition each payee group formed in UC2 step 1 by source account: transactions sharing the same `source_name` value form one subgroup, and transactions with no `source_name` form their own subgroup. FR-32a is then applied independently within each subgroup, so that transactions withdrawn through different accounts (e.g. a fixed transfer funding a spending account, versus that spending account's own purchases) are never amount-clustered together | UC2 |
+| FR-33a | Within each payee/source-account/amount-cluster group (FR-32a, FR-32d), when two or more transactions share the exact same date, the application shall collapse them into a single billing event (see Definitions) whose amount is the sum of the collapsed transactions' amounts; occurrence count, median interval, and amount min/max/mean (UC2 steps 4–7) shall be computed over the resulting billing events rather than the pre-collapse transaction rows. Source account resolution (FR-30a) is unaffected and continues to be computed over the group's underlying transactions | UC2 |
 | FR-34  | In CLI mode, while `fetcher.fetch_transactions()` is fetching transaction pages from Firefly III, the application shall display a progress bar showing pages fetched out of the total page count, driven by the `on_page` callback exposed by `firefly-python-api`'s `get_withdrawal_transactions()` (that package's REQ-008); when no callback support is available (e.g. an older `firefly-python-api` version), the application shall fall back to fetching without a progress bar rather than failing | UC1 |
+
+---
+
 | FR-35a | When an account include list is configured (`INCLUDE_ACCOUNTS`), the application shall include only transactions whose source account name (`source_name`) matches the include list in the analysis | UC9 |
 | FR-35b | When an account exclude list is configured (`EXCLUDE_ACCOUNTS`), the application shall exclude transactions whose source account name (`source_name`) matches the exclude list from the analysis; exclude is applied after include when both are configured | UC9 |
 | FR-35c | When the web UI page is loaded, the web UI shall fetch the existing accounts from the Firefly III API and display them as multiselect lists | UC9 |
 | FR-36a | When a payee include list is configured (`INCLUDE_PAYEES`), the application shall include only transactions whose destination account name (`destination_name`) matches the include list in the analysis | UC10 |
 | FR-36b | When a payee exclude list is configured (`EXCLUDE_PAYEES`), the application shall exclude transactions whose destination account name (`destination_name`) matches the exclude list from the analysis; exclude is applied after include when both are configured | UC10 |
 | FR-36c | When the web UI page is loaded, the web UI shall fetch the existing payees from the Firefly III API and display them as multiselect lists | UC10 |
-
----
-
 ## Non-functional Requirements
 
 | ID      | Requirement | Trace |
@@ -490,6 +508,7 @@ firefly_bills_analyzer/
 ├── analyzer.py          # UC1 + UC2: fetch transactions, identify patterns
 ├── category_filter.py   # UC6: filter and weight by category
 ├── account_filter.py    # UC9: filter transactions by source account
+├── payee_filter.py      # UC10: filter transactions by payee (destination account)
 ├── bills_creator.py     # UC4: create bills via Firefly III API
 ├── cache.py             # UC7: read/write/invalidate JSON cache files
 ├── exporter.py          # UC5: CSV/JSON export
@@ -520,15 +539,16 @@ The package owns no application logic; it only manages the HTTP session lifecycl
 
 ### Endpoints
 
-| Method   | Endpoint          | Description                                              |
-| -------- | ----------------- | -------------------------------------------------------- |
-| `GET`    | `/`               | Serves the web UI                                        |
-| `GET`    | `/api/categories` | Returns categories (from cache or Firefly III)           |
-| `GET`    | `/api/accounts`   | Returns accounts (from cache or Firefly III)             |
-| `POST`   | `/api/analyze`    | Runs UC1, UC2, UC6, and UC9; returns suggestions as JSON |
-| `POST`   | `/api/bills`      | Creates approved bills (UC4); returns outcome per entry  |
-| `POST`   | `/api/export`     | Exports suggestions to CSV or JSON (UC5)                 |
-| `DELETE` | `/api/cache`      | Clears all cached data (UC7)                             |
+| Method   | Endpoint          | Description                                                    |
+| -------- | ----------------- | ---------------------------------------------------------------|
+| `GET`    | `/`               | Serves the web UI                                               |
+| `GET`    | `/api/categories` | Returns categories (from cache or Firefly III)                  |
+| `GET`    | `/api/accounts`   | Returns accounts (from cache or Firefly III)                    |
+| `GET`    | `/api/payees`     | Returns payees (from cache or Firefly III)                      |
+| `POST`   | `/api/analyze`    | Runs UC1, UC2, UC6, UC9, and UC10; returns suggestions as JSON   |
+| `POST`   | `/api/bills`      | Creates approved bills (UC4); returns outcome per entry          |
+| `POST`   | `/api/export`     | Exports suggestions to CSV or JSON (UC5)                         |
+| `DELETE` | `/api/cache`      | Clears all cached data (UC7)                                     |
 
 ### Web UI flow
 
@@ -536,6 +556,7 @@ The package owns no application logic; it only manages the HTTP session lifecycl
 Page load
   → GET /api/categories → populates multiselect lists
   → GET /api/accounts → populates multiselect list
+  → GET /api/payees → populates multiselect list
 
 User configures filters + clicks "Run analysis"
   → POST /api/analyze → table rendered with suggestions
@@ -556,7 +577,7 @@ The application supports two run modes:
 ## Configuration Parameters
 
 | Parameter                          | Description                                                                         | Default         |
-| ---------------------------------- | ----------------------------------------------------------------------------------- | --------------- |
+| ----------------------------------- | ------------------------------------------------------------------------------------- | --------------- |
 | `FIREFLY_URL`                      | Base URL of the Firefly III instance                                                | *(required)*    |
 | `FIREFLY_TOKEN`                    | Personal Access Token                                                               | *(required)*    |
 | `LOOKBACK_MONTHS`                  | Months of transaction history to analyze                                            | `24`            |
@@ -600,7 +621,7 @@ Decisions required from the requirement owner before this specification is basel
 
 ## Changelog
 
-### 0.2.18 (2026-07-20)
+### 0.2.19 (2026-07-20)
 
 - Added UC10 and FR-36a/b/c: transactions can now be filtered by payee
   (destination account) via `INCLUDE_PAYEES`/`EXCLUDE_PAYEES`, mirroring the
@@ -615,7 +636,7 @@ Decisions required from the requirement owner before this specification is basel
   FR-36c) shares the deferred status of the rest of the web UI (Open Item
   #5) until a web framework is selected.
 
-### 0.2.17 (2026-07-20)
+### 0.2.18 (2026-07-20)
 
 - Added UC9 and FR-35a/b/c: transactions can now be filtered by source
   account via `INCLUDE_ACCOUNTS`/`EXCLUDE_ACCOUNTS`, mirroring the existing
@@ -629,6 +650,42 @@ Decisions required from the requirement owner before this specification is basel
   no confidence weighting is attached, unlike category filtering. The web UI
   part (`GET /api/accounts`, FR-35c) shares the deferred status of the rest
   of the web UI (Open Item #5) until a web framework is selected.
+
+### 0.2.17 (2026-07-11)
+
+- Revised FR-32a and added FR-32d to fix over-fragmentation of payees whose
+  transactions genuinely span more than one financial role, found during
+  owner review of a real analysis report generated after TASK-012. Two
+  distinct issues were identified for payee "ICA":
+  - Its transactions came from two different source accounts — a fixed
+    monthly transfer from `SEB Räkningskonto` funding a dedicated spending
+    account, and the actual day-to-day grocery purchases withdrawn from
+    `ICA-banken Matkonto`. FR-32d now partitions each payee group by source
+    account *before* amount clustering (FR-32a runs independently per
+    subgroup), so a funding transfer and the spending it funds are never
+    amount-clustered together.
+  - Even within the `ICA-banken Matkonto` subgroup alone, occasional
+    same-day double purchases (differing amounts) were enough to trigger
+    FR-32a's old tolerance-based split; because grocery amounts are
+    continuously distributed and almost never repeat exactly, the
+    tolerance-gap chained across the full amount range and fragmented the
+    subgroup into over a dozen low-confidence sub-clusters — the same
+    failure mode the 0.2.15 EON fix addressed, but reachable even without
+    the payee's overall variance being the trigger. FR-32a now additionally
+    requires the split to be *corroborated*: a candidate multi-cluster
+    signature (which candidate clusters a co-occurrence date's amounts fall
+    into) must recur on at least two distinct co-occurrence dates before
+    the subgroup is split. A single day's coincidental double purchase no
+    longer fragments an otherwise continuously variable spending pattern,
+    while payees that genuinely bundle repeating parallel charges (e.g.
+    "Apple"'s co-occurring subscriptions) still split as before.
+  - Owner-confirmed side effect of FR-32d: since a resulting pattern's
+    transactions now share a single source account by construction (having
+    already been partitioned on it), FR-30a's `source_account_varies` flag
+    no longer occurs in the normal case — there is nothing left to vary
+    within a pattern. FR-30a/b/c/d remain correct as specified (the "varies"
+    computation and display are unchanged), but are expected to report
+    `False`/no-"varies" for essentially all patterns going forward.
 
 ### 0.2.16 (2026-07-11)
 

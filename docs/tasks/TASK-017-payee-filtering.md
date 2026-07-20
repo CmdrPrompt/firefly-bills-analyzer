@@ -1,4 +1,4 @@
-# TASK-015 Filter transactions by payee / destination account (UC10)
+# TASK-017 Filter transactions by payee / destination account (UC10)
 
 ## Status
 
@@ -25,7 +25,7 @@ that these payees never surface as false-positive bill candidates.
 ## Description
 
 Implement `payee_filter.py` — the UC10 filtering layer, modeled directly on
-`account_filter.py` (TASK-014): pure include/exclude, no confidence weighting
+`account_filter.py` (TASK-016): pure include/exclude, no confidence weighting
 and no bill-naming helper. The only difference from `account_filter.py` is the
 matched field: `destination_name` instead of `source_name`.
 
@@ -33,7 +33,7 @@ It runs on the transaction list returned by `fetcher.py` (TASK-002), before
 `analyzer.identify_recurring()` groups by payee. Since the full pipeline
 already exists (TASK-002 through TASK-013 are all `done`), this task also
 wires the new filter into `__main__.py`'s `main()`, immediately after the
-existing account filter call (or the category filter call if TASK-014 has not
+existing account filter call (or the category filter call if TASK-016 has not
 yet been merged when this task is implemented — check `__main__.py`'s current
 state and place it after whichever filter call runs last).
 
@@ -94,13 +94,13 @@ discoverable in the template, not just documented in the requirements spec.
 - FR-29's CLI `--help` text update to mention `INCLUDE_PAYEES`/
   `EXCLUDE_PAYEES`: out of scope for this task; `--help` wording is covered
   by whichever task next touches `build_arg_parser()` (same deferral
-  `account_filter.py`'s TASK-014 applied)
+  `account_filter.py`'s TASK-016 applied)
 
 ## Branch
 
-**Branch name:** `task/015-payee-filtering`
-**Switch/create:** `git checkout -b task/015-payee-filtering`
-**Make target:** `make branch-task f=TASK-015`
+**Branch name:** `task/017-payee-filtering`
+**Switch/create:** `git checkout -b task/017-payee-filtering`
+**Make target:** `make branch-task f=TASK-017`
 
 ## Acceptance criteria
 

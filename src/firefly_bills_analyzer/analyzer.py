@@ -88,34 +88,57 @@ def _tolerance_gap_split(
     return groups
 
 
+def _partition_by_source_account(
+    transactions: list[TransactionRead],
+) -> list[list[TransactionRead]]:
+    """Partition a payee group by source account (FR-32d).
+
+    Transactions sharing the same ``source_name`` value form one subgroup;
+    transactions with no ``source_name`` form their own subgroup. Distinct
+    financial roles that happen to share a payee name — e.g. a fixed
+    transfer funding a spending account, versus that spending account's own
+    purchases — are typically withdrawn through different source accounts,
+    so partitioning here first keeps them from being amount-clustered
+    together with the spending they fund.
+    """
+    groups: dict[str | None, list[TransactionRead]] = defaultdict(list)
+    for transaction in transactions:
+        groups[transaction["source_name"]].append(transaction)
+    return list(groups.values())
+
+
 def _split_into_amount_clusters(
     transactions: list[TransactionRead], tolerance: float
 ) -> list[list[TransactionRead]]:
-    """Split a payee's transactions into amount clusters (FR-32a).
+    """Split a source-account subgroup's transactions into amount clusters (FR-32a).
 
-    Clustering is based on same-date co-occurrence of differing amounts, not
-    on amount variance alone: a payee whose transactions never show more than
-    one distinct amount on the same date (e.g. a metered utility bill that
-    fluctuates by season and consumption) is never split, however much its
-    amount varies across different dates. A payee with at least one date
-    where two or more differing amounts occur together reveals genuinely
-    parallel simultaneous charges (e.g. two subscriptions billed through the
-    same merchant, or two household members billed the same fee); the
-    amounts observed at those co-occurrence dates are clustered via a
-    tolerance-based gap split, and every transaction in the group — including
-    ones not on a co-occurrence date — is then assigned to whichever
-    resulting cluster's mean amount is numerically closest to its own.
+    Clustering is based on corroborated same-date co-occurrence of differing
+    amounts, not on amount variance alone: a subgroup whose transactions
+    never show more than one distinct amount on the same date (e.g. a
+    metered utility bill that fluctuates by season and consumption) is never
+    split, however much its amount varies across different dates. A date
+    where two or more differing amounts occur together is only trusted as
+    evidence of genuinely parallel simultaneous charges (e.g. two
+    subscriptions billed through the same merchant) once it is corroborated:
+    the same combination of resulting candidate clusters ("signature") must
+    recur across at least two distinct co-occurrence dates. A single day's
+    coincidental co-occurrence (e.g. an incidental extra purchase from an
+    otherwise continuously variable spending account) is not enough evidence
+    on its own and does not split the group. Once corroborated, every
+    transaction in the group — including ones not on a co-occurrence date —
+    is assigned to whichever resulting cluster's mean amount is numerically
+    closest to its own.
     """
     by_date: dict[str, list[TransactionRead]] = defaultdict(list)
     for transaction in transactions:
         by_date[transaction["date"]].append(transaction)
 
-    co_occurring = [
-        transaction
+    co_occurrence_days = [
+        same_day
         for same_day in by_date.values()
         if len({float(t["amount"]) for t in same_day}) >= 2
-        for transaction in same_day
     ]
+    co_occurring = [transaction for same_day in co_occurrence_days for transaction in same_day]
 
     if not co_occurring:
         return [transactions]
@@ -125,11 +148,21 @@ def _split_into_amount_clusters(
         statistics.mean(float(t["amount"]) for t in cluster) for cluster in seed_clusters
     ]
 
+    def _nearest_cluster(amount: float) -> int:
+        return min(range(len(cluster_means)), key=lambda i: abs(amount - cluster_means[i]))
+
+    signature_counts: Counter[frozenset[int]] = Counter()
+    for same_day in co_occurrence_days:
+        signature = frozenset(_nearest_cluster(float(t["amount"])) for t in same_day)
+        if len(signature) >= 2:
+            signature_counts[signature] += 1
+
+    if not any(count >= 2 for count in signature_counts.values()):
+        return [transactions]
+
     assigned: list[list[TransactionRead]] = [[] for _ in seed_clusters]
     for transaction in transactions:
-        amount = float(transaction["amount"])
-        nearest_index = min(range(len(cluster_means)), key=lambda i: abs(amount - cluster_means[i]))
-        assigned[nearest_index].append(transaction)
+        assigned[_nearest_cluster(float(transaction["amount"]))].append(transaction)
 
     return assigned
 
@@ -192,14 +225,16 @@ def _confidence(
 def _qualifying_clusters(
     group: list[TransactionRead], config: Config
 ) -> list[tuple[list[TransactionRead], list[dict[str, Any]]]]:
-    """Split a payee group into amount clusters and keep only those whose
-    billing events meet ``config.min_occurrences`` (FR-32a, FR-33a)."""
-    clusters = _split_into_amount_clusters(group, config.amount_cluster_tolerance)
+    """Partition a payee group by source account, split each subgroup into
+    amount clusters, and keep only those whose billing events meet
+    ``config.min_occurrences`` (FR-32d, FR-32a, FR-33a)."""
     qualifying = []
-    for cluster in clusters:
-        events = _collapse_into_billing_events(cluster)
-        if len(events) >= config.min_occurrences:
-            qualifying.append((cluster, events))
+    for subgroup in _partition_by_source_account(group):
+        clusters = _split_into_amount_clusters(subgroup, config.amount_cluster_tolerance)
+        for cluster in clusters:
+            events = _collapse_into_billing_events(cluster)
+            if len(events) >= config.min_occurrences:
+                qualifying.append((cluster, events))
     return qualifying
 
 
@@ -254,16 +289,20 @@ def identify_recurring(
 ) -> list[RecurringPattern]:
     """Group ``transactions`` by payee and return recurring patterns (UC2, FR-27).
 
-    Each payee group is further split into amount clusters (FR-32a): distinct
-    real charges that happen to share a payee (e.g. several subscriptions
-    billed through the same merchant) are analyzed independently rather than
-    flattened into one noisy group. Within each cluster, transactions sharing
-    the exact same date are collapsed into a single billing event (FR-33a)
-    before occurrences, interval, and amount statistics are computed, so that
-    e.g. the same fee billed twice on one day (once per household member)
-    doesn't corrupt the interval calculation. Source account resolution
-    (FR-30a) is unaffected and continues to operate on the pre-collapse
-    transactions.
+    Each payee group is first partitioned by source account (FR-32d), so a
+    fixed transfer funding a spending account and that spending account's own
+    purchases are never analyzed together merely because they share a payee
+    name. Each resulting subgroup is further split into amount clusters
+    (FR-32a) based on corroborated same-date co-occurrence: distinct real
+    charges that happen to share a payee and source account (e.g. several
+    subscriptions billed through the same merchant) are analyzed
+    independently rather than flattened into one noisy group. Within each
+    cluster, transactions sharing the exact same date are collapsed into a
+    single billing event (FR-33a) before occurrences, interval, and amount
+    statistics are computed, so that e.g. the same fee billed twice on one
+    day (once per household member) doesn't corrupt the interval
+    calculation. Source account resolution (FR-30a) is unaffected and
+    continues to operate on the pre-collapse transactions.
 
     Clusters with fewer than ``config.min_occurrences`` billing events, or
     payees with no ``destination_name``, are skipped. When a payee produces

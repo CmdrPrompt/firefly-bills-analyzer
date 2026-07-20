@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Recurring-payment identification now partitions a payee's transactions by
+  source account before splitting them into amount clusters, so a fixed
+  transfer that funds a spending account (e.g. a household budget top-up) is
+  never analyzed together with that spending account's own, separately
+  variable purchases just because they share a payee name. A same-date
+  co-occurrence of differing amounts also no longer splits a group on its
+  own unless the same combination of resulting amount clusters recurs across
+  at least two distinct dates, so a single day's coincidental double
+  purchase (e.g. two grocery runs on the same day) no longer fragments an
+  otherwise coherent, continuously variable spending pattern into many
+  spurious low-confidence entries. (TASK-014)
+
 - TTL-aware disk cache for transactions and bills (`cache.py`), cutting
   repeated local `--dry-run` runs against a real Firefly III instance from
   minutes (paginated live fetch) down to under a second on a cache hit.

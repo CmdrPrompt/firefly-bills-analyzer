@@ -1,4 +1,4 @@
-# TASK-014 Filter transactions by source account (UC9)
+# TASK-016 Filter transactions by source account (UC9)
 
 ## Status
 
@@ -89,9 +89,9 @@ transactions = account_filter.filter_transactions(transactions, config)
 
 ## Branch
 
-**Branch name:** `task/014-account-filtering`
-**Switch/create:** `git checkout -b task/014-account-filtering`
-**Make target:** `make branch-task f=TASK-014`
+**Branch name:** `task/016-account-filtering`
+**Switch/create:** `git checkout -b task/016-account-filtering`
+**Make target:** `make branch-task f=TASK-016`
 
 ## Acceptance criteria
 
