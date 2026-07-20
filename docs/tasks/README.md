@@ -22,6 +22,7 @@ and is the single authoritative ordering.
 | — | [TASK-010](TASK-010-real-data-benchmark.md) Calibrate performance benchmark against real transaction data (UC8) | TASK-002, TASK-009 | done | Independent of the pipeline — manual, opt-in, requires real Firefly III credentials; closed Open Item #9 |
 | — | [TASK-013](TASK-013-cli-fetch-progress-bar.md) CLI progress bar for transaction fetch (UC1) | TASK-002, TASK-005 | done | `firefly-python-api`'s REQ-008/TASK-011 (`on_page` callback on `get_withdrawal_transactions()`) implemented and merged upstream (PR #11); `lib/firefly-python-api` re-synced here via `git subtree pull`; `fetch_transactions()` now drives a `tqdm` progress bar per page |
 | — | [TASK-007](TASK-007-cache-layer.md) Local file cache layer (UC7) | TASK-002, TASK-004 | done | Un-deferred 2026-07-11 (Open Item #8 further resolved, spec v0.2.16): TTL-aware disk cache for transactions (window-keyed) and bills, motivated by faster local development/test cycles against real Firefly III data (verified: ~2min live fetch vs. ~0.4s cache hit); `--clear-cache` now actually deletes cache files |
+| 10 | [TASK-014](TASK-014-source-account-partition-and-corroborated-clustering.md) Source-account partitioning and corroborated amount clustering (UC2) | TASK-012 | done | Owner review of a real report found payee "ICA" fragmented into 15 rows: transactions spanning two source accounts (a fixed transfer vs. the spending it funds) were amount-clustered together, and a single incidental same-day double purchase was enough to trigger a split. FR-32d (new) partitions by source account before FR-32a; FR-32a (revised, spec v0.2.17) requires a co-occurrence split to be corroborated by a repeating signature across 2+ distinct dates. Verified against real data: ICA dropped from 15 rows to 3 |
 
 ## Dependency graph
 
@@ -48,6 +49,7 @@ graph LR
     T011 --> T012
     T002 --> T013[TASK-013<br/>fetch progress bar]
     T005 --> T013
+    T012 --> T014[TASK-014<br/>source-account partition + corroboration]
 ```
 
 ## Rules
