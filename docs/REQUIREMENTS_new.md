@@ -1,6 +1,6 @@
 # Requirements Specification: Firefly III Bills Analyzer
 
-**Version:** 0.2.17
+**Version:** 0.2.18
 **Date:** 2026-07-20
 **Status:** Draft, pending owner confirmation of items marked TBD (see Open Items)
 
@@ -331,6 +331,37 @@ to a real Firefly III instance with transaction history
 
 ---
 
+### UC10: Filter analysis by payee (destination account)
+
+**Actor:** Application / User
+**Precondition:** Transaction history fetched (UC1)
+**Primary flow (web UI):**
+
+1. The web UI fetches all known payees from the Firefly III API on page load
+2. The user selects payees to include or exclude via multiselect lists
+3. The selections are stored in the session and applied when the analysis runs
+
+**Alternative flow (terminal / .env):**
+
+1. If `INCLUDE_PAYEES` is set, only transactions whose destination account matches the include list are included
+2. If `EXCLUDE_PAYEES` is set, transactions whose destination account matches the exclude list are excluded
+
+**Common to both flows:**
+
+- Both lists match against the transaction's destination account (`destination_name`), the
+  same field payee grouping already uses (UC2 step 1)
+- Filtering happens before payee grouping (UC2 step 1), at the same point as category
+  filtering (UC6) and account filtering (UC9); exclude is applied after include when both
+  are configured, mirroring FR-11a/FR-11b and FR-35a/FR-35b
+- If no payees are selected, the analysis runs without payee filtering
+- Like account filtering (UC9) and unlike category filtering, there is no confidence
+  weighting attached to payee selection — this is a pure inclusion/exclusion mechanism,
+  e.g. for narrowing the analysis to specific payees, or for excluding payees whose
+  spending pattern is inherently irregular by design (e.g. a "Cash account" destination
+  representing cash withdrawals) and should never surface as a bill candidate
+
+---
+
 ## Functional Requirements
 
 Requirements follow EARS-style patterns with the system (or subsystem) as active subject. Decomposed requirements retain the original ID with an a/b suffix. Trace column references the use case each requirement is derived from.
@@ -375,7 +406,7 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-26b | The `firefly-python-api` package shall expose a `FireflyClient` class that provides a configured `requests.Session` | — |
 | FR-27  | When the application classifies recurring payment patterns, the application shall compute the confidence score as 0.4 × occurrence score + 0.4 × regularity score + 0.2 × amount score + category boost − uncategorized penalty, and shall clamp the result to the range [0.0, 1.0], where uncategorized penalty equals `UNCATEGORIZED_CONFIDENCE_PENALTY` when the pattern's category is absent and `UNCATEGORIZED_BEHAVIOR` is `neutral`, else 0 | UC2 |
 | FR-28  | Upon developer request, a dedicated opt-in script shall fetch the user's real withdrawal transactions from the configured Firefly III instance, run `identify_recurring()` against them, and report the real transaction count and elapsed time, without creating, modifying, or deleting any data in Firefly III | UC8 |
-| FR-29  | The CLI `--help` output shall document the environment variables a user commonly needs to set per run mode, alongside the flags, so that configuration is discoverable without reading `.env.example`: `FIREFLY_URL` and `FIREFLY_TOKEN` (required), `DRY_RUN` (alternative to `--dry-run`), `EXPORT_FORMAT` (`csv`/`json`/`none`), `HIGH_CONFIDENCE_THRESHOLD` (auto-approve/review cutoff), `INCLUDE_CATEGORIES`/`EXCLUDE_CATEGORIES`, `UNCATEGORIZED_BEHAVIOR`, and `INCLUDE_ACCOUNTS`/`EXCLUDE_ACCOUNTS` | UC3, UC5, UC6, UC9 |
+| FR-29  | The CLI `--help` output shall document the environment variables a user commonly needs to set per run mode, alongside the flags, so that configuration is discoverable without reading `.env.example`: `FIREFLY_URL` and `FIREFLY_TOKEN` (required), `DRY_RUN` (alternative to `--dry-run`), `EXPORT_FORMAT` (`csv`/`json`/`none`), `HIGH_CONFIDENCE_THRESHOLD` (auto-approve/review cutoff), `INCLUDE_CATEGORIES`/`EXCLUDE_CATEGORIES`, `UNCATEGORIZED_BEHAVIOR`, `INCLUDE_ACCOUNTS`/`EXCLUDE_ACCOUNTS`, and `INCLUDE_PAYEES`/`EXCLUDE_PAYEES` | UC3, UC5, UC6, UC9, UC10 |
 | FR-30a | When the application identifies a recurring pattern (UC2), the application shall resolve a source account name for the pattern as the `source_name` value that occurs most frequently among the pattern's transactions, and shall additionally record whether more than one distinct `source_name` value occurs across the pattern's transactions | UC2 |
 | FR-30b | The CLI review output (UC3) shall display, for each suggestion, the resolved source account name (FR-30a); when more than one distinct source account occurs in the pattern, the output shall display a "varies" indicator instead of a single account name | UC3 |
 | FR-30c | The web UI table view (FR-17a) shall include a column showing the resolved source account name (FR-30a), or a "varies" indicator when more than one distinct source account occurs in the pattern | UC3 |
@@ -389,6 +420,9 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-35a | When an account include list is configured (`INCLUDE_ACCOUNTS`), the application shall include only transactions whose source account name (`source_name`) matches the include list in the analysis | UC9 |
 | FR-35b | When an account exclude list is configured (`EXCLUDE_ACCOUNTS`), the application shall exclude transactions whose source account name (`source_name`) matches the exclude list from the analysis; exclude is applied after include when both are configured | UC9 |
 | FR-35c | When the web UI page is loaded, the web UI shall fetch the existing accounts from the Firefly III API and display them as multiselect lists | UC9 |
+| FR-36a | When a payee include list is configured (`INCLUDE_PAYEES`), the application shall include only transactions whose destination account name (`destination_name`) matches the include list in the analysis | UC10 |
+| FR-36b | When a payee exclude list is configured (`EXCLUDE_PAYEES`), the application shall exclude transactions whose destination account name (`destination_name`) matches the exclude list from the analysis; exclude is applied after include when both are configured | UC10 |
+| FR-36c | When the web UI page is loaded, the web UI shall fetch the existing payees from the Firefly III API and display them as multiselect lists | UC10 |
 
 ---
 
@@ -540,6 +574,8 @@ The application supports two run modes:
 | `UNCATEGORIZED_CONFIDENCE_PENALTY` | Confidence penalty for neutral uncategorized patterns (FR-27)                       | `0.10`          |
 | `INCLUDE_ACCOUNTS`                 | Comma-separated source-account include list, matched against `source_name` (FR-35a) | *(empty = all)* |
 | `EXCLUDE_ACCOUNTS`                 | Comma-separated source-account exclude list, matched against `source_name` (FR-35b) | *(empty)*       |
+| `INCLUDE_PAYEES`                   | Comma-separated payee include list, matched against `destination_name` (FR-36a)     | *(empty = all)* |
+| `EXCLUDE_PAYEES`                   | Comma-separated payee exclude list, matched against `destination_name` (FR-36b)     | *(empty)*       |
 | `WEB_PORT`                         | Port the web server listens on                                                      | `5000`          |
 | `WEB_HOST`                         | IP address the web server binds to                                                  | `127.0.0.1`     |
 | `CACHE_DIR`                        | Directory for cache files                                                           | `./cache`       |
@@ -563,6 +599,21 @@ Decisions required from the requirement owner before this specification is basel
 ---
 
 ## Changelog
+
+### 0.2.18 (2026-07-20)
+
+- Added UC10 and FR-36a/b/c: transactions can now be filtered by payee
+  (destination account) via `INCLUDE_PAYEES`/`EXCLUDE_PAYEES`, mirroring the
+  existing account filter's include/exclude pattern (UC9, FR-35a/b) but
+  matched against `destination_name` instead of `source_name`. Motivation:
+  `EXCLUDE_ACCOUNTS` only filters by the account money is paid *from*, so it
+  cannot exclude a payee whose pattern is inherently irregular by design
+  when that payee is the destination — e.g. a "Cash account" destination
+  representing cash withdrawals, which should never surface as a bill
+  candidate but is not any transaction's source account. No confidence
+  weighting is attached, matching UC9. The web UI part (`GET /api/payees`,
+  FR-36c) shares the deferred status of the rest of the web UI (Open Item
+  #5) until a web framework is selected.
 
 ### 0.2.17 (2026-07-20)
 
