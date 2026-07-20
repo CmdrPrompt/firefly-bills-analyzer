@@ -26,7 +26,7 @@ help:
 	@echo ""
 	@echo "  Keeping butler up to date:"
 	@echo "    make butler-check  -- Check if butler updates are available"
-	@echo "    make butler-pull   -- Pull butler updates; trims automatically unless templates/claude-agents changed"
+	@echo "    make butler-pull   -- Pull butler updates; trims automatically unless templates/claude-agents/claude-skills changed"
 	@echo "    make butler-fetch  -- Pull butler without trimming (use before regenerating files)"
 	@echo "    make butler-trim   -- Remove all but .butler/Makefile (run after init-project)"
 	@echo ""
@@ -147,8 +147,35 @@ check-agents-sync:
 		exit 1; \
 	fi
 
+## Fail if claude-skills/ and .claude/skills/ have drifted apart
+check-skills-sync:
+	@[ -d claude-skills ] || exit 0; \
+	status=0; \
+	for f in claude-skills/*/SKILL.md; do \
+		name=$$(basename "$$(dirname "$$f")"); \
+		other=".claude/skills/$$name/SKILL.md"; \
+		if [ ! -f "$$other" ]; then \
+			echo "check-skills-sync: '$$name' exists in claude-skills/ but not in .claude/skills/"; \
+			status=1; \
+		elif ! diff -q "$$f" "$$other" > /dev/null 2>&1; then \
+			echo "check-skills-sync: '$$name' differs between claude-skills/ and .claude/skills/"; \
+			status=1; \
+		fi; \
+	done; \
+	for f in .claude/skills/*/SKILL.md; do \
+		name=$$(basename "$$(dirname "$$f")"); \
+		[ -f "claude-skills/$$name/SKILL.md" ] || { \
+			echo "check-skills-sync: '$$name' exists in .claude/skills/ but not in claude-skills/"; \
+			status=1; \
+		}; \
+	done; \
+	if [ "$$status" -ne 0 ]; then \
+		echo "claude-skills/ and .claude/skills/ must stay identical - sync the files above."; \
+		exit 1; \
+	fi
+
 ## Run linters
-lint: check-agents-sync
+lint: check-agents-sync check-skills-sync
 	uv run ruff check .
 	uv run ruff format --check .
 	uv run mypy $(SRC_DIR)/
@@ -363,7 +390,7 @@ butler-check:
 butler-fetch:
 	git subtree pull --prefix=.butler $(BUTLER_REMOTE) main --squash
 
-## Pull the latest butler; trims automatically unless templates/claude-agents changed (then regenerate first)
+## Pull the latest butler; trims automatically unless templates/claude-agents/claude-skills changed (then regenerate first)
 butler-pull:
 	@OLD_HEAD=$$(git rev-parse HEAD); \
 	if ! git subtree pull --prefix=.butler $(BUTLER_REMOTE) main --squash; then \
@@ -373,13 +400,13 @@ butler-pull:
 		exit 1; \
 	fi; \
 	NEW_HEAD=$$(git rev-parse HEAD); \
-	CHANGED=$$(git diff --name-only $$OLD_HEAD $$NEW_HEAD -- .butler/templates .butler/claude-agents 2>/dev/null); \
+	CHANGED=$$(git diff --name-only $$OLD_HEAD $$NEW_HEAD -- .butler/templates .butler/claude-agents .butler/claude-skills 2>/dev/null); \
 	if [ -n "$$CHANGED" ]; then \
 		echo ""; \
-		echo "⚠ .butler/templates/ and/or .butler/claude-agents/ changed in this pull:"; \
+		echo "⚠ .butler/templates/, .butler/claude-agents/, and/or .butler/claude-skills/ changed in this pull:"; \
 		echo "$$CHANGED" | sed 's/^/  /'; \
 		echo ""; \
-		echo "Governance files (CLAUDE.md, .github/agents/, .claude/agents/) may now be"; \
+		echo "Governance files (CLAUDE.md, .github/agents/, .claude/agents/, .claude/skills/) may now be"; \
 		echo "out of date. Regenerate them before the next trim:"; \
 		echo "  make generate-governance-files FORCE=1"; \
 		echo "  make butler-trim"; \
@@ -416,7 +443,14 @@ generate-governance-files:
 	done
 	@mkdir -p .claude/agents
 	@cp .butler/claude-agents/*.agent.md .claude/agents/
-	@echo "✓ Generated CLAUDE.md, .github/copilot-instructions.md, .github/agents/, and .claude/agents/"
+	@mkdir -p .claude/skills
+	@[ -d .butler/claude-skills ] && for dir in .butler/claude-skills/*/; do \
+		[ -d "$$dir" ] || continue; \
+		name=$$(basename "$$dir"); \
+		mkdir -p ".claude/skills/$$name"; \
+		cp "$$dir/SKILL.md" ".claude/skills/$$name/SKILL.md"; \
+	done; true
+	@echo "✓ Generated CLAUDE.md, .github/copilot-instructions.md, .github/agents/, .claude/agents/, and .claude/skills/"
 
 ## Remove generated complexipy artifacts
 clean-complexity:

@@ -30,14 +30,14 @@ What's missing is guidance for consumers who *do* want an activated shell
    at the standard command: `source .venv/bin/activate`.
 2. Document, in the README's adoption guide, a `~/.zshrc` / `~/.bashrc` shell
    function consumers can add once, e.g.:
-   
+  
 ```sh
    activate() {
      if [ -f .venv/bin/activate ]; then source .venv/bin/activate
      else echo "No .venv/bin/activate found in $(pwd)"; fi
    }
    ```
-   
+  
 This works because it runs as a function in the caller's own shell, not a
    Make subprocess.
 

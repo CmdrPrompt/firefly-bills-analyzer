@@ -19,12 +19,13 @@ reproduced in `firefly-bills-analyzer`).
 trim — updates .butler/Makefile only", which reads as a complete, non-lossy
 update path even though it silently forecloses regenerating governance files.
 
-This document is scoped to TASK-048 only. It does not attempt to resolve
-TASK-039 (Draft) — repeat-pull merge conflicts and stale-CLI drift — but the
-requirement below is written so it stays compatible with TASK-039 R1–R10 if
-that task is implemented later (in particular, TASK-039 R2's requirement that
-`.butler/` end up trimmed-to-`Makefile`-only is treated as "eventually", not
-"as the unconditional last step of every `butler-pull` invocation").
+This document is scoped to TASK-048 and TASK-051. It does not attempt to
+resolve TASK-039 (Draft) — repeat-pull merge conflicts and stale-CLI drift —
+but the requirements below are written so they stay compatible with
+TASK-039 R1–R10 if that task is implemented later (in particular, TASK-039
+R2's requirement that `.butler/` end up trimmed-to-`Makefile`-only is treated
+as "eventually", not "as the unconditional last step of every `butler-pull`
+invocation").
 
 ## Goals
 
@@ -87,22 +88,78 @@ template/agent changes are detected, and otherwise pauses for the user to
 regenerate governance files first — rather than unconditionally describing
 it as "Pull the latest butler and trim."
 
+## Requirement 3: `claude-skills`/`claude-agents` change-detection and generation are symmetric
+
+**Description:** TASK-050 added a second consumer-facing content type,
+`.butler/claude-skills/` (mirrored into `.claude/skills/` in a consumer
+project), following the same shape as `.butler/claude-agents/`. Requirement 1
+and `generate-governance-files` were never updated to treat it the same way:
+
+- `butler-pull`'s change-detection diff (Requirement 1) only scopes
+  `.butler/templates/` and `.butler/claude-agents/`. It MUST also scope
+  `.butler/claude-skills/`, so a pull that only changes skills still defers
+  the automatic trim and warns the user.
+- `generate-governance-files` MUST copy `.butler/claude-skills/*/SKILL.md`
+  into a consumer project's `.claude/skills/`, mirroring the existing
+  `cp .butler/claude-agents/*.agent.md .claude/agents/` step. Without this,
+  there is no supported path — not even a manual one — for a consumer to
+  ever receive skill files; today they can only be inspected via
+  `git subtree`/git-log archaeology before the next trim deletes them.
+
+**Reproduced today** in `firefly-bills-analyzer`: `make butler-pull` fetched
+the TASK-050 skills content (`.butler/claude-skills/*`,
+`.butler/.claude/skills/*`), the pull's change-detection did not flag it
+(only `templates`/`claude-agents` are scoped), so `butler-trim` ran
+immediately and deleted the only copies before `generate-governance-files`
+could have copied them out even if the copy step existed.
+
+**Use case:**
+
+```bash
+$ make butler-pull
+# subtree pull runs, only .butler/claude-skills/ changed...
+⚠ .butler/claude-skills/ changed in this pull.
+  Governance files (.claude/skills/) may be out of date.
+  Run this before the next trim:
+    make generate-governance-files FORCE=1
+    make butler-trim
+```
+
+## Acceptance criteria (Requirement 3)
+
+- [ ] `butler-pull`'s pre/post-pull diff additionally scopes
+      `.butler/claude-skills/`; a pull that changes only that path defers
+      the automatic trim and prints the same kind of warning as Requirement 1.
+- [ ] `generate-governance-files` copies `.butler/claude-skills/*/SKILL.md`
+      into `.claude/skills/<name>/SKILL.md` in the consumer project,
+      mirroring the `claude-agents/` → `.claude/agents/` copy.
+- [ ] A regression test simulates a pull that changes only
+      `.butler/claude-skills/` and asserts the trim is deferred and the
+      warning is printed (mirrors the Requirement 1 test but for skills).
+- [ ] A regression test asserts `generate-governance-files` produces
+      `.claude/skills/<name>/SKILL.md` for every `claude-skills/*/SKILL.md`.
+- [ ] `CHANGELOG.md` updated with a behavior-first entry.
+- [ ] `make lint && make test` pass.
+
 ## Acceptance criteria (overall)
 
-- [ ] `butler-pull` diffs `.butler/templates/` and `.butler/claude-agents/`
-      between pre- and post-pull HEAD and skips the automatic
-      `butler-trim` step when either changed, printing the exact follow-up
-      commands.
-- [ ] When neither path changed, `butler-pull`'s behavior is unchanged
-      (fetch + trim in one step).
+- [ ] `butler-pull` diffs `.butler/templates/`, `.butler/claude-agents/`, and
+      `.butler/claude-skills/` between pre- and post-pull HEAD and skips the
+      automatic `butler-trim` step when any of them changed, printing the
+      exact follow-up commands.
+- [ ] When none of those paths changed, `butler-pull`'s behavior is
+      unchanged (fetch + trim in one step).
 - [ ] `make help`'s `butler-pull` description matches the new conditional
       behavior.
+- [ ] `generate-governance-files` copies `.butler/claude-skills/*/SKILL.md`
+      into `.claude/skills/<name>/SKILL.md`, mirroring the
+      `claude-agents/` → `.claude/agents/` copy.
 - [ ] A regression test simulates: `git subtree add` a fixture butler repo,
-      trim, commit; modify a file under the fixture's `templates/` or
-      `claude-agents/`; run `make butler-pull`; assert the trim was skipped,
-      the warning was printed, and `generate-governance-files FORCE=1`
-      afterwards succeeds against the newly-pulled content. A second fixture
-      run with no template/agent changes asserts the trim ran automatically
-      as before.
+      trim, commit; modify a file under the fixture's `templates/`,
+      `claude-agents/`, or `claude-skills/`; run `make butler-pull`; assert
+      the trim was skipped, the warning was printed, and
+      `generate-governance-files FORCE=1` afterwards succeeds against the
+      newly-pulled content. A second fixture run with no template/agent/skill
+      changes asserts the trim ran automatically as before.
 - [ ] `CHANGELOG.md` updated with a behavior-first entry.
 - [ ] `make lint && make test` pass.

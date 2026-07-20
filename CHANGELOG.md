@@ -36,6 +36,12 @@
 
 ### Fixed
 
+- `make butler-pull`'s change-detection and `generate-governance-files` now treat
+  `.butler/claude-skills/` the same as `.butler/claude-agents/`: a pull that only changes skills
+  now defers the automatic trim and prints the same warning, and `generate-governance-files`
+  copies every `.butler/claude-skills/*/SKILL.md` into `.claude/skills/<name>/SKILL.md`. Skill
+  updates were previously silently deleted by the automatic trim, with no supported way — manual
+  or automatic — for a consumer project to ever receive them. (TASK-051)
 - `make butler-pull` no longer deletes `.butler/templates/` or `.butler/claude-agents/` before a
   consumer project can regenerate governance files against newly-pulled content: it now compares
   those two paths before and after the subtree pull and, if either changed, prints the changed
