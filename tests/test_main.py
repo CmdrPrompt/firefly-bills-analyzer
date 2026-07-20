@@ -58,6 +58,9 @@ def _pipeline(
         patch.dict(os.environ, full_env, clear=True),
         patch(f"{mod}.fetcher.fetch_transactions", return_value=[_TRANSACTION]) as fetch,
         patch(f"{mod}.category_filter.filter_transactions", return_value=[_TRANSACTION]) as filt,
+        patch(
+            f"{mod}.account_filter.filter_transactions", return_value=[_TRANSACTION]
+        ) as account_filt,
         patch(f"{mod}.analyzer.identify_recurring", return_value=patterns) as analyze,
         patch(
             f"{mod}.bills_creator.create_bills",
@@ -69,6 +72,7 @@ def _pipeline(
         yield {
             "fetch": fetch,
             "filter": filt,
+            "account_filter": account_filt,
             "analyze": analyze,
             "create": create,
             "export": export,
@@ -116,6 +120,9 @@ class TestPipelineWiring:
 
         assert code == 0
         mocks["filter"].assert_called_once_with([_TRANSACTION], mocks["filter"].call_args.args[1])
+        mocks["account_filter"].assert_called_once_with(
+            [_TRANSACTION], mocks["account_filter"].call_args.args[1]
+        )
         mocks["analyze"].assert_called_once_with([_TRANSACTION], mocks["analyze"].call_args.args[1])
 
     def test_no_patterns_found_prints_message_and_creates_nothing(

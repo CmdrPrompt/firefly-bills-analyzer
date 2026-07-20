@@ -35,6 +35,8 @@ def _make_config(**overrides: object) -> Config:
         uncategorized_behavior="neutral",
         include_categories=[],
         exclude_categories=[],
+        include_accounts=[],
+        exclude_accounts=[],
         dry_run=False,
         export_format="none",
         web_port=5000,

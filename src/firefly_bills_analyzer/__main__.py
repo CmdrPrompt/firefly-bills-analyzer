@@ -15,6 +15,7 @@ from pathlib import Path
 from firefly_python_api import FireflyClient
 
 from firefly_bills_analyzer import (
+    account_filter,
     analyzer,
     bills_creator,
     cache,
@@ -155,6 +156,7 @@ def main(argv: list[str] | None = None) -> int:
 
     transactions = fetcher.fetch_transactions(config)
     transactions = category_filter.filter_transactions(transactions, config)
+    transactions = account_filter.filter_transactions(transactions, config)
     patterns = analyzer.identify_recurring(transactions, config)
 
     approved: list[RecurringPattern] = []
