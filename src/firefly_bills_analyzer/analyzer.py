@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import statistics
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
@@ -88,6 +89,18 @@ def _tolerance_gap_split(
     return groups
 
 
+def _median_interval_days(transactions: list[TransactionRead]) -> float:
+    """Median day-gap between consecutive transaction dates, sorted ascending.
+
+    Same method ``_build_pattern()`` uses for its ``intervals``/``median_days``
+    computation (FR-32e reuses it for solo-transaction and candidate-cluster
+    interval-bucket comparisons).
+    """
+    dates = sorted(date.fromisoformat(str(t["date"])) for t in transactions)
+    intervals = [(b - a).days for a, b in zip(dates, dates[1:])]
+    return float(statistics.median(intervals)) if intervals else 0.0
+
+
 def _partition_by_source_account(
     transactions: list[TransactionRead],
 ) -> list[list[TransactionRead]]:
@@ -160,11 +173,59 @@ def _split_into_amount_clusters(
     if not any(count >= 2 for count in signature_counts.values()):
         return [transactions]
 
+    split_off, excluded_solo_ids = _split_off_disagreeing_solo_clusters(
+        transactions, co_occurring, seed_clusters, _nearest_cluster
+    )
+
     assigned: list[list[TransactionRead]] = [[] for _ in seed_clusters]
     for transaction in transactions:
+        if id(transaction) in excluded_solo_ids:
+            continue
         assigned[_nearest_cluster(float(transaction["amount"]))].append(transaction)
 
-    return assigned
+    return assigned + split_off
+
+
+def _split_off_disagreeing_solo_clusters(
+    transactions: list[TransactionRead],
+    co_occurring: list[TransactionRead],
+    seed_clusters: list[list[TransactionRead]],
+    nearest_cluster: Callable[[float], int],
+) -> tuple[list[list[TransactionRead]], set[int]]:
+    """Identify solo-transaction groups whose interval bucket disagrees with
+    their nearest-mean candidate cluster's own bucket (FR-32e).
+
+    Returns the new clusters to split off and the ``id()`` set of the
+    transactions they contain, so the caller can exclude them from the
+    ordinary nearest-mean assignment.
+    """
+    co_occurring_ids = {id(t) for t in co_occurring}
+    solo_transactions = [t for t in transactions if id(t) not in co_occurring_ids]
+
+    solo_by_target: dict[int, list[TransactionRead]] = defaultdict(list)
+    for transaction in solo_transactions:
+        solo_by_target[nearest_cluster(float(transaction["amount"]))].append(transaction)
+
+    split_off: list[list[TransactionRead]] = []
+    excluded_solo_ids: set[int] = set()
+    for target_index, solo_group in solo_by_target.items():
+        if len(solo_group) < 2:
+            continue
+
+        candidate_co_occurring = [
+            t for t in seed_clusters[target_index] if id(t) in co_occurring_ids
+        ]
+        if len(candidate_co_occurring) < 2:
+            continue
+
+        solo_bucket = _classify_frequency(_median_interval_days(solo_group))
+        candidate_bucket = _classify_frequency(_median_interval_days(candidate_co_occurring))
+
+        if solo_bucket != candidate_bucket:
+            split_off.append(solo_group)
+            excluded_solo_ids.update(id(t) for t in solo_group)
+
+    return split_off, excluded_solo_ids
 
 
 def _collapse_into_billing_events(transactions: list[TransactionRead]) -> list[dict[str, Any]]:

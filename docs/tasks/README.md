@@ -25,6 +25,7 @@ and is the single authoritative ordering.
 | 10 | [TASK-014](TASK-014-source-account-partition-and-corroborated-clustering.md) Source-account partitioning and corroborated amount clustering (UC2) | TASK-012 | done | Owner review of a real report found payee "ICA" fragmented into 15 rows: transactions spanning two source accounts (a fixed transfer vs. the spending it funds) were amount-clustered together, and a single incidental same-day double purchase was enough to trigger a split. FR-32d (new) partitions by source account before FR-32a; FR-32a (revised, spec v0.2.17) requires a co-occurrence split to be corroborated by a repeating signature across 2+ distinct dates. Verified against real data: ICA dropped from 15 rows to 3 |
 | 11 | [TASK-016](TASK-016-account-filtering.md) Filter transactions by source account (UC9) | TASK-002 | done | Spec v0.2.18: `INCLUDE_ACCOUNTS`/`EXCLUDE_ACCOUNTS`, modeled on TASK-006's category filter but exclude-and-include only, no confidence weighting. FR-35c (web UI multiselect) deferred, contingent on Open Item #5. Renumbered from TASK-014 to resolve a task-ID collision with the source-account-partitioning task above, which was merged upstream (PR #15) under the same number on a diverging branch |
 | 12 | [TASK-017](TASK-017-payee-filtering.md) Filter transactions by payee / destination account (UC10) | TASK-002 | done | Spec v0.2.19: `INCLUDE_PAYEES`/`EXCLUDE_PAYEES`, modeled on TASK-016's account filter but matched against `destination_name` instead of `source_name`. Also updates `.env.example` with the new variables. FR-36c (web UI multiselect) deferred, contingent on Open Item #5. Renumbered from TASK-015 for the same reason as TASK-016 |
+| 13 | [TASK-018](TASK-018-solo-transaction-interval-bucket-split.md) Separate solo transactions into their own cluster when frequency buckets disagree (FR-32e) | TASK-012, TASK-014 | done | Owner review of a real report found payee "STOCKHOLM VATTEN AB" merging a yearly garden-waste charge into a quarterly garbage-collection cluster, because FR-32a's nearest-mean assignment (TASK-012/TASK-014) only considers amount proximity for solo (non-co-occurring) transactions. FR-32e (spec v0.2.21) adds a secondary interval/frequency-bucket check, reusing the existing `_classify_frequency()` helper: 2+ solo transactions whose own median interval disagrees with their nearest cluster's now split off into their own cluster instead of being folded in |
 
 ## Dependency graph
 
@@ -54,6 +55,7 @@ graph LR
     T012 --> T014[TASK-014<br/>source-account partition + corroboration]
     T002 --> T016[TASK-016<br/>account filter]
     T002 --> T017[TASK-017<br/>payee filter]
+    T014 --> T018[TASK-018<br/>solo transaction interval bucket split]
 ```
 
 ## Rules

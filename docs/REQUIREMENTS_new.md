@@ -1,6 +1,6 @@
 # Requirements Specification: Firefly III Bills Analyzer
 
-**Version:** 0.2.20
+**Version:** 0.2.21
 **Date:** 2026-07-20
 **Status:** Draft, pending owner confirmation of items marked TBD (see Open Items)
 
@@ -21,7 +21,7 @@ Terms used with a specific meaning in this specification. All requirements use t
 | Web server | The built-in HTTP server component of the application |
 | firefly-python-api | The standalone, shared Python package that owns the HTTP session toward Firefly III |
 | Recurring payment pattern | A group of transactions with the same payee and, when the payee's transactions form more than one amount cluster (FR-32a, FR-32d), the same amount cluster, that meets the occurrence threshold (FR-04a) |
-| Amount cluster | A subgroup of a payee's transactions, formed by first partitioning the payee group by source account (FR-32d), then applying FR-32a independently within each source-account subgroup: amounts observed on co-occurrence dates (dates with two or more differing amounts) are clustered via a tolerance-based gap split, and every transaction in the subgroup is extended to whichever resulting cluster's mean is numerically closest — but only when the split is corroborated (FR-32a) by the same cluster combination recurring across two or more distinct co-occurrence dates. A subgroup with no co-occurrence date, or whose co-occurrence dates never share a repeating cluster combination, forms a single amount cluster regardless of how much its amount varies — this is what keeps a single bill whose amount fluctuates over time (e.g. a metered utility bill priced by season and consumption), or an account whose spending is continuously variable and rarely repeats an exact amount (e.g. day-to-day grocery purchases from a dedicated spending account), from being fragmented merely because two transactions once landed on the same date. A subgroup where the same combination of differing amounts genuinely recurs together (e.g. two household members billed the same fee, or several subscriptions billed through the same merchant, landing on the same date every cycle) splits into more than one amount cluster |
+| Amount cluster | A subgroup of a payee's transactions, formed by first partitioning the payee group by source account (FR-32d), then applying FR-32a independently within each source-account subgroup: amounts observed on co-occurrence dates (dates with two or more differing amounts) are clustered via a tolerance-based gap split, and every transaction in the subgroup is extended to whichever resulting cluster's mean is numerically closest — but only when the split is corroborated (FR-32a) by the same cluster combination recurring across two or more distinct co-occurrence dates. A subgroup with no co-occurrence date, or whose co-occurrence dates never share a repeating cluster combination, forms a single amount cluster regardless of how much its amount varies — this is what keeps a single bill whose amount fluctuates over time (e.g. a metered utility bill priced by season and consumption), or an account whose spending is continuously variable and rarely repeats an exact amount (e.g. day-to-day grocery purchases from a dedicated spending account), from being fragmented merely because two transactions once landed on the same date. A subgroup where the same combination of differing amounts genuinely recurs together (e.g. two household members billed the same fee, or several subscriptions billed through the same merchant, landing on the same date every cycle) splits into more than one amount cluster. When the split is corroborated, transactions that occur on no co-occurrence date ("solo transactions") are assigned to the nearest-mean cluster only when that assignment does not conflict with a materially different recurrence interval: if the solo transactions' own median interval classifies (per FR-03) into a different frequency bucket than the candidate cluster's own co-occurrence-date occurrences, the solo transactions instead form a separate amount cluster of their own (FR-32e). This keeps amount proximity from silently merging two distinct recurring charges billed through the same merchant and source account at different cadences (e.g. a quarterly charge and an unrelated yearly charge, only one of which happens to co-occur with a sibling transaction) merely because the yearly charge's amount happens to fall numerically closer to the quarterly cluster's mean |
 | Billing event | Within an amount cluster, one or more transactions that share the exact same date, collapsed per FR-33a into a single unit whose amount is their sum. Occurrence counts, interval calculation, and amount statistics (UC2) operate on billing events, not raw transaction rows. Budget-wise, several same-day transactions for the same recurring charge (e.g. one household member's invoice and another's, billed together) represent one combined outflow, not two independent cycle points |
 | Frequency | The classification of a recurring payment pattern by median interval: monthly, quarterly, half-yearly, yearly, or irregular (FR-03) |
 | Confidence score | The value in [0.0, 1.0] computed per FR-27 |
@@ -103,6 +103,14 @@ The use cases are informative. They describe intended flows and provide context 
    e. Otherwise, every transaction in the subgroup — including ones not on a co-occurrence
       date — is assigned to whichever candidate cluster's mean amount is numerically
       closest to its own amount
+   f. Step (e) applies to a "solo" transaction (one on no co-occurrence date) only when
+      doing so does not conflict with a materially different recurrence interval (FR-32e):
+      if the subgroup has two or more solo transactions, and their own median interval
+      classifies (FR-03) into a different frequency bucket than the median interval of the
+      nearest-mean candidate cluster's own co-occurrence-date occurrences, the solo
+      transactions form a separate amount cluster of their own instead of being folded into
+      the nearest-mean cluster. A subgroup with fewer than two solo transactions, or where
+      the two frequency buckets agree, is unaffected and continues to follow step (e)
 
    Every step below operates on the resulting payee/source-account/amount-cluster group,
    not the raw payee group
@@ -163,6 +171,13 @@ The use cases are informative. They describe intended flows and provide context 
   purchases, become two separate patterns)
 - No two transactions in a cluster share the exact same date: behavior is unchanged from the
   pre-FR-33 per-transaction calculation (every transaction is its own billing event)
+- A subgroup's split is corroborated, and it also contains two or more solo transactions
+  (never sharing a date with a sibling) whose own recurrence interval classifies into a
+  different frequency bucket than the nearest-mean candidate cluster's own occurrences: the
+  solo transactions form their own additional amount cluster instead of being folded into
+  the nearest-mean cluster (FR-32e) — e.g. an annual garden-waste charge and a quarterly
+  water charge billed through the same merchant and source account, where only the water
+  charge co-occurs on the same date as a third, quarterly garbage-collection charge
 
 ---
 
@@ -434,6 +449,7 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-32b | The application shall read the amount-cluster split tolerance from configuration (`AMOUNT_CLUSTER_TOLERANCE`, default `0.15`) | UC2 |
 | FR-32c | When a payee produces more than one amount cluster (FR-32a) that each independently qualify as a recurring payment pattern, the application shall disambiguate the bill name of each resulting pattern by appending its representative (mean) amount to the name produced by FR-13b, so that FR-05a's name-only duplicate check does not conflate distinct clusters | UC2, UC4 |
 | FR-32d | Before amount clustering (FR-32a), the application shall partition each payee group formed in UC2 step 1 by source account: transactions sharing the same `source_name` value form one subgroup, and transactions with no `source_name` form their own subgroup. FR-32a is then applied independently within each subgroup, so that transactions withdrawn through different accounts (e.g. a fixed transfer funding a spending account, versus that spending account's own purchases) are never amount-clustered together | UC2 |
+| FR-32e | When FR-32a's split is corroborated (step c) for a subgroup, and the subgroup contains two or more transactions that occur on no co-occurrence date ("solo transactions"), the application shall assign the solo transactions to a candidate cluster by nearest-mean (FR-32a step d) only when doing so does not conflict with a materially different recurrence interval, determined as follows: (a) compute the median interval between the solo transactions, ordered by date, and classify it into a frequency bucket per FR-03's thresholds; (b) compute the median interval between the co-occurrence-date occurrences of the candidate cluster whose mean amount is numerically closest to the solo transactions' mean amount (the cluster FR-32a step (d) would otherwise assign them to), and classify it into a frequency bucket per the same thresholds; (c) if the candidate cluster has fewer than two of its own co-occurrence-date occurrences, its frequency bucket cannot be determined and the solo transactions are assigned per FR-32a step (d) unchanged; (d) if both frequency buckets are determined and differ, the solo transactions form a new amount cluster of their own instead of being assigned to the nearest-mean candidate cluster; (e) if both frequency buckets are determined and agree, the solo transactions are assigned to the nearest-mean candidate cluster per FR-32a step (d) unchanged. A subgroup with fewer than two solo transactions is unaffected and continues to follow FR-32a step (d); a subgroup whose split is not corroborated is unaffected and continues to follow FR-32a step (d)'s single-cluster fallback | UC2 |
 | FR-33a | Within each payee/source-account/amount-cluster group (FR-32a, FR-32d), when two or more transactions share the exact same date, the application shall collapse them into a single billing event (see Definitions) whose amount is the sum of the collapsed transactions' amounts; occurrence count, median interval, and amount min/max/mean (UC2 steps 4–7) shall be computed over the resulting billing events rather than the pre-collapse transaction rows. Source account resolution (FR-30a) is unaffected and continues to be computed over the group's underlying transactions | UC2 |
 | FR-34  | In CLI mode, while `fetcher.fetch_transactions()` is fetching transaction pages from Firefly III, the application shall display a progress bar showing pages fetched out of the total page count, driven by the `on_page` callback exposed by `firefly-python-api`'s `get_withdrawal_transactions()` (that package's REQ-008); when no callback support is available (e.g. an older `firefly-python-api` version), the application shall fall back to fetching without a progress bar rather than failing | UC1 |
 | FR-35a | When an account include list is configured (`INCLUDE_ACCOUNTS`), the application shall include only transactions whose source account name (`source_name`) matches the include list in the analysis | UC9 |
@@ -622,6 +638,35 @@ Decisions required from the requirement owner before this specification is basel
 ---
 
 ## Changelog
+
+### 0.2.21 (2026-07-20)
+
+- Added FR-32e and revised the "Amount cluster" definition
+  and UC2 (new step 2.f, a new alternative-flow bullet) to close a gap in
+  FR-32a/FR-32d's nearest-mean assignment, found during owner review of a real
+  analysis for payee "STOCKHOLM VATTEN AB" (source account `SEB Räkningskonto`).
+  That payee bills three distinct recurring charges through one merchant name:
+  water and garbage collection, always billed together as a same-day pair
+  (quarterly), and garden waste, always billed alone (yearly, no same-day
+  sibling). FR-32a's existing corroborated split correctly separated water
+  from garbage collection using the paired dates. But the two solo garden-waste
+  transactions have no co-occurrence signature of their own, so FR-32a step (d)
+  assigned them by nearest-mean amount alone — and because ~1471–1560 kr sits
+  numerically closer to the garbage-collection cluster's mean (~1904 kr) than
+  the water cluster's mean (~753 kr), garden waste was silently folded into
+  garbage collection, merging a yearly charge and a quarterly charge into one
+  incorrectly-labeled 7-occurrence "irregular" pattern instead of remaining a
+  correctly-separated 5-occurrence quarterly pattern and a 2-occurrence yearly
+  pattern. FR-32e adds recurrence interval (FR-03 frequency bucket) as a
+  secondary, corroborating signal alongside amount proximity: solo
+  transactions (never sharing a date with a sibling) are folded into the
+  nearest-mean cluster only when their own interval agrees with that cluster's
+  frequency bucket; when the two disagree, the solo transactions form a
+  separate amount cluster instead. Does not change FR-32a/b/c/d as specified,
+  and explicitly preserves the existing single-cluster fallback for a subgroup
+  with no co-occurrence date at all (FR-32a step d) — FR-32e only applies once
+  a corroborated split already exists and solo transactions are being assigned
+  into it.
 
 ### 0.2.20 (2026-07-20)
 
@@ -950,3 +995,4 @@ Initial version.
 - Personal Access Token with read and write access
 - `firefly-python-api` (shared internal package) — authenticated HTTP session and URL/token configuration
 - Flask or FastAPI (web server)
+</content>

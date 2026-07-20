@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Amount-cluster splitting now also checks the recurrence interval of any
+  transaction that never shares a date with a sibling ("solo" transaction)
+  before folding it into the amount cluster it's numerically closest to. If
+  2 or more such solo transactions recur on a cadence that disagrees with
+  the candidate cluster's own cadence (e.g. a yearly garden-waste charge
+  billed through the same payee and account as a quarterly water/garbage
+  pair, closest by amount to the quarterly garbage charge), they are split
+  into their own cluster instead of being merged in and mislabeled
+  "irregular". (TASK-018)
+
 - Transactions can now be filtered by destination payee before
   recurring-payment analysis, via `INCLUDE_PAYEES`/`EXCLUDE_PAYEES`
   (comma-separated, matched against `destination_name`), letting a payee

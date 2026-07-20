@@ -4,7 +4,7 @@ from datetime import date, timedelta
 
 import pytest
 from firefly_python_api import TransactionRead
-from hypothesis import given
+from hypothesis import example, given
 from hypothesis import strategies as st
 
 from firefly_bills_analyzer.analyzer import (
@@ -701,6 +701,254 @@ def test_split_into_amount_clusters_preserves_all_transactions_and_is_determinis
     assert _amounts(clusters) == _amounts(clusters_again)  # deterministic
     assert sum(len(c) for c in clusters) == len(transactions)  # every transaction kept
     assert all(len(c) > 0 for c in clusters)  # no empty clusters
+
+
+# ---------------------------------------------------------------------------
+# Solo transaction interval-bucket split (FR-32e)
+# ---------------------------------------------------------------------------
+
+
+def test_solo_transactions_matching_bucket_stay_in_nearest_cluster() -> None:
+    """FR-32e: solo transactions whose own median interval bucket agrees with
+    the nearest-mean cluster's own co-occurrence-date bucket are folded into
+    that cluster unchanged, and no new cluster is created."""
+    day0 = date(2026, 1, 1)
+    co_occurring = [
+        _transaction(day0, "10.00", "Payee", None),
+        _transaction(day0, "25.00", "Payee", None),
+        _transaction(day0 + timedelta(days=31), "10.00", "Payee", None),
+        _transaction(day0 + timedelta(days=31), "25.00", "Payee", None),
+    ]
+    # Solo transactions nearest the ~25 cluster, 31 days apart -> monthly,
+    # matching that cluster's own co-occurrence-date interval (also 31 days).
+    solo = [
+        _transaction(day0 + timedelta(days=62), "26.00", "Payee", None),
+        _transaction(day0 + timedelta(days=93), "26.00", "Payee", None),
+    ]
+
+    clusters = _split_into_amount_clusters(co_occurring + solo, tolerance=0.15)
+
+    assert len(clusters) == 2
+    sizes = sorted(len(c) for c in clusters)
+    assert sizes == [2, 4]
+    large_cluster = max(clusters, key=len)
+    assert sorted(float(t["amount"]) for t in large_cluster) == [25.00, 25.00, 26.00, 26.00]
+
+
+def test_solo_transactions_differing_bucket_form_separate_cluster() -> None:
+    """FR-32e: solo transactions whose own median interval bucket differs from
+    the nearest-mean cluster's own co-occurrence-date bucket are split off
+    into a new cluster of their own instead of being folded in (regression
+    for "STOCKHOLM VATTEN AB": quarterly water/garbage pairs plus a yearly
+    solo garden-waste charge)."""
+    day0 = date(2026, 1, 1)
+    water_and_garbage = []
+    for i in range(4):
+        d = day0 + timedelta(days=91 * i)
+        water_and_garbage.append(_transaction(d, "730.00", "Stockholm Vatten", None))
+        water_and_garbage.append(_transaction(d, "1900.00", "Stockholm Vatten", None))
+
+    # Solo, yearly garden-waste transactions, nearest to the ~1900 (garbage)
+    # cluster by amount, but on a different cadence (365 days apart).
+    solo_start = day0 + timedelta(days=3650)
+    solo = [
+        _transaction(solo_start, "1471.00", "Stockholm Vatten", None),
+        _transaction(solo_start + timedelta(days=365), "1560.00", "Stockholm Vatten", None),
+    ]
+
+    clusters = _split_into_amount_clusters(water_and_garbage + solo, tolerance=0.15)
+
+    assert len(clusters) == 3
+    sizes = sorted(len(c) for c in clusters)
+    assert sizes == [2, 4, 4]
+    solo_cluster = next(c for c in clusters if len(c) == 2)
+    assert sorted(float(t["amount"]) for t in solo_cluster) == [1471.00, 1560.00]
+
+
+def test_solo_transactions_assigned_unchanged_when_candidate_bucket_undetermined() -> None:
+    """FR-32e: when the nearest-mean candidate cluster has fewer than 2 of its
+    own co-occurrence-date occurrences, its bucket can't be determined, so
+    solo transactions are folded into it unchanged regardless of their own
+    interval."""
+    day0 = date(2026, 1, 1)
+    co_occurring = [
+        _transaction(day0, "10.00", "Payee", None),
+        _transaction(day0, "25.00", "Payee", None),
+        _transaction(day0 + timedelta(days=31), "10.00", "Payee", None),
+        _transaction(day0 + timedelta(days=31), "25.00", "Payee", None),
+        # A third, distinct cluster (~50) that co-occurs on only one date, so
+        # it has just 1 co-occurrence-date occurrence of its own; overall
+        # corroboration is still met via the {10, 25} signature above.
+        _transaction(day0 + timedelta(days=62), "10.00", "Payee", None),
+        _transaction(day0 + timedelta(days=62), "50.00", "Payee", None),
+    ]
+    # 2+ solo transactions, yearly-spaced, nearest to the ~50 cluster whose
+    # bucket cannot be determined (only 1 co-occurrence occurrence).
+    solo = [
+        _transaction(day0 + timedelta(days=3650), "55.00", "Payee", None),
+        _transaction(day0 + timedelta(days=3650 + 365), "55.00", "Payee", None),
+    ]
+
+    clusters = _split_into_amount_clusters(co_occurring + solo, tolerance=0.15)
+
+    assert len(clusters) == 3
+    target_cluster = next(c for c in clusters if any(float(t["amount"]) == 50.00 for t in c))
+    assert len(target_cluster) == 3
+    assert sorted(float(t["amount"]) for t in target_cluster) == [50.00, 55.00, 55.00]
+
+
+def test_single_solo_transaction_not_separated() -> None:
+    """FR-32e requires 2+ solo transactions before the interval-bucket check
+    applies; with only 1 solo transaction, existing nearest-mean assignment
+    (TASK-014) is unchanged even if its interval would classify
+    differently."""
+    day0 = date(2026, 1, 1)
+    co_occurring = [
+        _transaction(day0, "10.00", "Payee", None),
+        _transaction(day0, "25.00", "Payee", None),
+        _transaction(day0 + timedelta(days=31), "10.00", "Payee", None),
+        _transaction(day0 + timedelta(days=31), "25.00", "Payee", None),
+    ]
+    # Single solo transaction, nearest the ~25 cluster; its own interval
+    # bucket can't even be computed (needs a sibling solo transaction).
+    solo = [_transaction(day0 + timedelta(days=3650), "26.00", "Payee", None)]
+
+    clusters = _split_into_amount_clusters(co_occurring + solo, tolerance=0.15)
+
+    assert len(clusters) == 2
+    sizes = sorted(len(c) for c in clusters)
+    assert sizes == [2, 3]
+    large_cluster = max(clusters, key=len)
+    assert 26.00 in [float(t["amount"]) for t in large_cluster]
+
+
+def test_uncorroborated_split_unaffected_by_solo_bucket_check() -> None:
+    """FR-32e only engages once a split is corroborated; a single
+    coincidental co-occurrence date, even with 2+ would-be solo transactions
+    whose interval disagrees with the co-occurring amounts, leaves the whole
+    subgroup as a single cluster (TASK-014 behavior, byte-for-byte
+    unchanged)."""
+    day0 = date(2026, 1, 1)
+    transactions = [
+        _transaction(day0, "10.00", "Payee", None),
+        _transaction(day0, "25.00", "Payee", None),
+        # 2+ "solo" transactions (never sharing a date with a sibling) whose
+        # own interval (365 days) would disagree with a monthly bucket.
+        _transaction(day0 + timedelta(days=100), "10.00", "Payee", None),
+        _transaction(day0 + timedelta(days=465), "10.00", "Payee", None),
+    ]
+
+    clusters = _split_into_amount_clusters(transactions, tolerance=0.15)
+
+    assert len(clusters) == 1
+    assert len(clusters[0]) == 4
+
+
+@given(
+    candidate_interval=st.integers(min_value=1, max_value=450),
+    solo_interval=st.integers(min_value=1, max_value=450),
+)
+@example(candidate_interval=30, solo_interval=30)  # both monthly -> agree
+@example(candidate_interval=30, solo_interval=90)  # monthly vs quarterly -> differ
+@example(candidate_interval=24, solo_interval=36)  # both irregular either side of monthly -> agree
+@example(candidate_interval=25, solo_interval=35)  # both at monthly boundary -> agree
+@example(candidate_interval=79, solo_interval=101)  # both irregular, either side of quarterly
+@example(candidate_interval=80, solo_interval=100)  # both at quarterly boundary -> agree
+@example(candidate_interval=159, solo_interval=201)  # both irregular, either side of half-yearly
+@example(candidate_interval=160, solo_interval=200)  # both at half-yearly boundary -> agree
+@example(candidate_interval=339, solo_interval=391)  # both irregular either side of yearly -> agree
+@example(candidate_interval=340, solo_interval=390)  # both at yearly boundary -> agree
+def test_solo_bucket_classification_hypothesis(candidate_interval: int, solo_interval: int) -> None:
+    """FR-32e: the split-vs-no-split decision for 2+ solo transactions must
+    track exactly whether `_classify_frequency()` agrees or differs between
+    the solo transactions' own median interval and the nearest candidate
+    cluster's own co-occurrence-date median interval, across synthetic
+    interval values straddling every FR-03 bucket boundary."""
+    day0 = date(2026, 1, 1)
+    co_occurring = [
+        _transaction(day0, "10.00", "Payee", None),
+        _transaction(day0, "25.00", "Payee", None),
+        _transaction(day0 + timedelta(days=candidate_interval), "10.00", "Payee", None),
+        _transaction(day0 + timedelta(days=candidate_interval), "25.00", "Payee", None),
+    ]
+    # Solo transactions far enough away to never collide with a
+    # co-occurrence date, nearest the ~25 cluster by amount.
+    solo_start = day0 + timedelta(days=10_000)
+    solo = [
+        _transaction(solo_start, "25.50", "Payee", None),
+        _transaction(solo_start + timedelta(days=solo_interval), "25.50", "Payee", None),
+    ]
+
+    clusters = _split_into_amount_clusters(co_occurring + solo, tolerance=0.15)
+
+    agree = _classify_frequency(solo_interval) == _classify_frequency(candidate_interval)
+    if agree:
+        assert len(clusters) == 2
+    else:
+        assert len(clusters) == 3
+
+
+def test_stockholm_vatten_produces_three_separate_patterns() -> None:
+    """FR-32e integration: a real-shaped payee billing quarterly water and
+    garbage collection as a same-day co-occurring pair, plus solo yearly
+    garden-waste transactions, must produce three independent patterns
+    instead of garden waste being merged into the nearer-by-amount garbage
+    collection cluster (regression for "STOCKHOLM VATTEN AB")."""
+    config = _make_config(min_occurrences=2)
+    day0 = date(2024, 1, 15)
+    water_amounts = ["710.00", "735.00", "750.00", "766.00", "720.00"]
+    garbage_amounts = ["1801.00", "1850.00", "1900.00", "1940.00", "1820.00"]
+
+    transactions = []
+    for i, (water_amount, garbage_amount) in enumerate(zip(water_amounts, garbage_amounts)):
+        d = day0 + timedelta(days=91 * i)
+        transactions.append(
+            _transaction(
+                d,
+                water_amount,
+                "STOCKHOLM VATTEN AB",
+                None,
+                source_name="SEB Räkningskonto",
+            )
+        )
+        transactions.append(
+            _transaction(
+                d,
+                garbage_amount,
+                "STOCKHOLM VATTEN AB",
+                None,
+                source_name="SEB Räkningskonto",
+            )
+        )
+
+    garden_waste_dates = [date(2024, 6, 1), date(2025, 6, 1)]
+    garden_waste_amounts = ["1471.00", "1560.00"]
+    for d, amount in zip(garden_waste_dates, garden_waste_amounts):
+        transactions.append(
+            _transaction(
+                d,
+                amount,
+                "STOCKHOLM VATTEN AB",
+                None,
+                source_name="SEB Räkningskonto",
+            )
+        )
+
+    patterns = identify_recurring(transactions, config)
+
+    assert len(patterns) == 3
+
+    garden_waste_pattern = next(p for p in patterns if p.occurrences == 2)
+    assert garden_waste_pattern.frequency == "yearly"
+    assert garden_waste_pattern.amount_mean == pytest.approx(1515.50, rel=0.01)
+
+    quarterly_patterns = [p for p in patterns if p.occurrences == 5]
+    assert len(quarterly_patterns) == 2
+    assert all(p.frequency == "quarterly" for p in quarterly_patterns)
+    water_pattern = min(quarterly_patterns, key=lambda p: p.amount_mean)
+    garbage_pattern = max(quarterly_patterns, key=lambda p: p.amount_mean)
+    assert water_pattern.amount_mean < 1000
+    assert garbage_pattern.amount_mean > 1700
 
 
 # ---------------------------------------------------------------------------
