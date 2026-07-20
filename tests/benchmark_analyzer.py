@@ -51,6 +51,8 @@ def _make_config() -> Config:
         exclude_categories=[],
         include_accounts=[],
         exclude_accounts=[],
+        include_payees=[],
+        exclude_payees=[],
         dry_run=False,
         export_format="none",
         web_port=5000,

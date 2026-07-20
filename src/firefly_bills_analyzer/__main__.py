@@ -22,6 +22,7 @@ from firefly_bills_analyzer import (
     category_filter,
     exporter,
     fetcher,
+    payee_filter,
 )
 from firefly_bills_analyzer.analyzer import RecurringPattern
 from firefly_bills_analyzer.config import Config, ConfigError
@@ -157,6 +158,7 @@ def main(argv: list[str] | None = None) -> int:
     transactions = fetcher.fetch_transactions(config)
     transactions = category_filter.filter_transactions(transactions, config)
     transactions = account_filter.filter_transactions(transactions, config)
+    transactions = payee_filter.filter_transactions(transactions, config)
     patterns = analyzer.identify_recurring(transactions, config)
 
     approved: list[RecurringPattern] = []

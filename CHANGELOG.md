@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Transactions can now be filtered by destination payee before
+  recurring-payment analysis, via `INCLUDE_PAYEES`/`EXCLUDE_PAYEES`
+  (comma-separated, matched against `destination_name`), letting a payee
+  whose spending pattern is inherently irregular by design (e.g. a "Cash
+  account" destination representing cash withdrawals) be excluded from
+  analysis, or the analysis narrowed to specific payees. Exclude is applied
+  after include, and transactions without a resolved destination payee never
+  match either list. (TASK-017)
+
 - Transactions can now be filtered by source account before recurring-payment
   analysis, via `INCLUDE_ACCOUNTS`/`EXCLUDE_ACCOUNTS` (comma-separated,
   matched against `source_name`), letting an inherently irregular account

@@ -33,6 +33,8 @@ class Config:
     exclude_categories: list[str]
     include_accounts: list[str]
     exclude_accounts: list[str]
+    include_payees: list[str]
+    exclude_payees: list[str]
     # Output
     dry_run: bool
     export_format: str
@@ -80,6 +82,8 @@ class Config:
             exclude_categories=_csv("EXCLUDE_CATEGORIES"),
             include_accounts=_csv("INCLUDE_ACCOUNTS"),
             exclude_accounts=_csv("EXCLUDE_ACCOUNTS"),
+            include_payees=_csv("INCLUDE_PAYEES"),
+            exclude_payees=_csv("EXCLUDE_PAYEES"),
             dry_run=os.environ.get("DRY_RUN", "false").lower() in ("1", "true", "yes"),
             export_format=os.environ.get("EXPORT_FORMAT", "none"),
             web_port=int(os.environ.get("WEB_PORT", "5000")),

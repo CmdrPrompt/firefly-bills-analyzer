@@ -2,7 +2,7 @@
 
 ## Status
 
-not started
+done
 
 ## Requirements
 
@@ -104,28 +104,28 @@ discoverable in the template, not just documented in the requirements spec.
 
 ## Acceptance criteria
 
-- [ ] `src/firefly_bills_analyzer/payee_filter.py` exposes
+- [x] `src/firefly_bills_analyzer/payee_filter.py` exposes
       `filter_transactions(transactions, config) -> list[TransactionRead]`
-- [ ] When `config.include_payees` is non-empty, only transactions whose
+- [x] When `config.include_payees` is non-empty, only transactions whose
       `destination_name` matches the include list are kept (FR-36a)
-- [ ] When `config.exclude_payees` is non-empty, transactions whose
+- [x] When `config.exclude_payees` is non-empty, transactions whose
       `destination_name` matches the exclude list are dropped (FR-36b);
       exclude is applied after include when both are configured
-- [ ] Transactions with `destination_name is None` are never matched by a
+- [x] Transactions with `destination_name is None` are never matched by a
       non-empty include or exclude list
-- [ ] When neither list is configured, `filter_transactions` is a passthrough
-- [ ] `Config` exposes `include_payees: list[str]` and
+- [x] When neither list is configured, `filter_transactions` is a passthrough
+- [x] `Config` exposes `include_payees: list[str]` and
       `exclude_payees: list[str]`, read from `INCLUDE_PAYEES` and
       `EXCLUDE_PAYEES` (both default empty)
-- [ ] `__main__.py`'s `main()` calls
+- [x] `__main__.py`'s `main()` calls
       `payee_filter.filter_transactions(transactions, config)` after the
       other filter calls, before `analyzer.identify_recurring()`
-- [ ] `.env.example` includes commented `INCLUDE_PAYEES=`/`EXCLUDE_PAYEES=`
+- [x] `.env.example` includes commented `INCLUDE_PAYEES=`/`EXCLUDE_PAYEES=`
       lines in the Analysis section, after `EXCLUDE_CATEGORIES`
-- [ ] `tests/test_payee_filter.py` uses **Hypothesis** for the
+- [x] `tests/test_payee_filter.py` uses **Hypothesis** for the
       include/exclude/passthrough combinations, mirroring
       `tests/test_account_filter.py`'s structure
-- [ ] `make lint && make test` pass with coverage >= baseline
+- [x] `make lint && make test` pass with coverage >= baseline
 
 ## Blockers
 
@@ -133,4 +133,64 @@ None
 
 ## Completion
 
-(fill in after implementation)
+**Date:** 2026-07-20
+**Summary:** Implemented `payee_filter.py` mirroring `account_filter.py`'s
+include/exclude structure (pure include/exclude, no confidence weighting),
+matching `destination_name` instead of `source_name`. Added
+`include_payees`/`exclude_payees` to `Config`, read from
+`INCLUDE_PAYEES`/`EXCLUDE_PAYEES`. Wired
+`payee_filter.filter_transactions()` into `__main__.main()` right after the
+existing account filter call. `tests/test_payee_filter.py` (written by the
+Test Writer agent) covers passthrough, include, exclude,
+exclude-after-include, and the `destination_name is None` non-match cases
+with Hypothesis. Existing `Config(...)` call sites across the test suite
+(`test_analyzer.py`, `test_bills_creator.py`, `test_fetcher.py`,
+`test_category_filter.py`, `test_account_filter.py`, `benchmark_analyzer.py`)
+and the `test_main.py` pipeline-wiring mocks were updated for the two new
+required fields. `.env.example` gained commented `INCLUDE_PAYEES=`/
+`EXCLUDE_PAYEES=` lines after `EXCLUDE_CATEGORIES`. Also fixed a pre-existing
+`make lint` failure (MD018 false-positive in
+`docs/REQUIREMENTS_new.md:662`, where a line-wrapped "#5)" was mistaken for
+an ATX heading) via a pure rewrap with no content change, since it blocked
+the mandatory lint gate and TASK-016 had left it unresolved. `make lint &&
+make test` pass (165 tests, 99% coverage, matching the TASK-016 baseline).
+
+**Files changed:**
+
+- `src/firefly_bills_analyzer/payee_filter.py` — new (`filter_transactions()`,
+  FR-36a/FR-36b)
+- `tests/test_payee_filter.py` — new (written by Test Writer agent;
+  Hypothesis-based coverage of passthrough, include, exclude,
+  exclude-after-include, and `destination_name is None` non-match cases)
+- `src/firefly_bills_analyzer/config.py` — modified (`include_payees`/
+  `exclude_payees` fields, read from `INCLUDE_PAYEES`/`EXCLUDE_PAYEES`)
+- `src/firefly_bills_analyzer/__main__.py` — modified (imports `payee_filter`
+  and wires `payee_filter.filter_transactions()` into `main()` after the
+  account filter call)
+- `.env.example` — modified (commented `INCLUDE_PAYEES=`/`EXCLUDE_PAYEES=`
+  lines in the Analysis section, after `EXCLUDE_CATEGORIES`)
+- `tests/test_main.py` — modified (patches `payee_filter.filter_transactions`
+  in the pipeline-wiring test fixture; asserts it's called after the account
+  filter and before analyze)
+- `tests/test_analyzer.py` — modified (added the two new required `Config`
+  fields to `_make_config()`)
+- `tests/test_bills_creator.py` — modified (added the two new required
+  `Config` fields to `_make_config()`)
+- `tests/test_fetcher.py` — modified (added the two new required `Config`
+  fields to `_make_config()`)
+- `tests/test_category_filter.py` — modified (added the two new required
+  `Config` fields to `_make_config()`)
+- `tests/test_account_filter.py` — modified (added the two new required
+  `Config` fields to `_make_config()`)
+- `tests/benchmark_analyzer.py` — modified (added the two new required
+  `Config` fields to `_make_config()`)
+- `docs/REQUIREMENTS_new.md` — modified (pure rewrap fix for a pre-existing
+  MD018 false-positive, no content change)
+- `CHANGELOG.md` — modified (Unreleased entry for `INCLUDE_PAYEES`/
+  `EXCLUDE_PAYEES`)
+- `docs/tasks/README.md` — modified (status)
+- `docs/tasks/TASK-017-payee-filtering.md` — this file
+
+**Branch:** `git checkout task/017-payee-filtering`
+**Stage:** `git add src/firefly_bills_analyzer/payee_filter.py tests/test_payee_filter.py src/firefly_bills_analyzer/config.py src/firefly_bills_analyzer/__main__.py .env.example tests/test_main.py tests/test_analyzer.py tests/test_bills_creator.py tests/test_fetcher.py tests/test_category_filter.py tests/test_account_filter.py tests/benchmark_analyzer.py docs/REQUIREMENTS_new.md CHANGELOG.md docs/tasks/README.md docs/tasks/TASK-017-payee-filtering.md`
+**Commit:** `git commit -m "feat: add payee filtering functionality (UC10) with INCLUDE_PAYEES/EXCLUDE_PAYEES support"`

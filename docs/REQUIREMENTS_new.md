@@ -658,8 +658,8 @@ Decisions required from the requirement owner before this specification is basel
   representing cash withdrawals, which should never surface as a bill
   candidate but is not any transaction's source account. No confidence
   weighting is attached, matching UC9. The web UI part (`GET /api/payees`,
-  FR-36c) shares the deferred status of the rest of the web UI (Open Item
-  #5) until a web framework is selected.
+  FR-36c) shares the deferred status of the rest of the web UI (Open Item #5)
+  until a web framework is selected.
 
 ### 0.2.18 (2026-07-20)
 

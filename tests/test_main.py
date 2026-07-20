@@ -61,6 +61,7 @@ def _pipeline(
         patch(
             f"{mod}.account_filter.filter_transactions", return_value=[_TRANSACTION]
         ) as account_filt,
+        patch(f"{mod}.payee_filter.filter_transactions", return_value=[_TRANSACTION]) as payee_filt,
         patch(f"{mod}.analyzer.identify_recurring", return_value=patterns) as analyze,
         patch(
             f"{mod}.bills_creator.create_bills",
@@ -73,6 +74,7 @@ def _pipeline(
             "fetch": fetch,
             "filter": filt,
             "account_filter": account_filt,
+            "payee_filter": payee_filt,
             "analyze": analyze,
             "create": create,
             "export": export,
@@ -122,6 +124,9 @@ class TestPipelineWiring:
         mocks["filter"].assert_called_once_with([_TRANSACTION], mocks["filter"].call_args.args[1])
         mocks["account_filter"].assert_called_once_with(
             [_TRANSACTION], mocks["account_filter"].call_args.args[1]
+        )
+        mocks["payee_filter"].assert_called_once_with(
+            [_TRANSACTION], mocks["payee_filter"].call_args.args[1]
         )
         mocks["analyze"].assert_called_once_with([_TRANSACTION], mocks["analyze"].call_args.args[1])
 
