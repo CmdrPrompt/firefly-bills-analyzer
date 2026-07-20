@@ -1,7 +1,7 @@
 ---
 name: PR Reviewer
 description: "Use before merging any PR. Reviews open PRs for requirements adherence, test quality, scope creep, and commit discipline. Reports findings — does not fix anything. Keywords: review PR, pre-merge check, scope creep, test quality, changelog."
-tools: [Read, Grep, Glob, Bash]
+tools: [Read, Grep, Glob, Bash, Skill]
 model: sonnet
 argument-hint: "Provide TASK-ID or PR number to review"
 user-invocable: true
@@ -56,11 +56,13 @@ Check every gate and state **PASS** or **FAIL** with supporting detail.
 
 - **Quality gate** — run `make lint && make test`. Report pass/fail and reproduce any failures verbatim.
 
-- **Changelog gate** — is `CHANGELOG.md` updated with a behavior-first entry for this task?
+- **Changelog gate** — is `CHANGELOG.md` updated with an entry that follows the `changelog`
+  skill (behavior-first language, TASK-ID as suffix)? Load the skill for the style rules.
   Quote the entry if present.
 
-- **Commit discipline gate** — was `make commit-current-task` used?
-  Verify the commit message matches the `**Commit:**` line in the task file.
+- **Commit discipline gate** — was the `commit-workflow` skill followed, i.e. was
+  `make commit-current-task` used? Verify the commit message matches the `**Commit:**`
+  line in the task file.
 
 ### 5 — Final verdict
 

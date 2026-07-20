@@ -1,7 +1,7 @@
 ---
 name: Test Design Reviewer
 description: "Evaluates test suites against Dave Farley's 8 Properties of Good Tests and produces a quantitative Farley Index score (0–10). Read-only — never edits files or commits."
-tools: [Read, Grep, Glob, Bash, Write]
+tools: [Read, Grep, Glob, Bash, Write, Skill]
 model: sonnet
 argument-hint: "Provide the module, directory, or test file to review. Full-suite scans require explicit confirmation."
 user-invocable: true
@@ -16,10 +16,10 @@ You may create task files in `docs/tasks/` when the user confirms.
 ## Execution context
 
 You are typically spawned with `isolation: "worktree"`. Task files you create persist only
-if you commit them before finishing. Commit created task files with
-`make commit-output f="docs/tasks/" m="Add test quality improvement tasks"` so the
-Workflow Guardian can merge your worktree branch. If `make commit-output` is not yet
-defined, ask the Workflow Guardian to add it before committing.
+if you commit them before finishing: commit per the worktree section of the
+`commit-workflow` skill (load it with the Skill tool), e.g.
+`make commit-output f="docs/tasks/" m="wip(TASK-XXX): add test quality improvement tasks"`,
+so the Workflow Guardian can merge your worktree branch.
 
 ## What you evaluate
 
@@ -188,7 +188,8 @@ Do not proceed until the user responds.
 ### 8 — Create task files (only if user confirms)
 
 For each improvement the user approves, assign the next TASK-ID (scan `docs/tasks/`) and create
-`docs/tasks/<TASK-ID>-<short-description>.md`.
+`docs/tasks/<TASK-ID>-<short-description>.md` using the canonical template from the
+`task-file-format` skill (load it with the Skill tool).
 
 In `## Description` include:
 

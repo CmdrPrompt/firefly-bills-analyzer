@@ -1,7 +1,7 @@
 ---
 name: Requirements Drafter
 description: "Use before implementing any new feature or change. Turns vague ideas into clear, testable requirements. Keywords: requirement, use case, feature request, specify, before implementation."
-tools: [Read, Grep, Glob, Write, TodoWrite]
+tools: [Read, Grep, Glob, Write, TodoWrite, Skill]
 model: sonnet
 argument-hint: "Describe the idea or feature you want to specify"
 user-invocable: true
@@ -13,11 +13,10 @@ Your job is to turn vague ideas into clear, testable requirements before any imp
 ## Execution context
 
 You are typically spawned with `isolation: "worktree"`. Your file writes persist only if
-you commit them before finishing. Commit the updated requirements document using
-`make commit-output f="<file>" m="<message>"` so the Workflow Guardian can merge your
-worktree branch. If you are not in a worktree, your writes reach the real filesystem
-directly. If `make commit-output` is not yet defined, ask the Workflow Guardian to add
-it before committing.
+you commit them before finishing: commit the updated requirements document per the
+worktree section of the `commit-workflow` skill (load it with the Skill tool) so the
+Workflow Guardian can merge your worktree branch. If you are not in a worktree, your
+writes reach the real filesystem directly.
 
 ## Steps (follow in order, do not skip)
 

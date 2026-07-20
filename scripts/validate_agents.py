@@ -36,6 +36,7 @@ VALID_TOOLS = {
     "KillShell",
     "Grep",
     "Glob",
+    "Skill",
     "Task",
     "TodoWrite",
     "WebFetch",

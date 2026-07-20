@@ -147,8 +147,35 @@ check-agents-sync:
 		exit 1; \
 	fi
 
+## Fail if claude-skills/ and .claude/skills/ have drifted apart
+check-skills-sync:
+	@[ -d claude-skills ] || exit 0; \
+	status=0; \
+	for f in claude-skills/*/SKILL.md; do \
+		name=$$(basename "$$(dirname "$$f")"); \
+		other=".claude/skills/$$name/SKILL.md"; \
+		if [ ! -f "$$other" ]; then \
+			echo "check-skills-sync: '$$name' exists in claude-skills/ but not in .claude/skills/"; \
+			status=1; \
+		elif ! diff -q "$$f" "$$other" > /dev/null 2>&1; then \
+			echo "check-skills-sync: '$$name' differs between claude-skills/ and .claude/skills/"; \
+			status=1; \
+		fi; \
+	done; \
+	for f in .claude/skills/*/SKILL.md; do \
+		name=$$(basename "$$(dirname "$$f")"); \
+		[ -f "claude-skills/$$name/SKILL.md" ] || { \
+			echo "check-skills-sync: '$$name' exists in .claude/skills/ but not in claude-skills/"; \
+			status=1; \
+		}; \
+	done; \
+	if [ "$$status" -ne 0 ]; then \
+		echo "claude-skills/ and .claude/skills/ must stay identical - sync the files above."; \
+		exit 1; \
+	fi
+
 ## Run linters
-lint: check-agents-sync
+lint: check-agents-sync check-skills-sync
 	uv run ruff check .
 	uv run ruff format --check .
 	uv run mypy $(SRC_DIR)/

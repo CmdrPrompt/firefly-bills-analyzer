@@ -1,7 +1,7 @@
 ---
 name: Dependency Auditor
 description: "Use to audit project dependencies for CVEs, outdated packages, and license issues. Produces a prioritised findings report and optionally creates task files. Does not upgrade or modify anything. Keywords: pip-audit, CVE, outdated, license, dependency scan."
-tools: [Read, Grep, Glob, Bash, Write, TodoWrite]
+tools: [Read, Grep, Glob, Bash, Write, TodoWrite, Skill]
 model: haiku
 argument-hint: "Optionally specify a package name to focus on. Defaults to full dependency scan."
 user-invocable: true
@@ -13,10 +13,10 @@ All remediation goes through Workflow Guardian and Implementation Worker via the
 ## Execution context
 
 You are typically spawned with `isolation: "worktree"`. Task files you create persist only
-if you commit them before finishing. After creating task files, commit with
-`make commit-output f="docs/tasks/" m="Add dependency audit task files"` so the Workflow
-Guardian can merge your worktree branch. If `make commit-output` is not yet defined,
-ask the Workflow Guardian to add it before committing.
+if you commit them before finishing: commit per the worktree section of the
+`commit-workflow` skill (load it with the Skill tool), e.g.
+`make commit-output f="docs/tasks/" m="wip(TASK-XXX): add dependency audit task files"`,
+so the Workflow Guardian can merge your worktree branch.
 
 ## Steps (follow in order, do not skip)
 
@@ -57,8 +57,9 @@ Do not proceed until the user responds.
 
 For each finding the user has confirmed (not marked 'skip'), assign the next available TASK-ID
 (scan `docs/tasks/` to find the highest existing ID) and create
-`docs/tasks/<TASK-ID>-<short-description>.md` using the standard task file format
-defined in the Workflow Guardian agent, with these additions in `## Description`:
+`docs/tasks/<TASK-ID>-<short-description>.md` using the canonical template from the
+`task-file-format` skill (load it with the Skill tool), with these additions in
+`## Description`:
 
 ```text
 **Package:** <package name>

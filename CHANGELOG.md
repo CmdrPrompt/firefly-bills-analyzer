@@ -4,6 +4,12 @@
 
 ### Added
 
+- Added five shared skills (`commit-workflow`, `task-file-format`, `tdd-cycle`, `changelog`,
+  `characterization-tests`) under `.claude/skills/` (mirrored in `claude-skills/`) so procedures
+  previously duplicated across every agent definition now live in one place; all agents now load
+  them via the `Skill` tool instead of restating the text inline. Added a `check-skills-sync`
+  `make lint` target that fails the build if the two skill directories drift apart, mirroring the
+  existing `check-agents-sync` check. (TASK-050)
 - Added a `butler sync` CLI command that refreshes a consumer project's vendored
   `.butler/Makefile` to match the version bundled in the currently installed `butler` package,
   comparing content by hash so it only overwrites when the files actually differ (`--dry-run` to
