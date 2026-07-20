@@ -1,7 +1,7 @@
 # Requirements Specification: Firefly III Bills Analyzer
 
-**Version:** 0.2.16
-**Date:** 2026-07-11
+**Version:** 0.2.17
+**Date:** 2026-07-20
 **Status:** Draft, pending owner confirmation of items marked TBD (see Open Items)
 
 ## Purpose
@@ -300,6 +300,37 @@ to a real Firefly III instance with transaction history
 
 ---
 
+### UC9: Filter analysis by source account
+
+**Actor:** Application / User
+**Precondition:** Transaction history fetched (UC1)
+**Primary flow (web UI):**
+
+1. The web UI fetches all existing accounts from the Firefly III API on page load
+2. The user selects accounts to include or exclude via multiselect lists
+3. The selections are stored in the session and applied when the analysis runs
+
+**Alternative flow (terminal / .env):**
+
+1. If `INCLUDE_ACCOUNTS` is set, only transactions whose source account matches the include list are included
+2. If `EXCLUDE_ACCOUNTS` is set, transactions whose source account matches the exclude list are excluded
+
+**Common to both flows:**
+
+- Both lists match against the transaction's source account (`source_name`), the same
+  field already resolved per pattern by FR-30a
+- Filtering happens before payee grouping (UC2 step 1), at the same point as category
+  filtering (UC6); exclude is applied after include when both are configured, mirroring
+  FR-11a/FR-11b
+- If no accounts are selected, the analysis runs without account filtering
+- Unlike category filtering, there is no confidence weighting attached to account
+  selection — this is a pure inclusion/exclusion mechanism, e.g. for narrowing the
+  analysis to specific accounts, or for excluding accounts whose withdrawal pattern is
+  inherently irregular by design (e.g. a day-to-day groceries account) and should never
+  surface as a bill candidate
+
+---
+
 ## Functional Requirements
 
 Requirements follow EARS-style patterns with the system (or subsystem) as active subject. Decomposed requirements retain the original ID with an a/b suffix. Trace column references the use case each requirement is derived from.
@@ -344,7 +375,7 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-26b | The `firefly-python-api` package shall expose a `FireflyClient` class that provides a configured `requests.Session` | — |
 | FR-27  | When the application classifies recurring payment patterns, the application shall compute the confidence score as 0.4 × occurrence score + 0.4 × regularity score + 0.2 × amount score + category boost − uncategorized penalty, and shall clamp the result to the range [0.0, 1.0], where uncategorized penalty equals `UNCATEGORIZED_CONFIDENCE_PENALTY` when the pattern's category is absent and `UNCATEGORIZED_BEHAVIOR` is `neutral`, else 0 | UC2 |
 | FR-28  | Upon developer request, a dedicated opt-in script shall fetch the user's real withdrawal transactions from the configured Firefly III instance, run `identify_recurring()` against them, and report the real transaction count and elapsed time, without creating, modifying, or deleting any data in Firefly III | UC8 |
-| FR-29  | The CLI `--help` output shall document the environment variables a user commonly needs to set per run mode, alongside the flags, so that configuration is discoverable without reading `.env.example`: `FIREFLY_URL` and `FIREFLY_TOKEN` (required), `DRY_RUN` (alternative to `--dry-run`), `EXPORT_FORMAT` (`csv`/`json`/`none`), `HIGH_CONFIDENCE_THRESHOLD` (auto-approve/review cutoff), `INCLUDE_CATEGORIES`/`EXCLUDE_CATEGORIES`, and `UNCATEGORIZED_BEHAVIOR` | UC3, UC5, UC6 |
+| FR-29  | The CLI `--help` output shall document the environment variables a user commonly needs to set per run mode, alongside the flags, so that configuration is discoverable without reading `.env.example`: `FIREFLY_URL` and `FIREFLY_TOKEN` (required), `DRY_RUN` (alternative to `--dry-run`), `EXPORT_FORMAT` (`csv`/`json`/`none`), `HIGH_CONFIDENCE_THRESHOLD` (auto-approve/review cutoff), `INCLUDE_CATEGORIES`/`EXCLUDE_CATEGORIES`, `UNCATEGORIZED_BEHAVIOR`, and `INCLUDE_ACCOUNTS`/`EXCLUDE_ACCOUNTS` | UC3, UC5, UC6, UC9 |
 | FR-30a | When the application identifies a recurring pattern (UC2), the application shall resolve a source account name for the pattern as the `source_name` value that occurs most frequently among the pattern's transactions, and shall additionally record whether more than one distinct `source_name` value occurs across the pattern's transactions | UC2 |
 | FR-30b | The CLI review output (UC3) shall display, for each suggestion, the resolved source account name (FR-30a); when more than one distinct source account occurs in the pattern, the output shall display a "varies" indicator instead of a single account name | UC3 |
 | FR-30c | The web UI table view (FR-17a) shall include a column showing the resolved source account name (FR-30a), or a "varies" indicator when more than one distinct source account occurs in the pattern | UC3 |
@@ -355,6 +386,9 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-32c | When a payee produces more than one amount cluster (FR-32a) that each independently qualify as a recurring payment pattern, the application shall disambiguate the bill name of each resulting pattern by appending its representative (mean) amount to the name produced by FR-13b, so that FR-05a's name-only duplicate check does not conflate distinct clusters | UC2, UC4 |
 | FR-33a | Within each payee/amount-cluster group (FR-32a), when two or more transactions share the exact same date, the application shall collapse them into a single billing event (see Definitions) whose amount is the sum of the collapsed transactions' amounts; occurrence count, median interval, and amount min/max/mean (UC2 steps 4–7) shall be computed over the resulting billing events rather than the pre-collapse transaction rows. Source account resolution (FR-30a) is unaffected and continues to be computed over the group's underlying transactions | UC2 |
 | FR-34  | In CLI mode, while `fetcher.fetch_transactions()` is fetching transaction pages from Firefly III, the application shall display a progress bar showing pages fetched out of the total page count, driven by the `on_page` callback exposed by `firefly-python-api`'s `get_withdrawal_transactions()` (that package's REQ-008); when no callback support is available (e.g. an older `firefly-python-api` version), the application shall fall back to fetching without a progress bar rather than failing | UC1 |
+| FR-35a | When an account include list is configured (`INCLUDE_ACCOUNTS`), the application shall include only transactions whose source account name (`source_name`) matches the include list in the analysis | UC9 |
+| FR-35b | When an account exclude list is configured (`EXCLUDE_ACCOUNTS`), the application shall exclude transactions whose source account name (`source_name`) matches the exclude list from the analysis; exclude is applied after include when both are configured | UC9 |
+| FR-35c | When the web UI page is loaded, the web UI shall fetch the existing accounts from the Firefly III API and display them as multiselect lists | UC9 |
 
 ---
 
@@ -421,6 +455,7 @@ firefly_bills_analyzer/
 ├── app.py               # Flask/FastAPI app, HTTP endpoints, starts web server
 ├── analyzer.py          # UC1 + UC2: fetch transactions, identify patterns
 ├── category_filter.py   # UC6: filter and weight by category
+├── account_filter.py    # UC9: filter transactions by source account
 ├── bills_creator.py     # UC4: create bills via Firefly III API
 ├── cache.py             # UC7: read/write/invalidate JSON cache files
 ├── exporter.py          # UC5: CSV/JSON export
@@ -451,20 +486,22 @@ The package owns no application logic; it only manages the HTTP session lifecycl
 
 ### Endpoints
 
-| Method   | Endpoint          | Description                                             |
-| -------- | ----------------- | ------------------------------------------------------- |
-| `GET`    | `/`               | Serves the web UI                                       |
-| `GET`    | `/api/categories` | Returns categories (from cache or Firefly III)          |
-| `POST`   | `/api/analyze`    | Runs UC1, UC2, and UC6; returns suggestions as JSON     |
-| `POST`   | `/api/bills`      | Creates approved bills (UC4); returns outcome per entry |
-| `POST`   | `/api/export`     | Exports suggestions to CSV or JSON (UC5)                |
-| `DELETE` | `/api/cache`      | Clears all cached data (UC7)                            |
+| Method   | Endpoint          | Description                                              |
+| -------- | ----------------- | -------------------------------------------------------- |
+| `GET`    | `/`               | Serves the web UI                                        |
+| `GET`    | `/api/categories` | Returns categories (from cache or Firefly III)           |
+| `GET`    | `/api/accounts`   | Returns accounts (from cache or Firefly III)             |
+| `POST`   | `/api/analyze`    | Runs UC1, UC2, UC6, and UC9; returns suggestions as JSON |
+| `POST`   | `/api/bills`      | Creates approved bills (UC4); returns outcome per entry  |
+| `POST`   | `/api/export`     | Exports suggestions to CSV or JSON (UC5)                 |
+| `DELETE` | `/api/cache`      | Clears all cached data (UC7)                             |
 
 ### Web UI flow
 
 ```
 Page load
   → GET /api/categories → populates multiselect lists
+  → GET /api/accounts → populates multiselect list
 
 User configures filters + clicks "Run analysis"
   → POST /api/analyze → table rendered with suggestions
@@ -484,30 +521,33 @@ The application supports two run modes:
 
 ## Configuration Parameters
 
-| Parameter                          | Description                                                              | Default         |
-| ---------------------------------- | ------------------------------------------------------------------------ | --------------- |
-| `FIREFLY_URL`                      | Base URL of the Firefly III instance                                     | *(required)*    |
-| `FIREFLY_TOKEN`                    | Personal Access Token                                                    | *(required)*    |
-| `LOOKBACK_MONTHS`                  | Months of transaction history to analyze                                 | `24`            |
-| `MIN_OCCURRENCES`                  | Minimum occurrences to classify as recurring                             | `2`             |
-| `AMOUNT_MARGIN`                    | Margin for min/max amount (fraction)                                     | `0.10`          |
-| `AMOUNT_CLUSTER_TOLERANCE`         | Relative amount gap that starts a new cluster within a payee (FR-32a)    | `0.15`          |
-| `HIGH_CONFIDENCE_THRESHOLD`        | Confidence threshold for auto-approval in CLI mode                       | `0.80`          |
-| `DRY_RUN`                          | Do not create any bills                                                  | `false`         |
-| `EXPORT_FORMAT`                    | Export format (csv/json/none)                                            | `none`          |
-| `INCLUDE_CATEGORIES`               | Comma-separated category include list                                    | *(empty = all)* |
-| `EXCLUDE_CATEGORIES`               | Comma-separated category exclude list                                    | *(empty)*       |
-| `CATEGORY_CONFIDENCE_BOOST`        | Confidence boost for transactions matching the include list              | `0.15`          |
-| `CATEGORY_MAJORITY_THRESHOLD`      | Min. share of a payee's transactions in one category to name it (FR-13b) | `0.80`          |
-| `UNCATEGORIZED_BEHAVIOR`           | Handling of uncategorized transactions (include/exclude/neutral)         | `neutral`       |
-| `UNCATEGORIZED_CONFIDENCE_PENALTY` | Confidence penalty for neutral uncategorized patterns (FR-27)            | `0.10`          |
-| `WEB_PORT`                         | Port the web server listens on                                           | `5000`          |
-| `WEB_HOST`                         | IP address the web server binds to                                       | `127.0.0.1`     |
-| `CACHE_DIR`                        | Directory for cache files                                                | `./cache`       |
-| `CACHE_TTL_CATEGORIES`             | TTL for category cache (seconds)                                         | `86400`         |
-| `CACHE_TTL_BILLS`                  | TTL for bills cache (seconds)                                            | `3600`          |
-| `CACHE_TTL_TRANSACTIONS`           | TTL for transaction cache (seconds)                                      | `3600`          |
-| `CACHE_TTL_PAYEES`                 | TTL for payee cache (seconds)                                            | `86400`         |
+| Parameter                          | Description                                                                         | Default         |
+| ---------------------------------- | ----------------------------------------------------------------------------------- | --------------- |
+| `FIREFLY_URL`                      | Base URL of the Firefly III instance                                                | *(required)*    |
+| `FIREFLY_TOKEN`                    | Personal Access Token                                                               | *(required)*    |
+| `LOOKBACK_MONTHS`                  | Months of transaction history to analyze                                            | `24`            |
+| `MIN_OCCURRENCES`                  | Minimum occurrences to classify as recurring                                        | `2`             |
+| `AMOUNT_MARGIN`                    | Margin for min/max amount (fraction)                                                | `0.10`          |
+| `AMOUNT_CLUSTER_TOLERANCE`         | Relative amount gap that starts a new cluster within a payee (FR-32a)               | `0.15`          |
+| `HIGH_CONFIDENCE_THRESHOLD`        | Confidence threshold for auto-approval in CLI mode                                  | `0.80`          |
+| `DRY_RUN`                          | Do not create any bills                                                             | `false`         |
+| `EXPORT_FORMAT`                    | Export format (csv/json/none)                                                       | `none`          |
+| `INCLUDE_CATEGORIES`               | Comma-separated category include list                                               | *(empty = all)* |
+| `EXCLUDE_CATEGORIES`               | Comma-separated category exclude list                                               | *(empty)*       |
+| `CATEGORY_CONFIDENCE_BOOST`        | Confidence boost for transactions matching the include list                         | `0.15`          |
+| `CATEGORY_MAJORITY_THRESHOLD`      | Min. share of a payee's transactions in one category to name it (FR-13b)            | `0.80`          |
+| `UNCATEGORIZED_BEHAVIOR`           | Handling of uncategorized transactions (include/exclude/neutral)                    | `neutral`       |
+| `UNCATEGORIZED_CONFIDENCE_PENALTY` | Confidence penalty for neutral uncategorized patterns (FR-27)                       | `0.10`          |
+| `INCLUDE_ACCOUNTS`                 | Comma-separated source-account include list, matched against `source_name` (FR-35a) | *(empty = all)* |
+| `EXCLUDE_ACCOUNTS`                 | Comma-separated source-account exclude list, matched against `source_name` (FR-35b) | *(empty)*       |
+| `WEB_PORT`                         | Port the web server listens on                                                      | `5000`          |
+| `WEB_HOST`                         | IP address the web server binds to                                                  | `127.0.0.1`     |
+| `CACHE_DIR`                        | Directory for cache files                                                           | `./cache`       |
+| `CACHE_TTL_CATEGORIES`             | TTL for category cache (seconds)                                                    | `86400`         |
+| `CACHE_TTL_BILLS`                  | TTL for bills cache (seconds)                                                       | `3600`          |
+| `CACHE_TTL_TRANSACTIONS`           | TTL for transaction cache (seconds)                                                 | `3600`          |
+| `CACHE_TTL_PAYEES`                 | TTL for payee cache (seconds)                                                       | `86400`         |
+| `CACHE_TTL_ACCOUNTS`               | TTL for account cache (seconds)                                                     | `86400`         |
 
 ---
 
@@ -523,6 +563,21 @@ Decisions required from the requirement owner before this specification is basel
 ---
 
 ## Changelog
+
+### 0.2.17 (2026-07-20)
+
+- Added UC9 and FR-35a/b/c: transactions can now be filtered by source
+  account via `INCLUDE_ACCOUNTS`/`EXCLUDE_ACCOUNTS`, mirroring the existing
+  category filter's include/exclude pattern (UC6, FR-11a/b) so the same
+  mental model applies in both the CLI/`.env` flow and the (deferred) web
+  UI's multiselect lists. Typical use: excluding an account whose withdrawal
+  pattern is inherently irregular by design (e.g. a day-to-day groceries
+  account) so it never surfaces as a bill candidate, or narrowing the
+  analysis to specific accounts via the include list. Matches transactions
+  on `source_name`, the same field already resolved per pattern by FR-30a;
+  no confidence weighting is attached, unlike category filtering. The web UI
+  part (`GET /api/accounts`, FR-35c) shares the deferred status of the rest
+  of the web UI (Open Item #5) until a web framework is selected.
 
 ### 0.2.16 (2026-07-11)
 

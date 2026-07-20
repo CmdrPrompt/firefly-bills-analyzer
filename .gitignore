@@ -94,3 +94,6 @@ complexipy-results*.json
 # Performance benchmark output (make benchmark)
 benchmark_results.json
 firefly-bills-*.csv
+cache/transactions.json
+cache/bills.json
+cache/*
