@@ -41,12 +41,24 @@ What needs to be done and why.
 **Make target:** `make branch-task f=<TASK-ID>`
 
 ## Acceptance criteria (Gherkin)
-- [ ] Scenario: <name derived from the requirement's trigger and effect>
+**Feature files:** tests/bdd/features/<TASK-ID>-*.feature (BDD-ACTIVE only; omit or write "None" otherwise)
+
+- [ ] 1. Scenario: <name derived from the requirement's trigger and effect>
       Given <precondition / state from the requirement's WHILE/IF clause>
       When <trigger from the requirement's WHEN clause>
       Then <observable effect with the requirement's measurable values>
-- [ ] Scenario: <error/boundary case>
-      ...
+- [ ] 2. Scenario: <error/boundary case>
+      See `tests/bdd/features/<TASK-ID>-<slug>.feature`: Scenario "<name>"
+
+Each numbered criterion carries either an inline Gherkin scenario or a
+reference to the feature file + scenario name that covers it (e.g.
+`See tests/bdd/features/TASK-XXX-example.feature: Scenario: <name>`). Use
+inline scenarios for BDD-PLANNED/BDD-ABSENT tasks; use feature file
+references for BDD-ACTIVE tasks. Both forms may appear in the same task
+file without ambiguity — each criterion picks exactly one.
+
+Map each requirement clause to its Gherkin step: precondition -> Given,
+trigger -> When, obligation/measurable value -> Then.
 
 ## Out of scope
 - <explicit exclusions, including negative/scope-exclusion requirements>
@@ -61,7 +73,7 @@ What needs to be done and why.
 **Files changed:**
 - `path/to/file` - created / modified
 **Branch:** `git checkout task/<NNN>-short-description`
-**Stage:** `git add path/to/file1 path/to/file2 CHANGELOG.md`
+**Stage:** `path/to/file1 path/to/file2 CHANGELOG.md`
 **Commit:** `git commit -m "Short imperative summary of what was done"`
 ```
 
@@ -79,7 +91,31 @@ What needs to be done and why.
   implemented. Only the user can waive a blocker.
 - The `**Commit:**` line is the message used by `make commit-current-task` -
   keep it a single short imperative sentence.
+- The `**Stage:**` line is a whitespace-separated list of file paths only -
+  never a command line. `butler task stage` always runs `git add <paths>`
+  itself; it never executes the field's text as a shell command. Never write
+  `make ...`/`butler ...`/`git ...` there - doing so does not run that
+  command, it is treated as literal (and almost certainly invalid) file
+  paths (see REQUIREMENTS_TASK_WORKFLOW.md Requirement 15, and the
+  TASK-069/TASK-082/TASK-083 incidents this closes off).
 - `CHANGELOG.md` must always be in the Stage list.
+- Acceptance criteria are numbered (1, 2, 3, ...); each criterion keeps the
+  checkbox marker (`- [ ]`/`- [x]`) at the start of the line — the number is
+  part of the criterion text, not a separate list level — so
+  `butler task check --criterion N` keeps working against the existing
+  `- [ ]` parser.
+- Each numbered criterion is followed by exactly one of: an inline Gherkin
+  scenario (`Given`/`When`/`Then`), or a reference to the feature file and
+  scenario name that covers it (`See <path>.feature: Scenario "<name>"`).
+  Use inline scenarios for BDD-PLANNED/BDD-ABSENT tasks; use feature file
+  references for BDD-ACTIVE tasks. Both forms may appear in the same task
+  file, one per criterion, without ambiguity.
+- When BDD mode is BDD-ACTIVE, the task file includes a `**Feature files:**`
+  field (placed under the `## Acceptance criteria (Gherkin)` heading) listing
+  the `.feature` files belonging to the task. Omit it or write "None" for
+  BDD-PLANNED/BDD-ABSENT tasks.
+- Requirement clauses map to Gherkin steps: precondition -> Given, trigger ->
+  When, obligation/measurable value -> Then.
 
 ## Status transitions and role boundaries
 

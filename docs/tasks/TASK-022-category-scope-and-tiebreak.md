@@ -7,7 +7,7 @@ todo
 ## Requirements
 
 **Binding:** FR-13b
-**BDD mode:** BDD-ABSENT
+**BDD mode:** BDD-ACTIVE
 **Depends on:** TASK-008 (category-aware bill naming, which implemented the
 original payee-wide FR-13b), TASK-012 and TASK-014 (which introduced the amount
 cluster as the unit a bill is named from)

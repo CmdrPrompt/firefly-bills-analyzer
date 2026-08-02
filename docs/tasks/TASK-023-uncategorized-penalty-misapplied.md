@@ -7,7 +7,7 @@ todo
 ## Requirements
 
 **Binding:** FR-13c, FR-27
-**BDD mode:** BDD-ABSENT
+**BDD mode:** BDD-ACTIVE
 **Depends on:** TASK-022 (establishes the cluster as the scope over which
 category presence is judged, and renames the resolution helper's parameter
 accordingly)

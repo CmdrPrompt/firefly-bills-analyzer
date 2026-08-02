@@ -14,7 +14,7 @@ Document existing behavior accurately — do not assume it is correct.
 
 - Read the target function or module in full.
 - Trace all code paths: normal, edge, and error conditions.
-- Note behavior that looks incorrect or inconsistent with `docs/REQUIREMENTS_new.md`.
+- Note behavior that looks incorrect or inconsistent with `docs/REQUIREMENTS.md`.
 
 ### 2 — Write characterization tests
 

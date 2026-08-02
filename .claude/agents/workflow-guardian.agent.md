@@ -107,6 +107,18 @@ file only defines what YOU gate and verify on top of them:
   the ONLY condition under which you author task content beyond Status and
   Completion.
 
+1. GitHub Projects draft sync gate
+- Immediately after merging Task Drafter's worktree branch and committing the
+  produced task file(s), run `butler task sync-project <TASK-ID> --stage draft`
+  for each new/modified task file, resolving the target repo's
+  `.butler-project` file (falling back to `BUTLER_GITHUB_PROJECT`) per
+  Requirement 6 of REQUIREMENTS_TASK_WORKFLOW.md.
+- This is best-effort: a sync failure (no Project configured, `gh` not
+  authenticated, etc.) prints a warning and never blocks the merge or the rest
+  of the workflow.
+- Task Drafter itself never performs this step — it has no Bash/GitHub
+  access; syncing is exclusively your responsibility as Workflow Guardian.
+
 1. Dedicated task branch gate
 - Every task must have a task file in docs/tasks/TASK-XXX-*.md.
 - Ensure work is on the dedicated branch from task metadata (task/NNN-short-description), not on main.
@@ -118,6 +130,20 @@ file only defines what YOU gate and verify on top of them:
 - At task start, set task Status to in-progress on the task branch.
 - At completion, set Status to done and fill Completion: Date, Summary, Files changed,
   Branch, Stage, Commit.
+
+1. BDD red-state gate
+- Before approving the start of implementation (i.e. before spawning
+  Implementation Worker), verify: (a) the task's feature files exist under
+  `tests/bdd/features/` when the task is BDD-ACTIVE, or, when the task is
+  BDD-PLANNED/BDD-ABSENT, that the task file's inline Gherkin acceptance
+  criteria are present; and (b) where `make bdd` is available in this repo,
+  that it shows the task's scenarios failing or unbound — confirming
+  red state — before implementation starts.
+- If `make bdd` is not available (the project has not adopted `tests/bdd/`),
+  skip check (b) without blocking the gate, and note the skip in the task's
+  Completion summary.
+- This is in addition to, not a replacement for, the `Status` not `blocked`
+  check in the Task drafting gate above.
 
 1. Test and quality gate
 - Implementation follows the `tdd-cycle` skill: Red -> Green -> Refactor, every
@@ -250,11 +276,17 @@ you perform the `in-progress` and `done` transitions.
    fields; only the current TASK-ID is implemented on this branch. If any task is
    `blocked`, stop and resolve the blockers with the user (usually a new Requirements
    Drafter round, followed by a Task Drafter round to update the task file) before
-   proceeding.
+   proceeding. Then, for each new/modified task file, run `butler task
+   sync-project <TASK-ID> --stage draft` (best-effort; see the GitHub Projects
+   draft sync gate).
 7. Record current test coverage percentage as the task-start baseline by running
    `make test` NOW — after the requirements and task-file commits, immediately before
    implementation — so the baseline measures the same code state implementation
    starts from.
+7a. Apply the BDD red-state gate: confirm feature files (BDD-ACTIVE) or inline
+    Gherkin (BDD-PLANNED/BDD-ABSENT) exist for this task, and, where `make bdd`
+    is available, run it and confirm the task's scenarios fail or are unbound.
+    Do not proceed to step 8 until this holds.
 8. Set task Status to in-progress, then invoke **Implementation Worker** with
    `isolation: "worktree"` for edits/tests/checks, giving it the task file and the
    referenced requirements as input. The worker commits its own worktree changes with

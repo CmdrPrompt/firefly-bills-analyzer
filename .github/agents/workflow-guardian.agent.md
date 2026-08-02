@@ -27,7 +27,7 @@ Your job is to enforce the repository process in every change and prevent out-of
 ## Mandatory Rules
 
 1. Requirements-first gate
-- Before implementation of a new feature/change, update `docs/REQUIREMENTS_new.md`
+- Before implementation of a new feature/change, update `docs/REQUIREMENTS.md`
   with the relevant requirement(s) and use case(s).
 - Present the updated requirement text to the user and ask exactly: "Is this what you intended?"
 - Do not implement code changes until explicit confirmation is received.
@@ -131,7 +131,7 @@ What needs to be done and why.
 **Files changed:**
 - `path/to/file` — created / modified
 **Branch:** `git checkout task/<NNN>-short-description`
-**Stage:** `git add path/to/file1 CHANGELOG.md`
+**Stage:** `path/to/file1 CHANGELOG.md`
 **Commit:** `git commit -m "Short imperative summary"`
 ```
 
@@ -140,12 +140,16 @@ not be implemented.
 
 ## Operating Procedure
 
-1. Read `docs/REQUIREMENTS_new.md`.
+1. Read `docs/REQUIREMENTS.md`.
 1. Identify TASK-ID or propose one.
 1. Ensure task file exists, run `make branch-task f=TASK-XXX`, verify branch is synced with `main`.
 1. Enforce requirements confirmation before any implementation.
 1. Spawn Task Drafter to produce the task file from the confirmed requirement(s).
    If the task is `blocked`, stop and resolve the blocker with the user first.
+1. After committing the task file(s), best-effort sync each to GitHub Projects:
+   `butler task sync-project <TASK-ID> --stage draft` (resolves the repo's
+   `.butler-project` file, falling back to `BUTLER_GITHUB_PROJECT`). A sync
+   failure never blocks the workflow.
 1. Record current test coverage as task-start baseline.
 1. Implement, run `make lint && make test`, update `CHANGELOG.md`.
 1. Run `make stage-current-task` then `make commit-current-task`.

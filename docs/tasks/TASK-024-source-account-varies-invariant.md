@@ -7,7 +7,7 @@ todo
 ## Requirements
 
 **Binding:** FR-30a, FR-30e
-**BDD mode:** BDD-ABSENT
+**BDD mode:** BDD-ACTIVE
 **Depends on:** TASK-011 (introduced FR-30a's mode resolution and the varies
 flag), TASK-014 (introduced FR-32d, which made the flag unreachable)
 **Precedence:** The requirements document is the binding definition of this task.

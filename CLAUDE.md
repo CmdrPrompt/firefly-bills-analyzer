@@ -1,14 +1,14 @@
-# firefly-bills-analyzer
+# my-project
 
-Analyzes your Firefly III transaction history to automatically identify recurring payments and create subscriptions (bills) via the Firefly III API. Designed for cash flow planning across the full year, including low-frequency bills such as quarterly and annual payments.
+Describe your project here.
 
 ## Spec-Driven Development
 
-All changes must be grounded in a requirements specification at `docs/REQUIREMENTS_new.md`.
+All changes must be grounded in a requirements specification at `docs/REQUIREMENTS.md`.
 
 Before writing any code for a new feature or change:
 
-1. Update `docs/REQUIREMENTS_new.md` with the relevant requirement(s) and use case(s).
+1. Update `docs/REQUIREMENTS.md` with the relevant requirement(s) and use case(s).
 2. Present the updated text and ask the user: "Is this what you intended?"
 3. Wait for explicit confirmation.
 4. Only then follow the TDD cycle.
@@ -20,6 +20,15 @@ If a change cannot be expressed as a requirement and use case, do not implement 
 Tasks live in `docs/tasks/TASK-XXX-short-description.md`. See the Workflow Guardian
 agent (`.github/agents/workflow-guardian.agent.md`) for the task file format and full
 workflow enforcement.
+
+Workflow Guardian's rules apply automatically to any task-branch/
+requirements/TDD work in this repository — they are a standing constraint,
+not optional guidance to consult only when the agent is explicitly
+`@`-mentioned. The underlying operations (branch/stage/commit/pr/merge,
+task-file sync) may be performed via the `make` targets below, the
+installed `butler` CLI directly, or the `butler-mcp` MCP server —
+whichever is available/configured — interchangeably; what is never
+allowed is bypassing all three with a raw `git`/`gh` command.
 
 **Branch policy:** Every task runs on its own `task/<NNN>-short-description` branch.
 Never commit implementation work on `main`.
@@ -71,6 +80,22 @@ produces a prioritised list, and creates task files for approved bugs.
 
 - Use **Hypothesis** for all parsing and data transformation functions.
 - Coverage must not drop below the task-start baseline when a task is completed.
+
+## Behavior-Driven Development (BDD)
+
+- **Directory layout:** feature files live in `tests/bdd/features/`, step
+  definitions live in `tests/bdd/steps/`.
+- **Naming:** feature files are named
+  `tests/bdd/features/TASK-<NNN>-<short-description>.feature`, matching the
+  task file naming in `docs/tasks/`.
+- **Style:** scenarios are written in English, in declarative style (what
+  the user achieves, not UI mechanics), one behavior per scenario.
+- **Criterion mapping:** each acceptance criterion in a task file maps to
+  at least one scenario, referencing its criterion ID in a comment or tag
+  (e.g. `@AC-3`).
+- **Outside-in loop:** bind step definitions first so scenarios fail for
+  the right reason, then drive implementation with the inner TDD loop. Do
+  not consider a task complete until `make bdd` and `make test` both pass.
 
 ## Running the Application
 

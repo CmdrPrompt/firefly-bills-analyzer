@@ -50,20 +50,29 @@ commit — your commit message does not need to match the task file's
 1. Keep changes strictly inside approved scope.
 2. Follow the `tdd-cycle` skill (Red -> Green -> Refactor, scenarios realized as
    tests) and the `characterization-tests` skill for previously untested behavior.
-3. Run `make lint && make test` to verify all checks pass.
-4. Verify that total test coverage at completion is equal to or higher than the task-start
+3. Outside-in loop: if the task has feature files or inline Gherkin scenarios,
+   work outside-in — first bind step definitions so the scenarios execute and
+   fail for the right reason (missing behavior, not a missing/undefined step),
+   then drive the implementation with the inner Red -> Green -> Refactor TDD
+   loop from the `tdd-cycle` skill. Do not consider the task complete until
+   both `make bdd` and `make test` pass.
+4. Run `make lint && make test` to verify all checks pass; also run `make bdd`
+   and confirm it passes when the task has feature files or `tests/bdd/` is
+   adopted in this repo.
+5. Verify that total test coverage at completion is equal to or higher than the task-start
    baseline. If coverage has dropped, add tests before marking done.
-5. Update CHANGELOG.md per the `changelog` skill. This must happen **before** staging,
+6. Update CHANGELOG.md per the `changelog` skill. This must happen **before** staging,
    and CHANGELOG.md must be included on the `**Stage:**` line in the task file (or staged
    explicitly with `git add CHANGELOG.md`) so it is not missed by `make stage-task`.
-6. Fix, format, `git add` the changed files, and commit per the worktree section of the
+7. Fix, format, `git add` the changed files, and commit per the worktree section of the
    `commit-workflow` skill (see Execution context above).
-7. Update task file metadata for status and completion before committing.
-8. Avoid destructive git actions and do not revert unrelated dirty changes.
+8. Update task file metadata for status and completion before committing.
+9. Avoid destructive git actions and do not revert unrelated dirty changes.
 
 ## Output Contract
 
 - Report files changed, checks run, coverage before/after, and pass/fail status.
+- Report `make bdd` pass/fail status alongside `make test`.
 - Confirm that CHANGELOG.md was updated before committing.
 - Confirm that `make commit-output` ran successfully and report the resulting commit hash
   (`git log -1 --format=%H`) so the Workflow Guardian can verify it independently.

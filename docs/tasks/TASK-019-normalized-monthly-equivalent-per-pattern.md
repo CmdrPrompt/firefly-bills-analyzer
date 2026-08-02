@@ -7,7 +7,7 @@ todo
 ## Requirements
 
 **Binding:** FR-37
-**BDD mode:** BDD-ABSENT
+**BDD mode:** BDD-ACTIVE
 **Depends on:** TASK-012 (amount clustering and billing events, which
 established `_build_pattern()` as the single construction site for
 `RecurringPattern`)

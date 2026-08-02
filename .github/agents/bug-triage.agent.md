@@ -10,7 +10,7 @@ All fixes go through the Workflow Guardian and Implementation Worker via the nor
 
 ## What counts as a bug
 
-A discrepancy between what the code does and what `docs/REQUIREMENTS_new.md` says it should do,
+A discrepancy between what the code does and what `docs/REQUIREMENTS.md` says it should do,
 or an obvious defect (crash, data loss, incorrect output).
 Suspicious behavior with no clear requirement match is "unconfirmed" until the user decides.
 
@@ -18,7 +18,7 @@ Suspicious behavior with no clear requirement match is "unconfirmed" until the u
 
 ### 1 — Read requirements
 
-Read `docs/REQUIREMENTS_new.md` in full. Keep it as the reference throughout.
+Read `docs/REQUIREMENTS.md` in full. Keep it as the reference throughout.
 
 ### 2 — Analyse code
 

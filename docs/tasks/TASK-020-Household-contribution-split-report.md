@@ -7,7 +7,7 @@ blocked
 ## Requirements
 
 **Binding:** FR-38a, FR-38b, FR-38c, FR-38d, FR-38e, FR-38f, NFR-13
-**BDD mode:** BDD-ABSENT
+**BDD mode:** BDD-ACTIVE
 **Depends on:** TASK-019 (FR-37 `monthly_equivalent`, the figure this report
 sums), TASK-016 (`account_filter.py`, whose source-account matching approach
 this task mirrors)

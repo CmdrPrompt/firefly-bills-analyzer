@@ -36,6 +36,12 @@ wrong), pytest with Hypothesis for parsing/date/data-transformation functions,
 tests in `tests/unit/test_<module>.py` named `test_<behavior>`, and mocks only
 at true external boundaries.
 
+When the behavior being documented is user-facing (observable from an end
+user's perspective via the CLI/API), prefer expressing it as a Gherkin scenario
+(feature file + step definition) over a plain pytest test. Internal
+implementation behavior (private helpers, internal data structures not
+exposed to a user) remains plain pytest regardless.
+
 ### 3 — Present findings (mandatory stop — wait for user)
 
 Present:

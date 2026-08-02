@@ -7,7 +7,7 @@ todo
 ## Requirements
 
 **Binding:** FR-32d (rationale only, normative content unchanged)
-**BDD mode:** BDD-ABSENT
+**BDD mode:** BDD-ACTIVE
 **Depends on:** TASK-014 (introduced FR-32d and the incorrect rationale)
 **Precedence:** The requirements document is the binding definition of this task.
 The story and scenarios below are derived from it. On any discrepancy, the

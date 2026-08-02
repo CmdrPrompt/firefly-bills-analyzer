@@ -48,6 +48,14 @@ Check every gate and state **PASS** or **FAIL** with supporting detail.
 - **Acceptance criteria gate** — are all acceptance criteria in the task file marked `- [x]`?
   List any unchecked items (`- [ ]`).
 
+- **BDD scenario coverage gate** — for every acceptance criterion ID in the task
+  file, verify it is covered by a passing scenario: a feature-file scenario
+  passing under `make bdd` (BDD-ACTIVE), or, in BDD-PLANNED/BDD-ABSENT mode, an
+  automated test that implements the task file's inline Gherkin for that
+  criterion. List any criterion ID with no covering passing scenario/test by
+  ID, and treat this as a failing gate — REQUEST CHANGES listing the uncovered
+  criteria if any are found.
+
 - **Test gate** — are new behaviors covered by tests?
   Are tests meaningful — do they assert specific behavior, or do they only assert that code runs?
 
