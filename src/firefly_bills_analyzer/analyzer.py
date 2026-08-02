@@ -23,6 +23,13 @@ _FREQUENCY_RANGES: dict[str, tuple[float, float]] = {
     "yearly": (340, 390),
 }
 
+_MONTHLY_DIVISORS: dict[str, int] = {
+    "monthly": 1,
+    "quarterly": 3,
+    "half-yearly": 6,
+    "yearly": 12,
+}
+
 
 @dataclass(frozen=True)
 class RecurringPattern:
@@ -40,6 +47,7 @@ class RecurringPattern:
     source_account_name: str | None
     source_account_varies: bool
     amount_for_name: str | None = None
+    monthly_equivalent: float | None = None
 
 
 def _resolve_source_account(
@@ -328,6 +336,10 @@ def _build_pattern(
         category_name=category_name,
         config=config,
     )
+    frequency = _classify_frequency(median_days)
+    monthly_equivalent = (
+        mean_amount / _MONTHLY_DIVISORS[frequency] if frequency in _MONTHLY_DIVISORS else None
+    )
 
     return RecurringPattern(
         destination_name=destination_name,
@@ -337,11 +349,12 @@ def _build_pattern(
         amount_max=max(amounts),
         amount_mean=mean_amount,
         median_interval_days=median_days,
-        frequency=_classify_frequency(median_days),
+        frequency=frequency,
         confidence=confidence,
         source_account_name=source_account_name,
         source_account_varies=source_account_varies,
         amount_for_name=f"{mean_amount:.2f}" if multi_cluster else None,
+        monthly_equivalent=monthly_equivalent,
     )
 
 

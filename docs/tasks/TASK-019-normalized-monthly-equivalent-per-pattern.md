@@ -2,7 +2,7 @@
 
 ## Status
 
-todo
+done
 
 ## Requirements
 
@@ -93,37 +93,37 @@ equivalent is left to whichever task first needs it on screen.
 
 **Feature files:** tests/bdd/features/TASK-019-monthly-equivalent.feature
 
-- [ ] 1. Scenario: Monthly pattern reports its mean amount unchanged
+- [x] 1. Scenario: Monthly pattern reports its mean amount unchanged
       See tests/bdd/features/TASK-019-monthly-equivalent.feature: Scenario: Monthly pattern reports its mean amount unchanged
 
-- [ ] 2. Scenario: Quarterly pattern is divided by 3
+- [x] 2. Scenario: Quarterly pattern is divided by 3
       See tests/bdd/features/TASK-019-monthly-equivalent.feature: Scenario: Quarterly pattern is divided by 3
 
-- [ ] 3. Scenario: Half-yearly pattern is divided by 6
+- [x] 3. Scenario: Half-yearly pattern is divided by 6
       See tests/bdd/features/TASK-019-monthly-equivalent.feature: Scenario: Half-yearly pattern is divided by 6
 
-- [ ] 4. Scenario: Yearly pattern is divided by 12
+- [x] 4. Scenario: Yearly pattern is divided by 12
       See tests/bdd/features/TASK-019-monthly-equivalent.feature: Scenario: Yearly pattern is divided by 12
 
-- [ ] 5. Scenario: Irregular pattern records no monthly equivalent
+- [x] 5. Scenario: Irregular pattern records no monthly equivalent
       See tests/bdd/features/TASK-019-monthly-equivalent.feature: Scenario: Irregular pattern records no monthly equivalent
 
-- [ ] 6. Scenario: A single billing event yields no monthly equivalent
+- [x] 6. Scenario: A single billing event yields no monthly equivalent
       See tests/bdd/features/TASK-019-monthly-equivalent.feature: Scenario: A single billing event yields no monthly equivalent
 
-- [ ] 7. Scenario: The monthly equivalent reaches the CSV export
+- [x] 7. Scenario: The monthly equivalent reaches the CSV export
       See tests/bdd/features/TASK-019-monthly-equivalent.feature: Scenario: The monthly equivalent reaches the CSV export
 
-- [ ] 8. Scenario: The monthly equivalent reaches the JSON export
+- [x] 8. Scenario: The monthly equivalent reaches the JSON export
       See tests/bdd/features/TASK-019-monthly-equivalent.feature: Scenario: The monthly equivalent reaches the JSON export
 
-- [ ] 9. `_MONTHLY_DIVISORS` has exactly the same key set as `_FREQUENCY_RANGES`, asserted by a test rather than by inspection
+- [x] 9. `_MONTHLY_DIVISORS` has exactly the same key set as `_FREQUENCY_RANGES`, asserted by a test rather than by inspection
 
-- [ ] 10. Hypothesis property test: for any mean amount and any median interval, `monthly_equivalent` is either `None` (exactly when `frequency == "irregular"`) or equals `amount_mean / _MONTHLY_DIVISORS[frequency]`
+- [x] 10. Hypothesis property test: for any mean amount and any median interval, `monthly_equivalent` is either `None` (exactly when `frequency == "irregular"`) or equals `amount_mean / _MONTHLY_DIVISORS[frequency]`
 
-- [ ] 11. Hypothesis property test: multiplying a pattern's `monthly_equivalent` by its bucket divisor recovers its `amount_mean` within floating-point tolerance
+- [x] 11. Hypothesis property test: multiplying a pattern's `monthly_equivalent` by its bucket divisor recovers its `amount_mean` within floating-point tolerance
 
-- [ ] 12. `make lint && make test` pass with coverage >= the TASK-018 baseline (100% on `analyzer.py`)
+- [x] 12. `make lint && make test` pass with coverage >= the TASK-018 baseline (100% on `analyzer.py`)
 
 ## Out of scope
 
@@ -143,18 +143,65 @@ None
 
 ## Completion
 
-**Date:** YYYY-MM-DD
-**Summary:**
+**Date:** 2026-08-02
+**Summary:** Added a `monthly_equivalent: float | None` field to
+`RecurringPattern`, computed in `_build_pattern()` from the already-computed
+`mean_amount` and `_classify_frequency(median_days)` result via a new
+module-level `_MONTHLY_DIVISORS` table (monthly=1, quarterly=3,
+half-yearly=6, yearly=12; `irregular` absent, so those patterns record
+`monthly_equivalent = None`). `exporter.py` required no code change since
+`_FIELDNAMES` is derived from `dataclasses.fields(RecurringPattern)`; added
+tests confirming the field serializes as an empty CSV cell / JSON `null` for
+`None`. Also migrated the task file to `BDD-ACTIVE` format ahead of
+implementation: created `tests/bdd/features/TASK-019-monthly-equivalent.feature`
+(8 scenarios, copied verbatim from the acceptance criteria) and
+`tests/bdd/steps/test_task_019_steps.py` with real `@given`/`@when`/`@then`
+bindings calling `identify_recurring()`/`exporter.export()`; all 8 scenarios
+pass (`make bdd`: 9 passed, including the pre-existing example scenario).
+Added `pytest-bdd` as a dev dependency (`pyproject.toml`/`uv.lock`), required
+for `tests/bdd/steps/*.py` to import and for `make test`/`make bdd` to
+collect them at all — without it `make test` failed outright at collection,
+blocking the coverage baseline this task's own gate depends on. Also fixed a
+one-byte pre-existing lint failure (missing trailing newline) in
+`docs/tasks/TASK-020-Household-contribution-split-report.md`, unrelated to
+FR-37 but blocking `make lint` for this task.
+
+Two implementation subagents ran in isolated worktrees and could not commit
+via `make commit-current-task` (branch name mismatch); their file changes
+were verified, committed via `make commit-output`, and squash-merged into
+`task/019-monthly-equivalent` by the coordinator
+(`make merge-worktree`/`make commit-current-task`), per this repo's
+worktree commit-workflow. One squash-merge produced an add/add conflict in
+`tests/bdd/steps/test_task_019_steps.py` (BDD-scaffold placeholder vs. real
+step bindings); resolved by taking the fully-bound implementation version.
+
+Verified independently (not solely trusting subagent reports): `make lint`
+clean; `make test` → 192 passed, 0 failed, 99% total coverage (552 stmts, 1
+pre-existing miss in `__main__.py`, unrelated to this task),
+`analyzer.py` 100% — meets the recorded task-start baseline (173 passed, 8
+xfailed, 99% total / 548 stmts / 1 miss, `analyzer.py` 100%) with no
+regression. `make bdd` → 9 passed (all 8 TASK-019 scenarios green, no
+longer `xfail`). Test Design Reviewer scored the new/changed tests 8.2/10 on
+Farley's 8 properties; flagged two real-but-optional gaps out of this task's
+scope (no test for the `multi_cluster=True` interaction with
+`monthly_equivalent`, no test at the exact monthly/irregular day-count
+boundary) — not required by any of the 12 acceptance criteria, left as
+possible future follow-up rather than blocking this task.
+
 **Files changed:**
 
 - `src/firefly_bills_analyzer/analyzer.py` — modified
 - `tests/test_analyzer.py` — modified
 - `tests/test_exporter.py` — modified
-- `docs/REQUIREMENTS_new.md` — modified prior to implementation (v0.2.21 → v0.2.22)
+- `tests/bdd/features/TASK-019-monthly-equivalent.feature` — created
+- `tests/bdd/steps/test_task_019_steps.py` — created (scaffold), then modified (real step bindings)
+- `pyproject.toml` — modified (`pytest-bdd` dev dependency)
+- `uv.lock` — modified
 - `CHANGELOG.md` — modified
-- `docs/tasks/README.md` — modified (status)
+- `docs/tasks/README.md` — modified (status: todo → done)
+- `docs/tasks/TASK-020-Household-contribution-split-report.md` — modified (trailing newline, unrelated lint fix)
 - `docs/tasks/TASK-019-normalized-monthly-equivalent-per-pattern.md` — this file
 
 **Branch:** `git checkout task/019-monthly-equivalent`
-**Stage:** `git add src/firefly_bills_analyzer/analyzer.py tests/test_analyzer.py tests/test_exporter.py docs/REQUIREMENTS_new.md CHANGELOG.md docs/tasks/README.md docs/tasks/TASK-019-normalized-monthly-equivalent-per-pattern.md`
+**Stage:** `git add src/firefly_bills_analyzer/analyzer.py tests/test_analyzer.py tests/test_exporter.py tests/bdd/features/TASK-019-monthly-equivalent.feature tests/bdd/steps/test_task_019_steps.py pyproject.toml uv.lock CHANGELOG.md docs/tasks/README.md docs/tasks/TASK-020-Household-contribution-split-report.md docs/tasks/TASK-019-normalized-monthly-equivalent-per-pattern.md`
 **Commit:** `git commit -m "feat: add a normalized monthly equivalent to each recurring pattern (FR-37)"`

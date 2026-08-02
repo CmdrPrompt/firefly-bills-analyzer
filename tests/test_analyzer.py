@@ -8,6 +8,9 @@ from hypothesis import example, given
 from hypothesis import strategies as st
 
 from firefly_bills_analyzer.analyzer import (
+    _FREQUENCY_RANGES,
+    _MONTHLY_DIVISORS,
+    _build_pattern,
     _classify_frequency,
     _collapse_into_billing_events,
     _confidence,
@@ -1213,3 +1216,142 @@ def test_widely_varying_single_amount_payee_is_not_fragmented() -> None:
     assert patterns[0].occurrences == len(amounts)
     assert patterns[0].amount_for_name is None
     assert patterns[0].frequency == "monthly"
+
+
+# ---------------------------------------------------------------------------
+# Normalized monthly equivalent (FR-37)
+# ---------------------------------------------------------------------------
+
+
+def test_monthly_pattern_monthly_equivalent_equals_mean() -> None:
+    config = _make_config(min_occurrences=2)
+    start = date(2026, 1, 1)
+    transactions = [
+        _transaction(start + timedelta(days=30 * i), "9.99", "Netflix", "Streaming")
+        for i in range(4)
+    ]
+
+    patterns = identify_recurring(transactions, config)
+
+    assert patterns[0].frequency == "monthly"
+    assert patterns[0].monthly_equivalent == pytest.approx(patterns[0].amount_mean / 1)
+
+
+def test_quarterly_pattern_monthly_equivalent_divided_by_3() -> None:
+    config = _make_config(min_occurrences=2)
+    start = date(2026, 1, 1)
+    transactions = [
+        _transaction(start + timedelta(days=90 * i), "30.00", "Water", None) for i in range(4)
+    ]
+
+    patterns = identify_recurring(transactions, config)
+
+    assert patterns[0].frequency == "quarterly"
+    assert patterns[0].monthly_equivalent == pytest.approx(patterns[0].amount_mean / 3)
+
+
+def test_half_yearly_pattern_monthly_equivalent_divided_by_6() -> None:
+    config = _make_config(min_occurrences=2)
+    start = date(2026, 1, 1)
+    transactions = [
+        _transaction(start + timedelta(days=180 * i), "60.00", "Insurance", None) for i in range(3)
+    ]
+
+    patterns = identify_recurring(transactions, config)
+
+    assert patterns[0].frequency == "half-yearly"
+    assert patterns[0].monthly_equivalent == pytest.approx(patterns[0].amount_mean / 6)
+
+
+def test_yearly_pattern_monthly_equivalent_divided_by_12() -> None:
+    config = _make_config(min_occurrences=2)
+    start = date(2026, 1, 1)
+    transactions = [
+        _transaction(start + timedelta(days=365 * i), "120.00", "Domain", None) for i in range(3)
+    ]
+
+    patterns = identify_recurring(transactions, config)
+
+    assert patterns[0].frequency == "yearly"
+    assert patterns[0].monthly_equivalent == pytest.approx(patterns[0].amount_mean / 12)
+
+
+def test_irregular_pattern_has_no_monthly_equivalent() -> None:
+    config = _make_config(min_occurrences=2)
+    start = date(2026, 1, 1)
+    transactions = [
+        _transaction(start + timedelta(days=50 * i), "5.00", "Corner Shop", None) for i in range(3)
+    ]
+
+    patterns = identify_recurring(transactions, config)
+
+    assert patterns[0].frequency == "irregular"
+    assert patterns[0].monthly_equivalent is None
+
+
+def test_single_billing_event_has_no_monthly_equivalent() -> None:
+    config = _make_config(min_occurrences=1)
+    transactions = [_transaction(date(2026, 1, 1), "9.99", "Netflix", "Streaming")]
+
+    patterns = identify_recurring(transactions, config)
+
+    assert patterns[0].median_interval_days == 0.0
+    assert patterns[0].frequency == "irregular"
+    assert patterns[0].monthly_equivalent is None
+
+
+def test_monthly_divisors_keys_match_frequency_ranges() -> None:
+    assert set(_MONTHLY_DIVISORS) == set(_FREQUENCY_RANGES)
+
+
+@given(
+    mean_amount=st.floats(min_value=0.01, max_value=100_000, allow_nan=False, allow_infinity=False),
+    median_interval_days=st.integers(min_value=0, max_value=1000),
+)
+def test_monthly_equivalent_matches_bucket_divisor_or_is_none(
+    mean_amount: float, median_interval_days: int
+) -> None:
+    """FR-37: `monthly_equivalent` is `None` exactly when `frequency ==
+    "irregular"`, and otherwise equals `amount_mean / _MONTHLY_DIVISORS[frequency]`."""
+    config = _make_config()
+    start = date(2026, 1, 1)
+    dates = [start, start + timedelta(days=median_interval_days)]
+    events = [{"date": d.isoformat(), "amount": mean_amount, "count": 1} for d in dates]
+    cluster = [_transaction(d, f"{mean_amount:.2f}", "Payee", None) for d in dates]
+
+    pattern = _build_pattern("Payee", cluster, events, multi_cluster=False, config=config)
+
+    frequency = _classify_frequency(float(median_interval_days))
+    assert pattern.frequency == frequency
+    if frequency == "irregular":
+        assert pattern.monthly_equivalent is None
+    else:
+        assert pattern.monthly_equivalent == pytest.approx(
+            pattern.amount_mean / _MONTHLY_DIVISORS[frequency]
+        )
+
+
+@given(
+    mean_amount=st.floats(min_value=0.01, max_value=100_000, allow_nan=False, allow_infinity=False),
+    frequency=st.sampled_from(sorted(_MONTHLY_DIVISORS)),
+)
+def test_monthly_equivalent_times_divisor_recovers_mean_amount(
+    mean_amount: float, frequency: str
+) -> None:
+    """FR-37: multiplying a pattern's `monthly_equivalent` by its bucket
+    divisor recovers `amount_mean` within floating-point tolerance."""
+    config = _make_config()
+    low, high = _FREQUENCY_RANGES[frequency]
+    median_interval_days = int((low + high) // 2)
+    start = date(2026, 1, 1)
+    dates = [start, start + timedelta(days=median_interval_days)]
+    events = [{"date": d.isoformat(), "amount": mean_amount, "count": 1} for d in dates]
+    cluster = [_transaction(d, f"{mean_amount:.2f}", "Payee", None) for d in dates]
+
+    pattern = _build_pattern("Payee", cluster, events, multi_cluster=False, config=config)
+
+    assert pattern.frequency == frequency
+    assert pattern.monthly_equivalent is not None
+    assert pattern.monthly_equivalent * _MONTHLY_DIVISORS[frequency] == pytest.approx(
+        pattern.amount_mean
+    )
