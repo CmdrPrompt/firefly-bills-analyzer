@@ -2,7 +2,19 @@
 
 ## Status
 
-blocked
+moved — not implemented in this repository
+
+**Resolution (2026-08-02):** Open Item #10 is resolved as option (b). UC11
+does not belong in `firefly-bills-analyzer`. `exporter.py` already serializes
+every `RecurringPattern` field — including `source_account_name` and
+`monthly_equivalent` (FR-37) — via the existing CSV/JSON export (FR-08), with
+no filtered field list. A separate consumer of that export therefore has
+everything UC11's bucketing and split arithmetic need, without adding the
+`HOUSEHOLD_*` configuration surface to this application. UC11, FR-38a–FR-38f,
+NFR-12, the "Household member"/"Shared account" definitions, SE-04–SE-06, and
+`household.py` have been removed from `docs/REQUIREMENTS_new.md` (spec
+v0.2.24). FR-37 is retained. This task is closed without implementation; no
+branch was created and no code was written under it.
 
 ## Requirements
 

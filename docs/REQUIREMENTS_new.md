@@ -1,6 +1,6 @@
 # Requirements Specification: Firefly III Bills Analyzer
 
-**Version:** 0.2.23
+**Version:** 0.2.26
 **Date:** 2026-08-02
 **Status:** Draft, pending owner confirmation of items marked TBD (see Open Items)
 
@@ -30,8 +30,16 @@ Terms used with a specific meaning in this specification. All requirements use t
 | Uncategorized pattern | An amount cluster in which no transaction carries a category name. A cluster whose transactions are all categorized, but across categories none of which reaches `CATEGORY_MAJORITY_THRESHOLD`, is categorized-without-a-resolved-name: FR-13b gives it no category name for bill-naming purposes, but it is not an uncategorized pattern and is not penalized under FR-27 |
 | Duplicate bill | An existing bill in Firefly III whose name equals the candidate bill name, compared case-sensitively after trimming leading and trailing whitespace. Amount and frequency are not part of the duplicate criterion |
 | Monthly equivalent | The amount a recurring payment pattern costs per calendar month on average, derived from its mean amount and its frequency bucket (FR-03) via the fixed divisors monthly = 1, quarterly = 3, half-yearly = 6, yearly = 12. Undefined for the `irregular` bucket, where no divisor applies |
-| Household member | A named person in the household, defined by a monthly income figure and a set of source account names through which that person pays recurring costs directly. Members are declared in configuration; the application never derives them from Firefly III data |
-| Shared account | A source account, declared in configuration, from which the household's jointly funded recurring costs are paid, and which the members fund by transfer. Its recurring costs are attributed to the household as a whole rather than to any single member |
+| Income account | An asset account named in `INCOME_ACCOUNTS`, on which the application looks for a recurring incoming payment. Typically the account a salary is paid into |
+| Income candidate | A group of deposit transactions on one income account sharing the same payer (`source_name`), analyzed for recurrence by the same interval and frequency machinery UC2 applies to withdrawals (FR-03) |
+| Income source | The one income candidate per income account that is classified `monthly` (FR-03) and meets `INCOME_MIN_OCCURRENCES`. An income account with no such candidate, or with more than one, yields no income source and is reported as such (FR-42b, FR-42c) |
+| Observed net income | The amount of an income source's **most recent** occurrence. It is the net figure — what actually landed in the account — because gross pay, tax, and deductions are not visible in a Firefly III deposit. A mean over the analysis window is deliberately not used: see FR-43 |
+| Household spend category | A category named in `HOUSEHOLD_SPEND_CATEGORIES`. Spending in it is treated as benefiting the household rather than one person, wherever it was paid from. What belongs in the list is the user's declaration, not something the application infers (SE-08) |
+| Household spend | Withdrawals qualifying under FR-48d, aggregated per source account, category, and calendar month. Unlike a recurring payment pattern, it is not required to recur: day-to-day grocery shopping is the case it exists for, and its median interval of a few days puts it outside every frequency bucket FR-03 defines |
+| Household spend tag | A tag named in `HOUSEHOLD_SPEND_INCLUDE_TAG` or `HOUSEHOLD_SPEND_EXCLUDE_TAG`, applied by the user to an individual transaction to override what its category would otherwise decide. The category list sets the rule; the tags handle the exceptions to it, so that a personal purchase inside a household category, and a household purchase inside a personal one, can each be corrected without distorting the category structure |
+| One-off purchase | A single withdrawal in a household spend category whose amount exceeds `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD`. It is excluded from the monthly figures and reported separately (FR-48c), because a sofa is a settlement between household members, not a monthly cost |
+| Complete month | A calendar month falling entirely inside the analysis window. The first and last months of the window are partial, since the window starts and ends mid-month, and their totals would understate real spending |
+| Income variance | The spread of an income source's occurrences around its observed net income, reported as minimum, maximum, mean, and the count of occurrences deviating from the observed net income by more than `INCOME_VARIANCE_TOLERANCE`. It is what makes a bonus, a holiday supplement, or a retroactive adjustment visible instead of silently averaged in |
 
 ---
 
@@ -40,7 +48,7 @@ Terms used with a specific meaning in this specification. All requirements use t
 | Actor       | Description                                                                 |
 | ----------- | --------------------------------------------------------------------------- |
 | User        | Interacts via web browser or runs the application manually or on a schedule |
-| Web server  | Flask/FastAPI app that exposes the UI and orchestrates UC1–UC7, UC9–UC11  |
+| Web server  | Flask/FastAPI app that exposes the UI and orchestrates UC1–UC7, UC9–UC10  |
 | Firefly III | Source system for transactions and target system for bills                  |
 
 ---
@@ -413,39 +421,84 @@ to a real Firefly III instance with transaction history
 
 ---
 
-### UC11: Report household contribution split
+### UC11: *Retired*
 
-**Actor:** Application / User
-**Precondition:** Recurring payment patterns identified (UC2)
-**Primary flow (terminal / .env):**
+UC11 (household contribution split report) was removed in v0.2.24 under Open
+Item #10 and now lives in `firefly-household-splitter`. The number is retained
+here, unused, so that references to UC11 in the changelog and in closed task
+files keep pointing at a single meaning.
 
-1. The user declares the household members, their monthly incomes, and each member's own
-   source accounts in configuration, together with the shared account(s) the members fund
-   by transfer
-2. The user runs the application with `--household-report`
-3. The application computes each pattern's monthly equivalent (FR-37) and groups the
-   patterns by resolved source account (FR-30a) into one bucket per member and one shared
-   bucket
-4. The application reports, per member, the monthly amount that member must transfer to the
-   shared account so that the household's chosen split principle holds
-5. The application reports the result for both split principles side by side, or for the
-   single configured principle
+---
 
-**Common:**
+### UC12: Derive observed net income from deposits
 
-- The report is read-only. It never creates, modifies, or deletes anything in Firefly III,
-  independently of whether dry-run mode is active (FR-38f)
-- Incomes come from configuration, not from Firefly III: the application fetches withdrawal
-  transactions only (UC1), so it has no income data of its own
-- Patterns whose source account matches neither a member account nor a shared account, and
-  patterns whose frequency is `irregular` and which therefore have no monthly equivalent
-  (see Definitions), are excluded from the split arithmetic and reported separately, so that
-  an incomplete configuration is visible rather than silently absorbed into the result
-- The two split principles answer different fairness questions and neither is the default
-  correct one: equal-remainder equalizes what each member has left after all recurring
-  costs, and therefore has the higher earner contribute a larger amount but a smaller share
-  of income; proportional equalizes the share of income each member contributes, and
-  therefore leaves the members with different remainders
+**Actor:** Application
+**Precondition:** At least one income account configured (`INCOME_ACCOUNTS`), valid API token and reachable Firefly III instance
+**Flow:**
+
+1. The application fetches deposit transactions for the same lookback window UC1 uses,
+   via `firefly-python-api`'s `get_deposit_transactions()` (that package's REQ-011)
+2. Deposits landing in an account not named in `INCOME_ACCOUNTS` are discarded
+3. The remaining deposits are grouped per income account by payer (`source_name`),
+   forming income candidates
+4. Each candidate's occurrence count and median interval are computed and classified
+   into a frequency bucket by the same rule UC2 uses (FR-03)
+5. The candidate that is `monthly` and meets `INCOME_MIN_OCCURRENCES` becomes that
+   account's income source
+6. The income source's observed net income is the amount of its most recent occurrence
+7. Its variance figures are computed over all its occurrences
+8. Income sources are written to their own export file, separate from the recurring
+   payment export (FR-45a)
+
+**Alternative flows:**
+
+- No income account configured: no deposits are fetched and the run is unaffected
+- An income account yields no qualifying candidate: the account is reported with the
+  candidates that were rejected and why, and no income source is emitted for it
+- An income account yields more than one qualifying candidate: the application reports
+  a configuration-level ambiguity naming the account and every qualifying payer, and
+  emits no income source for that account. Two salary-like payers on one account is a
+  situation only the user can resolve, and silently summing them would produce a number
+  that looks authoritative and is not
+- Occurrences deviate from the observed net income beyond the tolerance: the deviating
+  occurrences are counted and reported alongside the income source
+
+---
+
+### UC13: Measure household spend that is not recurring
+
+**Actor:** Application
+**Precondition:** Transaction history fetched (UC1), at least one household spend category configured
+**Flow:**
+
+1. The application takes the withdrawals already fetched for UC1; no additional fetch occurs
+2. Withdrawals are qualified by category, corrected by the two override tags: a transaction
+   carrying the include tag is admitted whatever its category, one carrying the exclude tag is
+   removed whatever its category, and the exclude tag wins when both are present
+3. Withdrawals belonging to a recurring payment pattern identified in UC2 are discarded, so that a
+   subscription categorized as household spending is not counted twice
+4. Withdrawals above the one-off threshold are set aside as one-off purchases
+5. The remainder is summed per source account, category, and calendar month
+6. Months not falling entirely inside the analysis window are dropped
+7. The reported monthly figure per source account and category is the median of the remaining
+   monthly totals; the mean, minimum, maximum, and month count are reported alongside it
+8. Household spend figures and one-off purchases are written to their own export file (FR-51a)
+
+**Alternative flows:**
+
+- No household spend category configured: the step is skipped entirely and the run is unaffected
+- Fewer complete months than the configured minimum: the account and category are reported with
+  the months that were available and no median, rather than a median computed from one month
+- A category is configured that appears on no transaction: reported, so a typo in the category
+  name is visible rather than silently producing nothing
+
+**Why this exists.** UC2 answers "what recurs". A household where one member buys the groceries,
+the children's clothes, and the household supplies from their own account has a real, continuous,
+shared cost that recurs in no interval FR-03 recognizes: bought eight times a month, its median
+interval is a few days, so it is classified `irregular`, carries no monthly equivalent, and is
+excluded from every downstream total. The member paying it is then asked to transfer as though
+they had paid nothing. UC13 measures that flow directly instead of trying to make recurrence
+detection see it.
 
 ---
 
@@ -515,12 +568,49 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-36b | When a payee exclude list is configured (`EXCLUDE_PAYEES`), the application shall exclude transactions whose destination account name (`destination_name`) matches the exclude list from the analysis; exclude is applied after include when both are configured | UC10 |
 | FR-36c | When the web UI page is loaded, the web UI shall fetch the existing payees from the Firefly III API and display them as multiselect lists | UC10 |
 | FR-37  | When the application builds a recurring payment pattern (UC2), the application shall compute a monthly equivalent (see Definitions) as the pattern's mean amount divided by the fixed divisor for its frequency bucket (FR-03) — monthly = 1, quarterly = 3, half-yearly = 6, yearly = 12 — and shall record no monthly equivalent when the pattern's frequency is `irregular` | UC2, UC5 |
-| FR-38a | The application shall read the household split configuration from configuration (`HOUSEHOLD_MEMBERS`, `HOUSEHOLD_INCOMES`, `HOUSEHOLD_MEMBER_ACCOUNTS`, `HOUSEHOLD_SHARED_ACCOUNTS`, `HOUSEHOLD_SPLIT_METHOD`), and shall reject the configuration with a common error (see Definitions) when a member declared in `HOUSEHOLD_MEMBERS` lacks an income or an account list, when a source account name is claimed by more than one member, or when a source account name appears both as a member account and as a shared account **[SCOPE TBD: see Open Items #10]** | UC11 |
-| FR-38b | When the household report runs, the application shall assign each recurring payment pattern to exactly one bucket by its resolved source account name (FR-30a) — the declaring member's bucket, the shared bucket, or the unattributed bucket — and shall sum the monthly equivalents (FR-37) within each bucket, excluding from all buckets any pattern that has no monthly equivalent **[SCOPE TBD: see Open Items #10]** | UC11 |
-| FR-38c | When the household report runs under the `equal-remainder` split method, the application shall compute each member's monthly contribution to the shared account as that member's income, minus that member's own bucket total (FR-38b), minus the equal remainder, where the equal remainder is the sum of all members' incomes minus the household total, divided by the number of members, and where the household total is the sum of every member bucket total and the shared bucket total **[SCOPE TBD: see Open Items #10]** | UC11 |
-| FR-38d | When the household report runs under the `proportional` split method, the application shall compute each member's monthly contribution to the shared account as that member's share of the summed household income, multiplied by the household total (FR-38c), minus that member's own bucket total (FR-38b) **[SCOPE TBD: see Open Items #10]** | UC11 |
-| FR-38e | When the household report is produced, the application shall report per member the income, the own-bucket total, the computed contribution, and the resulting remainder; shall report the shared bucket total and the household total; shall report a negative contribution as a negative value together with an explicit note that the member is owed a transfer rather than clamping it to zero; and shall list every pattern in the unattributed bucket and every pattern excluded for having no monthly equivalent, each with its resolved source account name **[SCOPE TBD: see Open Items #10]** | UC11 |
-| FR-38f | While the household report is being produced, the application shall not create, modify, or delete any data in Firefly III, independently of whether dry-run mode (FR-07a) is active **[SCOPE TBD: see Open Items #10]** | UC11 |
+| FR-38  | *Reserved. Not used, retained to keep the ID sequence stable — formerly FR-38a through FR-38f, the household split requirements, moved out with UC11 per Open Item #10 (2026-08-02)* | — |
+| FR-39a | The application shall read the income accounts from configuration (`INCOME_ACCOUNTS`, comma-separated asset account names), and an empty value shall disable income detection entirely | UC12 |
+| FR-39b | The application shall read the minimum occurrence threshold for an income candidate from configuration (`INCOME_MIN_OCCURRENCES`, default 3) | UC12 |
+| FR-39c | The application shall read the income variance tolerance from configuration (`INCOME_VARIANCE_TOLERANCE`, default 0.10), expressed as a fraction of the observed net income | UC12 |
+| FR-40a | When at least one income account is configured, the application shall fetch deposit transactions for the same lookback window UC1 applies to withdrawals, through `firefly-python-api`'s `get_deposit_transactions()` (that package's REQ-011) | UC12 |
+| FR-40b | When no income account is configured, the application shall not fetch deposit transactions | UC12 |
+| FR-40c | The application shall discard every fetched deposit whose destination account name (`destination_name`) does not match an income account | UC12 |
+| FR-40d | The application shall not pass deposit transactions to payee grouping (UC2), to category filtering (UC6), to account filtering (UC9), to payee filtering (UC10), or to bill creation (UC4) | UC12 |
+| FR-41a | The application shall group the retained deposits into income candidates by income account and payer (`source_name`) | UC12 |
+| FR-41b | The application shall compute each income candidate's occurrence count and median interval, and shall classify it into a frequency bucket by FR-03, using the same implementation UC2 uses | UC12 |
+| FR-41c | The application shall qualify an income candidate as an income source when its frequency is `monthly` and its occurrence count is greater than or equal to `INCOME_MIN_OCCURRENCES` | UC12 |
+| FR-42a | If exactly one candidate on an income account qualifies, then the application shall emit it as that account's income source | UC12 |
+| FR-42b | If no candidate on an income account qualifies, then the application shall emit no income source for that account and shall report the account together with each rejected candidate's payer, occurrence count, and frequency | UC12 |
+| FR-42c | If more than one candidate on an income account qualifies, then the application shall emit no income source for that account, and shall report the account and every qualifying payer as an ambiguity for the user to resolve; the application shall not sum, average, or otherwise combine the qualifying candidates | UC12 |
+| FR-43  | The application shall set an income source's observed net income to the amount of its most recent occurrence, and shall not use the mean over the analysis window; the split this figure feeds is forward-looking, and a mean makes a pay rise invisible for as many months as the window is long | UC12 |
+| FR-44  | The application shall compute, for each income source, the minimum, maximum, and mean of its occurrence amounts, and the number of occurrences whose amount deviates from the observed net income by more than `INCOME_VARIANCE_TOLERANCE` | UC12 |
+| FR-45a | When income detection is enabled and the export format (`EXPORT_FORMAT`) is not `none`, the application shall write the income sources to a file separate from the recurring payment export (FR-08), in the same format | UC12, UC5 |
+| FR-45b | Each exported income source record shall carry the income account name, the payer name, the observed net income, its date, the occurrence count, the median interval in days, and the variance figures required by FR-44 | UC12, UC5 |
+| FR-45c | The application shall also export the accounts reported under FR-42b and FR-42c, marked with the reason no income source was emitted, so that a missing member's income is visible in the file rather than only as an absent row | UC12, UC5 |
+| FR-45d | When an income export completes, the application shall inform the user of the file path it wrote, on the same terms as FR-31 | UC12, UC5 |
+| FR-46  | In CLI mode, the application shall display the income sources, and the accounts reported under FR-42b and FR-42c, before the recurring payment review flow (UC3) | UC12, UC3 |
+| FR-47a | The application shall read the household spend categories from configuration (`HOUSEHOLD_SPEND_CATEGORIES`, comma-separated category names), and an empty value shall disable household spend measurement entirely | UC13 |
+| FR-47b | The application shall read the one-off purchase threshold from configuration (`HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD`, default 2000), as an absolute amount | UC13 |
+| FR-47c | The application shall read the minimum number of complete months required for a median from configuration (`HOUSEHOLD_SPEND_MIN_MONTHS`, default 3) | UC13 |
+| FR-47d | The application shall read the household spend override tags from configuration (`HOUSEHOLD_SPEND_INCLUDE_TAG` and `HOUSEHOLD_SPEND_EXCLUDE_TAG`), each a single tag name, both optional | UC13 |
+| FR-48a | The application shall measure household spend from the withdrawals already fetched for UC1, and shall not issue an additional request to Firefly III for it | UC13, UC1 |
+| FR-48b | The application shall exclude from household spend every withdrawal that belongs to a recurring payment pattern identified in UC2, so that no transaction is counted both as a pattern and as household spend | UC13, UC2 |
+| FR-48c | The application shall exclude from the monthly totals every withdrawal whose amount exceeds `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD`, and shall report each such withdrawal separately with its date, amount, payee, category, and source account | UC13 |
+| FR-48d | The application shall qualify a withdrawal as household spend when its category is a household spend category, or when it carries the tag named in `HOUSEHOLD_SPEND_INCLUDE_TAG`, and shall exclude every other withdrawal | UC13 |
+| FR-48e | The application shall exclude from household spend every withdrawal carrying the tag named in `HOUSEHOLD_SPEND_EXCLUDE_TAG`, whatever its category, and this exclusion shall take precedence over every other qualifying rule including `HOUSEHOLD_SPEND_INCLUDE_TAG` | UC13 |
+| FR-48f | The application shall report the number of withdrawals admitted by `HOUSEHOLD_SPEND_INCLUDE_TAG` and the number removed by `HOUSEHOLD_SPEND_EXCLUDE_TAG`, so that the extent of manual correction is visible rather than folded silently into the totals | UC13 |
+| FR-48g | When neither override tag is configured, the application shall qualify household spend by category alone, and shall not require the tag field to be present on a transaction | UC13 |
+| FR-49a | The application shall sum the retained withdrawals per source account, per category, and per calendar month | UC13 |
+| FR-49b | The application shall discard the monthly totals of months that do not fall entirely inside the analysis window | UC13 |
+| FR-49c | The application shall report, per source account and category, the median of the retained monthly totals as the monthly household spend figure | UC13 |
+| FR-49d | The application shall report, per source account and category, the mean, minimum, and maximum monthly total and the number of complete months contributing to them | UC13 |
+| FR-49e | If fewer than `HOUSEHOLD_SPEND_MIN_MONTHS` complete months are available for a source account and category, then the application shall report the pair with its available month count and no median figure | UC13 |
+| FR-50  | If a configured household spend category matches no transaction in the analysis window, then the application shall report that category as unmatched | UC13 |
+| FR-51a | When household spend measurement is enabled and the export format (`EXPORT_FORMAT`) is not `none`, the application shall write the household spend figures and the one-off purchases to a file separate from the recurring payment export (FR-08) and the income export (FR-45a), in the same format | UC13, UC5 |
+| FR-51b | Each exported household spend record shall carry the source account name, the category name, the median monthly figure, the mean, minimum, and maximum monthly totals, and the complete month count | UC13, UC5 |
+| FR-51c | Each exported one-off purchase record shall carry its date, amount, payee, category, and source account name, and shall be distinguishable from a household spend record | UC13, UC5 |
+| FR-51d | When a household spend export completes, the application shall inform the user of the file path it wrote, on the same terms as FR-31 | UC13, UC5 |
+| FR-52  | In CLI mode, the application shall display the household spend figures, the one-off purchases, and any category reported under FR-49e or FR-50, before the recurring payment review flow (UC3) | UC13, UC3 |
 
 ---
 
@@ -540,7 +630,10 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | NFR-09  | The application shall retain the cache directory and its contents across application restarts | UC7 |
 | NFR-10  | `firefly-python-api` shall be a standalone, pip-installable package shared with `firefly-bank-importer` | — |
 | NFR-11  | The `firefly-python-api` package shall declare no runtime dependencies other than `requests` and `python-dotenv` | — |
-| NFR-12  | The application shall compute every household split figure (FR-38c, FR-38d) in a decimal representation that avoids binary floating-point accumulation error, and shall round only at output **[SCOPE TBD: see Open Items #10]** | UC11 |
+| NFR-12  | *Reserved. Not used, retained to keep the ID sequence stable — formerly the household split decimal-precision requirement, moved out with UC11 per Open Item #10 (2026-08-02)* | — |
+| NFR-13  | When income detection is enabled, the deposit fetch shall reuse the cache layer (UC7) on the same terms as the withdrawal fetch, under its own cache key and the `CACHE_TTL_TRANSACTIONS` TTL | UC12, UC7 |
+| NFR-14  | Income detection shall not increase the analysis time of a run with no income account configured | UC12 |
+| NFR-15  | Household spend measurement shall issue no request to Firefly III, and shall not increase the analysis time of a run with no household spend category configured | UC13 |
 
 ---
 
@@ -572,13 +665,15 @@ Binding negative requirements defining the boundary of version 1.0. These are in
 | SE-01 | The application shall not create categories or budgets in Firefly III |
 | SE-02 | The application shall not create a bill for an entry whose confidence score is below the configured confidence threshold, unless the user explicitly approves the entry |
 | SE-03 | The application shall not delete or update existing bills in Firefly III |
-| SE-04 | The application shall not read, infer, or store income data from Firefly III; household member incomes are configuration values supplied by the user |
-| SE-05 | The application shall not create the transfers computed in UC11, and shall not create recurring transactions in Firefly III |
-| SE-06 | The application shall not recommend a household split principle; it reports the configured principle or both, and the choice remains the user's |
+| SE-04 | The application shall not create a bill, or any other entity in Firefly III, from a deposit transaction; deposits are read for income detection (UC12) only |
+| SE-05 | The application shall not classify what a deposit represents beyond recurrence: it does not distinguish salary from a refund, a reimbursement, or a gift. Recurrence on a declared income account is the whole of the criterion (FR-41c), which is why an ambiguous account is reported rather than resolved (FR-42c) |
+| SE-06 | The application shall not report gross income, tax, or deductions. Only the net amount that reached the account is observable in a Firefly III deposit |
+| SE-07 | The application shall not compute, recommend, or report any split of costs between people; that is `firefly-household-splitter`'s concern, and the reason UC11 was retired |
+| SE-08 | The application shall not infer which categories represent household spending, and shall not propose additions to `HOUSEHOLD_SPEND_CATEGORIES`. The list is the user's declaration. A figure derived from it moves money between people, so the boundary of what counts must be set deliberately, not guessed |
+| SE-09 | The application shall not split a single transaction between household and personal spending. A purchase that is partly shared is either admitted whole or excluded whole; representing a partial share is Firefly III's own split-transaction feature, applied by the user before the analysis |
+| SE-10 | The application shall not write, suggest, or modify a tag in Firefly III. The override tags are read; applying them is the user's act, performed in Firefly III |
 
 Note on SE-02: version 0.1.0 equated "irregular pattern" with "confidence below threshold". These are distinct concepts (frequency is interval-based per FR-03; confidence is score-based per FR-27). SE-02 is expressed in terms of confidence, which matches the approval logic in UC3.
-
-Note on SE-04 and SE-05: UC11 reports what each member should transfer; performing that transfer, and modelling it as a Firefly III recurring transaction, remains the user's own action. An internal transfer between two of the user's own asset accounts is not a bill and is outside the purpose stated at the top of this document.
 
 Note on SE-03 and FR-05c: the outcome "exists with different parameters" surfaces amount and frequency drift to the user but does not update the existing bill; updating remains excluded per SE-03.
 
@@ -595,10 +690,11 @@ firefly_bills_analyzer/
 ├── category_filter.py   # UC6: filter and weight by category
 ├── account_filter.py    # UC9: filter transactions by source account
 ├── payee_filter.py      # UC10: filter transactions by payee (destination account)
+├── income.py            # UC12: detect income sources in deposits, resolve observed net income
+├── household_spend.py   # UC13: aggregate non-recurring household spending per account and category
 ├── bills_creator.py     # UC4: create bills via Firefly III API
 ├── cache.py             # UC7: read/write/invalidate JSON cache files
 ├── exporter.py          # UC5: CSV/JSON export
-├── household.py         # UC11: household contribution split report (no Firefly III I/O)
 ├── config.py            # Reads .env and environment variables
 ├── templates/
 │   └── index.html       # Single-page web UI
@@ -608,6 +704,7 @@ firefly_bills_analyzer/
 │   ├── categories.json
 │   ├── bills.json
 │   ├── transactions.json
+│   ├── deposits.json
 │   ├── payees.json
 │   └── accounts.json
 ├── .env.example         # Configuration template without sensitive values
@@ -683,13 +780,16 @@ The application supports two run modes:
 | `UNCATEGORIZED_CONFIDENCE_PENALTY` | Confidence penalty for neutral uncategorized patterns (FR-27)                       | `0.10`          |
 | `INCLUDE_ACCOUNTS`                 | Comma-separated source-account include list, matched against `source_name` (FR-35a) | *(empty = all)* |
 | `EXCLUDE_ACCOUNTS`                 | Comma-separated source-account exclude list, matched against `source_name` (FR-35b) | *(empty)*       |
+| `HOUSEHOLD_SPEND_CATEGORIES`       | Comma-separated categories whose spending benefits the household (FR-47a)           | *(empty = off)* |
+| `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD`| Amount above which a purchase is reported separately instead of averaged (FR-47b)   | `2000`          |
+| `HOUSEHOLD_SPEND_MIN_MONTHS`       | Complete months required before a median is reported (FR-47c)                        | `3`             |
+| `HOUSEHOLD_SPEND_INCLUDE_TAG`      | Tag admitting a transaction as household spend despite its category (FR-48d)        | *(empty)*       |
+| `HOUSEHOLD_SPEND_EXCLUDE_TAG`      | Tag removing a transaction from household spend, overrides everything (FR-48e)      | *(empty)*       |
+| `INCOME_ACCOUNTS`                  | Comma-separated asset accounts to look for incoming salary on (FR-39a)              | *(empty = off)* |
+| `INCOME_MIN_OCCURRENCES`           | Minimum occurrences for an income candidate to qualify (FR-39b)                      | `3`             |
+| `INCOME_VARIANCE_TOLERANCE`        | Deviation from observed net income counted as an outlier, as a fraction (FR-39c)    | `0.10`          |
 | `INCLUDE_PAYEES`                   | Comma-separated payee include list, matched against `destination_name` (FR-36a)     | *(empty = all)* |
 | `EXCLUDE_PAYEES`                   | Comma-separated payee exclude list, matched against `destination_name` (FR-36b)     | *(empty)*       |
-| `HOUSEHOLD_MEMBERS`                | Pipe-separated household member names (FR-38a)                                      | *(empty = off)* |
-| `HOUSEHOLD_INCOMES`                | Pipe-separated `name:amount` monthly income pairs (FR-38a)                          | *(empty)*       |
-| `HOUSEHOLD_MEMBER_ACCOUNTS`        | Pipe-separated `name:acct,acct` source-account lists per member (FR-38a)            | *(empty)*       |
-| `HOUSEHOLD_SHARED_ACCOUNTS`        | Comma-separated source-account names funded by member transfers (FR-38a)            | *(empty)*       |
-| `HOUSEHOLD_SPLIT_METHOD`           | `equal-remainder`, `proportional`, or `both` (FR-38c, FR-38d)                        | `both`          |
 | `WEB_PORT`                         | Port the web server listens on                                                      | `5000`          |
 | `WEB_HOST`                         | IP address the web server binds to                                                  | `127.0.0.1`     |
 | `CACHE_DIR`                        | Directory for cache files                                                           | `./cache`       |
@@ -709,11 +809,117 @@ Decisions required from the requirement owner before this specification is basel
 | --- | ---- | --------------------- |
 | 5 | Web framework selection: Flask or FastAPI — **deferred**: no task through TASK-009 touches `app.py` or a web framework, so this costs nothing to postpone. Open question behind it: is a web UI needed at all, given `--dry-run` + `EXPORT_FORMAT=csv` already covers category filtering (`.env`), cache clearing (`--clear-cache`), and reviewing suggestions in a spreadsheet? The concrete gap if the web UI is dropped is FR-17b's inline edit + an import-edited-CSV-back-into-the-app path, which is unspecified today. Revisit after the CLI (through TASK-009) has been used in practice | NFR-02 |
 | 8 | **Further resolved (2026-07-11):** TASK-007 (cache layer) is un-deferred for its CLI-relevant scope. New motivation, independent of the web UI: fetching real transaction history from a remote Firefly III instance is slow enough (dozens of paginated requests) that re-fetching on every local development/test run against real data is a real cost; caching transactions and bills to disk removes that cost for repeated `--dry-run` runs during development. FR-21 (transactions + bills subsets), FR-22 (their two TTLs), FR-23, FR-25, and NFR-09 are therefore active requirements for the terminal-only MVP, implemented by TASK-007. FR-21's remaining two data sets (categories, payees) remain deferred — they are only consumed via the `/api/categories` web endpoint, which does not exist without a web UI. FR-24a/FR-24b (the web UI's "Clear cache" button) and NFR-06 (no external CDN) remain deferred for the same reason, contingent on Open Item #5 | FR-21, FR-22, FR-23, FR-24a, FR-24b, FR-25, NFR-06, NFR-09 |
-| 10 | Scope: does UC11 (household contribution split) belong in this repository at all? The stated purpose of the application is identifying recurring payments and creating bills for cash flow planning. UC11 consumes the same pattern set but answers a different question — how the members of a household divide a shared cost base — and it introduces the application's first configuration input that has no counterpart in Firefly III (member incomes). Three options: (a) accept UC11 here, since the pattern set with monthly equivalents is the expensive part and already exists; (b) keep FR-37 here and move UC11 to a separate consumer of this application's CSV/JSON export (FR-08), which requires no new configuration surface here at all; (c) drop UC11. FR-37 is useful under all three options and is not blocked by this item | FR-38a, FR-38b, FR-38c, FR-38d, FR-38e, FR-38f, NFR-12 |
+| 10 | **Resolved (2026-08-02), option (b):** UC11 (household contribution split) does not belong in this repository. `exporter.py` already emits every `RecurringPattern` field — including `source_account_name` and `monthly_equivalent` (FR-37) — as CSV/JSON via FR-08 without a filtered field list, so a separate consumer of that export has everything UC11's bucketing and split arithmetic need, with no new configuration surface in this application. UC11, FR-38a–FR-38f, NFR-12, the "Household member"/"Shared account" definitions, SE-04–SE-06, the `HOUSEHOLD_*` configuration parameters, and `household.py` have been removed from this specification accordingly. FR-37 is retained, since it is useful independently of UC11's location. TASK-020 is closed as moved, not implemented, here | (resolved) |
 
 ---
 
 ## Changelog
+
+### 0.2.26 (2026-08-02)
+
+- Added UC13 and FR-47a through FR-52: measuring the household spending that
+  recurrence detection structurally cannot see. Motivation, from owner review:
+  where one member buys the groceries, the children's clothes, and the
+  household supplies from their own account, that is a real shared cost with no
+  recurrence interval. Bought eight times a month, its median interval is a few
+  days, so FR-03 classifies it `irregular`, FR-37 gives it no monthly
+  equivalent, and every downstream total drops it. The member carrying it is
+  then treated as having paid nothing, and asked to transfer accordingly. The
+  error is not small and it is not symmetric.
+- The measurement is deliberately not recurrence-based. FR-49a sums per source
+  account, category, and calendar month, and FR-49c reports the median of those
+  monthly totals. A median rather than a mean, for the same reason FR-43 takes
+  the latest income rather than the average: one heavy month should not raise a
+  standing monthly transfer.
+- FR-48b is the requirement most likely to be got wrong in implementation. A
+  subscription that happens to sit in a household category is already counted
+  as a pattern; counting it again here would inflate one member's contribution
+  by exactly the amount of a bill they are already credited for.
+- FR-48c reports purchases above a threshold separately instead of averaging
+  them in. A sofa is a settlement between household members, not a monthly
+  cost, and smearing it across the window would distort the transfer for as
+  long as the window is deep.
+- FR-49b drops the partial months at each end of the window. Both are truncated
+  by construction, since the window starts and ends mid-month, and including
+  them would drag the median down.
+- Qualification is by category with tag-level exceptions (FR-48d, FR-48e). The
+  category list carries the rule and the tags carry the exceptions, so a
+  personal purchase inside a household category, and a household purchase
+  inside a personal one, can each be corrected on the individual transaction
+  without distorting the category structure. The exclude tag beats everything,
+  which is the safe precedence: the tag that removes money from someone's
+  claimed contribution should never be overridden by an inference. FR-48f
+  reports how many transactions each tag moved, so the extent of manual
+  correction stays visible.
+- FR-48g keeps the feature usable with no tags configured at all, and SE-10
+  states that the application only ever reads tags.
+- SE-08 and SE-09 bound the feature: the application does not infer which
+  categories are household spending, and does not split a single transaction
+  between shared and personal. Both are the user's declaration, because both
+  move money.
+- Added NFR-15: household spend measurement issues no request to Firefly III at
+  all, since UC1's withdrawals already carry category, source account, and now
+  tags. Added the "Household spend category", "Household spend", "Household
+  spend tag", "One-off purchase", and "Complete month" definitions, the five
+  `HOUSEHOLD_SPEND_*` parameters, and `household_spend.py`.
+- Depends on `firefly-python-api`'s REQ-012 (`tags` on `TransactionRead`),
+  written up there as TASK-017 and not yet implemented. The category-only path
+  (FR-48g) has no such dependency.
+
+### 0.2.25 (2026-08-02)
+
+- Added UC12 and FR-39a through FR-46: deriving a household member's observed
+  net income from deposit transactions on a declared income account, instead of
+  having the figure typed into configuration by hand. Motivation: a declared
+  income is wrong silently. It is not adjusted when pay changes, and nothing in
+  the system notices. The deposit that lands on the salary account each month is
+  the net figure a cost split actually needs, and it is already in Firefly III.
+- Scope note. This does not reopen Open Item #10. UC11's arithmetic (who
+  transfers what to the shared account) stays out of this repository, and SE-07
+  now says so as a binding exclusion. What UC12 adds is a *measurement* of an
+  input to that arithmetic, produced by exactly the recurrence machinery this
+  application already exists to run. The consumer is the same export-file
+  reader, one file richer.
+- FR-43 fixes the figure to the most recent occurrence rather than the mean over
+  the window. A mean is the obvious choice and the wrong one here: the split is
+  forward-looking, so a raise in March would stay invisible for as long as the
+  lookback window is deep. The mean is still reported, as one of FR-44's
+  variance figures, where it informs rather than misleads.
+- FR-42c makes an ambiguous income account an error rather than a sum. Two
+  qualifying monthly payers on one account is a situation only the user can
+  interpret, and combining them would emit a number that looks authoritative
+  and is not.
+- FR-40d and SE-04 keep the two transaction directions apart: deposits never
+  reach payee grouping, the filters, or bill creation. Nothing about this
+  feature should be able to create a bill.
+- SE-05 and SE-06 bound what the feature claims. Recurrence on a declared
+  account is the entire criterion; the application does not know a salary from a
+  recurring refund, and it cannot see gross pay, tax, or deductions at all.
+- Added NFR-13 (deposits use the existing cache layer under their own key) and
+  NFR-14 (a run without income accounts configured pays nothing for the
+  feature). Added the "Income account", "Income candidate", "Income source",
+  "Observed net income", and "Income variance" definitions,
+  `INCOME_ACCOUNTS`/`INCOME_MIN_OCCURRENCES`/`INCOME_VARIANCE_TOLERANCE`, and
+  `income.py` to the project structure.
+- Marked FR-38 reserved, mirroring NFR-12, and retained UC11 as an explicitly
+  retired number so existing references keep one meaning.
+- Depends on `firefly-python-api`'s REQ-011 (`get_deposit_transactions()`),
+  which does not exist yet; that repository's TASK-016 covers it.
+
+### 0.2.24 (2026-08-02)
+
+- Resolved Open Item #10 as option (b): UC11 (household contribution split)
+  does not belong in this application. `exporter.py`'s CSV/JSON export (FR-08)
+  already serializes every `RecurringPattern` field — `source_account_name`
+  and `monthly_equivalent` (FR-37) among them — without a filtered field list,
+  so a separate consumer of that export has everything UC11's bucketing and
+  split arithmetic need, with no new configuration surface required here.
+  Removed UC11, FR-38a through FR-38f, NFR-12 (reserved to keep the ID
+  sequence stable), the "Household member" and "Shared account" definitions,
+  SE-04 through SE-06, the five `HOUSEHOLD_*` configuration parameters, and
+  `household.py` from the project structure. FR-37 is retained, since it is
+  useful independently of where UC11 ends up. TASK-020 is closed as moved,
+  not implemented, in this repository
 
 ### 0.2.23 (2026-08-02)
 
@@ -1142,6 +1348,6 @@ Initial version.
 
 - Firefly III v6+ with REST API enabled
 - Personal Access Token with read and write access
-- `firefly-python-api` (shared internal package) — authenticated HTTP session and URL/token configuration
+- `firefly-python-api` (shared internal package) — authenticated HTTP session and URL/token configuration. UC12 additionally requires that package's REQ-011 (`get_deposit_transactions()`), tracked there as TASK-016, and UC13's tag overrides require its REQ-012 (`tags` on `TransactionRead`), tracked there as TASK-017 and not yet implemented
 - Flask or FastAPI (web server)
 </content>
