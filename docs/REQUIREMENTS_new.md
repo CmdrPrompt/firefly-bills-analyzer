@@ -1,7 +1,7 @@
 # Requirements Specification: Firefly III Bills Analyzer
 
-**Version:** 0.2.21
-**Date:** 2026-07-20
+**Version:** 0.2.23
+**Date:** 2026-08-02
 **Status:** Draft, pending owner confirmation of items marked TBD (see Open Items)
 
 ## Purpose
@@ -25,9 +25,13 @@ Terms used with a specific meaning in this specification. All requirements use t
 | Billing event | Within an amount cluster, one or more transactions that share the exact same date, collapsed per FR-33a into a single unit whose amount is their sum. Occurrence counts, interval calculation, and amount statistics (UC2) operate on billing events, not raw transaction rows. Budget-wise, several same-day transactions for the same recurring charge (e.g. one household member's invoice and another's, billed together) represent one combined outflow, not two independent cycle points |
 | Frequency | The classification of a recurring payment pattern by median interval: monthly, quarterly, half-yearly, yearly, or irregular (FR-03) |
 | Confidence score | The value in [0.0, 1.0] computed per FR-27 |
-| Neutral (uncategorized behavior) | Uncategorized transactions are always included in the analysis (never filtered out, regardless of `INCLUDE_CATEGORIES`/`EXCLUDE_CATEGORIES`), receive no `CATEGORY_CONFIDENCE_BOOST`, and have `UNCATEGORIZED_CONFIDENCE_PENALTY` subtracted from their pattern's confidence score per FR-27 |
+| Neutral (uncategorized behavior) | Uncategorized transactions are always included in the analysis (never filtered out, regardless of `INCLUDE_CATEGORIES`/`EXCLUDE_CATEGORIES`) and receive no `CATEGORY_CONFIDENCE_BOOST`. `UNCATEGORIZED_CONFIDENCE_PENALTY` is subtracted from a pattern's confidence score per FR-27 only when that pattern is uncategorized (see "Uncategorized pattern"), not merely when FR-13b resolves no category name for it |
 | Common error | An error in the enumerated list: unreachable Firefly III instance, invalid or expired API token, invalid or missing required configuration value, insufficient API token permissions, Firefly III API error response (4xx/5xx other than 401, 403, and the name-uniqueness rejection handled per FR-05d), cache directory not writable. Example messages for each are given in Error Messages |
+| Uncategorized pattern | An amount cluster in which no transaction carries a category name. A cluster whose transactions are all categorized, but across categories none of which reaches `CATEGORY_MAJORITY_THRESHOLD`, is categorized-without-a-resolved-name: FR-13b gives it no category name for bill-naming purposes, but it is not an uncategorized pattern and is not penalized under FR-27 |
 | Duplicate bill | An existing bill in Firefly III whose name equals the candidate bill name, compared case-sensitively after trimming leading and trailing whitespace. Amount and frequency are not part of the duplicate criterion |
+| Monthly equivalent | The amount a recurring payment pattern costs per calendar month on average, derived from its mean amount and its frequency bucket (FR-03) via the fixed divisors monthly = 1, quarterly = 3, half-yearly = 6, yearly = 12. Undefined for the `irregular` bucket, where no divisor applies |
+| Household member | A named person in the household, defined by a monthly income figure and a set of source account names through which that person pays recurring costs directly. Members are declared in configuration; the application never derives them from Firefly III data |
+| Shared account | A source account, declared in configuration, from which the household's jointly funded recurring costs are paid, and which the members fund by transfer. Its recurring costs are attributed to the household as a whole rather than to any single member |
 
 ---
 
@@ -36,7 +40,7 @@ Terms used with a specific meaning in this specification. All requirements use t
 | Actor       | Description                                                                 |
 | ----------- | --------------------------------------------------------------------------- |
 | User        | Interacts via web browser or runs the application manually or on a schedule |
-| Web server  | Flask/FastAPI app that exposes the UI and orchestrates UC1–UC7, UC9, UC10   |
+| Web server  | Flask/FastAPI app that exposes the UI and orchestrates UC1–UC7, UC9–UC11  |
 | Firefly III | Source system for transactions and target system for bills                  |
 
 ---
@@ -76,11 +80,15 @@ The use cases are informative. They describe intended flows and provide context 
    corroborated same-date co-occurrence, not on amount variance alone:
 
    a. Transactions sharing the same `source_name` value form one subgroup; transactions
-      with no `source_name` form their own subgroup. Distinct financial roles — e.g. a
-      fixed transfer from a household account into a dedicated spending account, versus
-      the spending itself — are typically withdrawn through different source accounts, so
-      partitioning here first keeps such transfers from being amount-clustered together
-      with the spending they fund
+      with no `source_name` form their own subgroup. The same payee is frequently paid
+      from more than one account for structurally different reasons — e.g. a household's
+      regular grocery spending paid from a dedicated food account, alongside occasional
+      top-up purchases for the same merchant paid from a personal account when that
+      account runs short — and those withdrawals have unrelated amount and interval
+      profiles. Partitioning here first keeps them from being amount-clustered together.
+      Note that a Firefly III transfer between two of the user's own asset accounts is
+      never among them: only withdrawals are fetched (UC1, FR-01), so a transfer cannot
+      reach this step at all
    b. Within each source-account subgroup, transactions are grouped by date. A date on
       which two or more transactions have *differing* amounts is a co-occurrence date
    c. The amounts observed at co-occurrence dates are clustered using a tolerance-based
@@ -158,7 +166,14 @@ The use cases are informative. They describe intended flows and provide context 
    disambiguated by appending its representative (mean) amount, so that distinct clusters
    never collide under FR-05a's name-only duplicate check (FR-32c)
 
-9. Results are returned to the caller (web server or terminal) with the confidence score per entry
+9. A monthly equivalent is derived for the pattern (FR-37) by dividing its mean amount by the
+   fixed divisor belonging to its frequency bucket from step 6 — monthly = 1, quarterly = 3,
+   half-yearly = 6, yearly = 12 — so that patterns billed at different cadences can be summed
+   against each other. The divisor comes from the frequency bucket rather than from the observed
+   median interval, so that the figure agrees with the `repeat_freq` of the bill FR-06 would
+   actually create. An `irregular` pattern has no divisor and therefore no monthly equivalent
+
+10. Results are returned to the caller (web server or terminal) with the confidence score per entry
 
 **Alternative flow:**
 
@@ -167,8 +182,8 @@ The use cases are informative. They describe intended flows and provide context 
   common case): behavior is unchanged from the pre-FR-32/FR-32d grouping
 - A payee's transactions span more than one source account but no subgroup's co-occurrence
   is corroborated: each source-account subgroup is analyzed as its own single-cluster
-  pattern (e.g. a fixed transfer into a spending account, and the spending account's
-  purchases, become two separate patterns)
+  pattern (e.g. the same grocery merchant paid from a dedicated food account and from a
+  personal account becomes two separate patterns)
 - No two transactions in a cluster share the exact same date: behavior is unchanged from the
   pre-FR-33 per-transaction calculation (every transaction is its own billing event)
 - A subgroup's split is corroborated, and it also contains two or more solo transactions
@@ -178,6 +193,9 @@ The use cases are informative. They describe intended flows and provide context 
   the nearest-mean cluster (FR-32e) — e.g. an annual garden-waste charge and a quarterly
   water charge billed through the same merchant and source account, where only the water
   charge co-occurs on the same date as a third, quarterly garbage-collection charge
+- A pattern classified `irregular` (step 6): no monthly equivalent is derived (step 9), matching
+  the existing bill-creation behavior of skipping irregular patterns for want of a valid
+  `repeat_freq` mapping (FR-05/UC4)
 
 ---
 
@@ -395,6 +413,42 @@ to a real Firefly III instance with transaction history
 
 ---
 
+### UC11: Report household contribution split
+
+**Actor:** Application / User
+**Precondition:** Recurring payment patterns identified (UC2)
+**Primary flow (terminal / .env):**
+
+1. The user declares the household members, their monthly incomes, and each member's own
+   source accounts in configuration, together with the shared account(s) the members fund
+   by transfer
+2. The user runs the application with `--household-report`
+3. The application computes each pattern's monthly equivalent (FR-37) and groups the
+   patterns by resolved source account (FR-30a) into one bucket per member and one shared
+   bucket
+4. The application reports, per member, the monthly amount that member must transfer to the
+   shared account so that the household's chosen split principle holds
+5. The application reports the result for both split principles side by side, or for the
+   single configured principle
+
+**Common:**
+
+- The report is read-only. It never creates, modifies, or deletes anything in Firefly III,
+  independently of whether dry-run mode is active (FR-38f)
+- Incomes come from configuration, not from Firefly III: the application fetches withdrawal
+  transactions only (UC1), so it has no income data of its own
+- Patterns whose source account matches neither a member account nor a shared account, and
+  patterns whose frequency is `irregular` and which therefore have no monthly equivalent
+  (see Definitions), are excluded from the split arithmetic and reported separately, so that
+  an incomplete configuration is visible rather than silently absorbed into the result
+- The two split principles answer different fairness questions and neither is the default
+  correct one: equal-remainder equalizes what each member has left after all recurring
+  costs, and therefore has the higher earner contribute a larger amount but a smaller share
+  of income; proportional equalizes the share of income each member contributes, and
+  therefore leaves the members with different remainders
+
+---
+
 ## Functional Requirements
 
 Requirements follow EARS-style patterns with the system (or subsystem) as active subject. Decomposed requirements retain the original ID with an a/b suffix. Trace column references the use case each requirement is derived from.
@@ -420,7 +474,8 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-11b | When a category exclude list is configured, the application shall exclude transactions whose category matches the exclude list from the analysis | UC6 |
 | FR-12  | When a transaction's category appears in the include list, the application shall increase that transaction's confidence score by the configured category confidence boost (`CATEGORY_CONFIDENCE_BOOST`) | UC6 |
 | FR-13a | The web UI shall display the category name in the table view | UC6 |
-| FR-13b | When a single category accounts for at least `CATEGORY_MAJORITY_THRESHOLD` of a payee's transactions, the application shall include that category name in the bill name; otherwise no category name is included. The share is computed over all of the payee's transactions, with uncategorized transactions counted as their own (non-matching) bucket | UC6 |
+| FR-13b | When a single category accounts for at least `CATEGORY_MAJORITY_THRESHOLD` of an amount cluster's transactions (FR-32a, FR-32d), the application shall include that category name in the bill name; otherwise no category name is included. The share is computed over the transactions of that amount cluster, not over all of the payee's transactions, so that a payee bundling several distinct recurring charges resolves a category name per charge rather than one name for all of them; uncategorized transactions are counted as their own (non-matching) bucket. When two or more categories are tied for most frequent within a cluster, the application shall include no category name, regardless of `CATEGORY_MAJORITY_THRESHOLD` | UC6 |
+| FR-13c | When an amount cluster's transactions are all categorized but no single category reaches `CATEGORY_MAJORITY_THRESHOLD`, the application shall include no category name in the bill name (FR-13b) and shall not apply `UNCATEGORIZED_CONFIDENCE_PENALTY` to that cluster's pattern, because the cluster is not an uncategorized pattern (see Definitions) | UC6, UC2 |
 | FR-14  | The application shall process uncategorized transactions according to the configured behavior (`UNCATEGORIZED_BEHAVIOR`): under `include` and `neutral` the transaction is kept in the analysis unconditionally; under `exclude` the transaction is filtered out. Under `neutral` (see Definitions), the confidence score of the transaction's pattern is additionally reduced per FR-27 | UC6 |
 | FR-15  | The application shall expose a web UI via a built-in HTTP server | UC3 |
 | FR-16  | When the web UI page is loaded, the web UI shall fetch the existing categories from the Firefly III API and display them as multiselect lists | UC6 |
@@ -437,18 +492,19 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-25  | When the application is started in CLI mode with the `--clear-cache` flag, the application shall delete all cache files during startup, if a cache layer is implemented; otherwise the flag shall be a no-op that prints an informational "caching not implemented" message | UC7 |
 | FR-26a | The `firefly-python-api` package shall read `FIREFLY_URL` and `FIREFLY_TOKEN` from environment variables or from a `.env` file; environment variables shall take precedence, per the same rule as FR-10 | — |
 | FR-26b | The `firefly-python-api` package shall expose a `FireflyClient` class that provides a configured `requests.Session` | — |
-| FR-27  | When the application classifies recurring payment patterns, the application shall compute the confidence score as 0.4 × occurrence score + 0.4 × regularity score + 0.2 × amount score + category boost − uncategorized penalty, and shall clamp the result to the range [0.0, 1.0], where uncategorized penalty equals `UNCATEGORIZED_CONFIDENCE_PENALTY` when the pattern's category is absent and `UNCATEGORIZED_BEHAVIOR` is `neutral`, else 0 | UC2 |
+| FR-27  | When the application classifies recurring payment patterns, the application shall compute the confidence score as 0.4 × occurrence score + 0.4 × regularity score + 0.2 × amount score + category boost − uncategorized penalty, and shall clamp the result to the range [0.0, 1.0], where uncategorized penalty equals `UNCATEGORIZED_CONFIDENCE_PENALTY` when the pattern is an uncategorized pattern (see Definitions — no transaction in its amount cluster carries a category name) and `UNCATEGORIZED_BEHAVIOR` is `neutral`, else 0. A pattern whose transactions are categorized but for which FR-13b resolves no category name is not penalized (FR-13c) | UC2 |
 | FR-28  | Upon developer request, a dedicated opt-in script shall fetch the user's real withdrawal transactions from the configured Firefly III instance, run `identify_recurring()` against them, and report the real transaction count and elapsed time, without creating, modifying, or deleting any data in Firefly III | UC8 |
 | FR-29  | The CLI `--help` output shall document the environment variables a user commonly needs to set per run mode, alongside the flags, so that configuration is discoverable without reading `.env.example`: `FIREFLY_URL` and `FIREFLY_TOKEN` (required), `DRY_RUN` (alternative to `--dry-run`), `EXPORT_FORMAT` (`csv`/`json`/`none`), `HIGH_CONFIDENCE_THRESHOLD` (auto-approve/review cutoff), `INCLUDE_CATEGORIES`/`EXCLUDE_CATEGORIES`, `UNCATEGORIZED_BEHAVIOR`, `INCLUDE_ACCOUNTS`/`EXCLUDE_ACCOUNTS`, and `INCLUDE_PAYEES`/`EXCLUDE_PAYEES` | UC3, UC5, UC6, UC9, UC10 |
-| FR-30a | When the application identifies a recurring pattern (UC2), the application shall resolve a source account name for the pattern as the `source_name` value that occurs most frequently among the pattern's transactions, and shall additionally record whether more than one distinct `source_name` value occurs across the pattern's transactions | UC2 |
+| FR-30a | When the application identifies a recurring pattern (UC2), the application shall resolve a source account name for the pattern as the single distinct `source_name` value shared by the pattern's transactions, or no source account name when that value is absent. Since FR-32d partitions every payee group by `source_name` before clustering, each pattern's transactions share exactly one `source_name` value, or none; the resolution is therefore total and has no tie case | UC2 |
 | FR-30b | The CLI review output (UC3) shall display, for each suggestion, the resolved source account name (FR-30a); when more than one distinct source account occurs in the pattern, the output shall display a "varies" indicator instead of a single account name | UC3 |
 | FR-30c | The web UI table view (FR-17a) shall include a column showing the resolved source account name (FR-30a), or a "varies" indicator when more than one distinct source account occurs in the pattern | UC3 |
 | FR-30d | The CSV and JSON export (FR-08) shall include the resolved source account name and the varies indicator (FR-30a) as fields of each exported pattern | UC5 |
+| FR-30e | When the application resolves a source account name (FR-30a), the application shall record whether more than one distinct `source_name` value occurs across the pattern's transactions. Under FR-32d this condition cannot arise, so the recorded value is an invariant check: when it is true, FR-32d's partitioning has been violated, and the "varies" indicator required by FR-30b and FR-30d marks the affected pattern as anomalous rather than describing a normal outcome | UC2 |
 | FR-31  | When an export (FR-08) completes, the application shall inform the user of the file path it wrote: in CLI mode via a printed message, and in the web UI (when implemented) via an on-page notification or download link | UC5 |
 | FR-32a | Before computing occurrences, interval, and confidence (UC2 steps 3–6), the application shall split each payee/source-account subgroup (FR-32d) into amount clusters based on corroborated same-date co-occurrence: (a) group the subgroup's transactions by date and identify co-occurrence dates — dates with two or more transactions of differing amounts; (b) cluster the amounts observed at co-occurrence dates via a tolerance-based gap split (sort ascending, start a new candidate cluster whenever the gap to the previous amount exceeds `AMOUNT_CLUSTER_TOLERANCE` times the smaller of the two), and for each co-occurrence date record its signature — the set of candidate clusters its amounts fall into; (c) the split is corroborated only if some signature spanning two or more candidate clusters is shared by two or more distinct co-occurrence dates; if the subgroup has no co-occurrence date at all, or no signature is corroborated, the whole subgroup remains a single amount cluster regardless of amount variance across dates; (d) otherwise, assign every transaction in the subgroup — including those not on a co-occurrence date — to whichever candidate cluster's mean amount is numerically closest to its own amount. Each resulting cluster is processed as an independent recurring payment pattern candidate | UC2 |
 | FR-32b | The application shall read the amount-cluster split tolerance from configuration (`AMOUNT_CLUSTER_TOLERANCE`, default `0.15`) | UC2 |
 | FR-32c | When a payee produces more than one amount cluster (FR-32a) that each independently qualify as a recurring payment pattern, the application shall disambiguate the bill name of each resulting pattern by appending its representative (mean) amount to the name produced by FR-13b, so that FR-05a's name-only duplicate check does not conflate distinct clusters | UC2, UC4 |
-| FR-32d | Before amount clustering (FR-32a), the application shall partition each payee group formed in UC2 step 1 by source account: transactions sharing the same `source_name` value form one subgroup, and transactions with no `source_name` form their own subgroup. FR-32a is then applied independently within each subgroup, so that transactions withdrawn through different accounts (e.g. a fixed transfer funding a spending account, versus that spending account's own purchases) are never amount-clustered together | UC2 |
+| FR-32d | Before amount clustering (FR-32a), the application shall partition each payee group formed in UC2 step 1 by source account: transactions sharing the same `source_name` value form one subgroup, and transactions with no `source_name` form their own subgroup. FR-32a is then applied independently within each subgroup, so that transactions withdrawn through different accounts (e.g. the same merchant paid from a dedicated spending account and from a personal account) are never amount-clustered together. Only withdrawals reach this step (FR-01, UC1), so a Firefly III transfer between two of the user's own asset accounts is never one of the transactions being partitioned | UC2 |
 | FR-32e | When FR-32a's split is corroborated (step c) for a subgroup, and the subgroup contains two or more transactions that occur on no co-occurrence date ("solo transactions"), the application shall assign the solo transactions to a candidate cluster by nearest-mean (FR-32a step d) only when doing so does not conflict with a materially different recurrence interval, determined as follows: (a) compute the median interval between the solo transactions, ordered by date, and classify it into a frequency bucket per FR-03's thresholds; (b) compute the median interval between the co-occurrence-date occurrences of the candidate cluster whose mean amount is numerically closest to the solo transactions' mean amount (the cluster FR-32a step (d) would otherwise assign them to), and classify it into a frequency bucket per the same thresholds; (c) if the candidate cluster has fewer than two of its own co-occurrence-date occurrences, its frequency bucket cannot be determined and the solo transactions are assigned per FR-32a step (d) unchanged; (d) if both frequency buckets are determined and differ, the solo transactions form a new amount cluster of their own instead of being assigned to the nearest-mean candidate cluster; (e) if both frequency buckets are determined and agree, the solo transactions are assigned to the nearest-mean candidate cluster per FR-32a step (d) unchanged. A subgroup with fewer than two solo transactions is unaffected and continues to follow FR-32a step (d); a subgroup whose split is not corroborated is unaffected and continues to follow FR-32a step (d)'s single-cluster fallback | UC2 |
 | FR-33a | Within each payee/source-account/amount-cluster group (FR-32a, FR-32d), when two or more transactions share the exact same date, the application shall collapse them into a single billing event (see Definitions) whose amount is the sum of the collapsed transactions' amounts; occurrence count, median interval, and amount min/max/mean (UC2 steps 4–7) shall be computed over the resulting billing events rather than the pre-collapse transaction rows. Source account resolution (FR-30a) is unaffected and continues to be computed over the group's underlying transactions | UC2 |
 | FR-34  | In CLI mode, while `fetcher.fetch_transactions()` is fetching transaction pages from Firefly III, the application shall display a progress bar showing pages fetched out of the total page count, driven by the `on_page` callback exposed by `firefly-python-api`'s `get_withdrawal_transactions()` (that package's REQ-008); when no callback support is available (e.g. an older `firefly-python-api` version), the application shall fall back to fetching without a progress bar rather than failing | UC1 |
@@ -458,6 +514,13 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-36a | When a payee include list is configured (`INCLUDE_PAYEES`), the application shall include only transactions whose destination account name (`destination_name`) matches the include list in the analysis | UC10 |
 | FR-36b | When a payee exclude list is configured (`EXCLUDE_PAYEES`), the application shall exclude transactions whose destination account name (`destination_name`) matches the exclude list from the analysis; exclude is applied after include when both are configured | UC10 |
 | FR-36c | When the web UI page is loaded, the web UI shall fetch the existing payees from the Firefly III API and display them as multiselect lists | UC10 |
+| FR-37  | When the application builds a recurring payment pattern (UC2), the application shall compute a monthly equivalent (see Definitions) as the pattern's mean amount divided by the fixed divisor for its frequency bucket (FR-03) — monthly = 1, quarterly = 3, half-yearly = 6, yearly = 12 — and shall record no monthly equivalent when the pattern's frequency is `irregular` | UC2, UC5 |
+| FR-38a | The application shall read the household split configuration from configuration (`HOUSEHOLD_MEMBERS`, `HOUSEHOLD_INCOMES`, `HOUSEHOLD_MEMBER_ACCOUNTS`, `HOUSEHOLD_SHARED_ACCOUNTS`, `HOUSEHOLD_SPLIT_METHOD`), and shall reject the configuration with a common error (see Definitions) when a member declared in `HOUSEHOLD_MEMBERS` lacks an income or an account list, when a source account name is claimed by more than one member, or when a source account name appears both as a member account and as a shared account **[SCOPE TBD: see Open Items #10]** | UC11 |
+| FR-38b | When the household report runs, the application shall assign each recurring payment pattern to exactly one bucket by its resolved source account name (FR-30a) — the declaring member's bucket, the shared bucket, or the unattributed bucket — and shall sum the monthly equivalents (FR-37) within each bucket, excluding from all buckets any pattern that has no monthly equivalent **[SCOPE TBD: see Open Items #10]** | UC11 |
+| FR-38c | When the household report runs under the `equal-remainder` split method, the application shall compute each member's monthly contribution to the shared account as that member's income, minus that member's own bucket total (FR-38b), minus the equal remainder, where the equal remainder is the sum of all members' incomes minus the household total, divided by the number of members, and where the household total is the sum of every member bucket total and the shared bucket total **[SCOPE TBD: see Open Items #10]** | UC11 |
+| FR-38d | When the household report runs under the `proportional` split method, the application shall compute each member's monthly contribution to the shared account as that member's share of the summed household income, multiplied by the household total (FR-38c), minus that member's own bucket total (FR-38b) **[SCOPE TBD: see Open Items #10]** | UC11 |
+| FR-38e | When the household report is produced, the application shall report per member the income, the own-bucket total, the computed contribution, and the resulting remainder; shall report the shared bucket total and the household total; shall report a negative contribution as a negative value together with an explicit note that the member is owed a transfer rather than clamping it to zero; and shall list every pattern in the unattributed bucket and every pattern excluded for having no monthly equivalent, each with its resolved source account name **[SCOPE TBD: see Open Items #10]** | UC11 |
+| FR-38f | While the household report is being produced, the application shall not create, modify, or delete any data in Firefly III, independently of whether dry-run mode (FR-07a) is active **[SCOPE TBD: see Open Items #10]** | UC11 |
 
 ---
 
@@ -477,6 +540,7 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | NFR-09  | The application shall retain the cache directory and its contents across application restarts | UC7 |
 | NFR-10  | `firefly-python-api` shall be a standalone, pip-installable package shared with `firefly-bank-importer` | — |
 | NFR-11  | The `firefly-python-api` package shall declare no runtime dependencies other than `requests` and `python-dotenv` | — |
+| NFR-12  | The application shall compute every household split figure (FR-38c, FR-38d) in a decimal representation that avoids binary floating-point accumulation error, and shall round only at output **[SCOPE TBD: see Open Items #10]** | UC11 |
 
 ---
 
@@ -508,8 +572,13 @@ Binding negative requirements defining the boundary of version 1.0. These are in
 | SE-01 | The application shall not create categories or budgets in Firefly III |
 | SE-02 | The application shall not create a bill for an entry whose confidence score is below the configured confidence threshold, unless the user explicitly approves the entry |
 | SE-03 | The application shall not delete or update existing bills in Firefly III |
+| SE-04 | The application shall not read, infer, or store income data from Firefly III; household member incomes are configuration values supplied by the user |
+| SE-05 | The application shall not create the transfers computed in UC11, and shall not create recurring transactions in Firefly III |
+| SE-06 | The application shall not recommend a household split principle; it reports the configured principle or both, and the choice remains the user's |
 
 Note on SE-02: version 0.1.0 equated "irregular pattern" with "confidence below threshold". These are distinct concepts (frequency is interval-based per FR-03; confidence is score-based per FR-27). SE-02 is expressed in terms of confidence, which matches the approval logic in UC3.
+
+Note on SE-04 and SE-05: UC11 reports what each member should transfer; performing that transfer, and modelling it as a Firefly III recurring transaction, remains the user's own action. An internal transfer between two of the user's own asset accounts is not a bill and is outside the purpose stated at the top of this document.
 
 Note on SE-03 and FR-05c: the outcome "exists with different parameters" surfaces amount and frequency drift to the user but does not update the existing bill; updating remains excluded per SE-03.
 
@@ -529,6 +598,7 @@ firefly_bills_analyzer/
 ├── bills_creator.py     # UC4: create bills via Firefly III API
 ├── cache.py             # UC7: read/write/invalidate JSON cache files
 ├── exporter.py          # UC5: CSV/JSON export
+├── household.py         # UC11: household contribution split report (no Firefly III I/O)
 ├── config.py            # Reads .env and environment variables
 ├── templates/
 │   └── index.html       # Single-page web UI
@@ -615,6 +685,11 @@ The application supports two run modes:
 | `EXCLUDE_ACCOUNTS`                 | Comma-separated source-account exclude list, matched against `source_name` (FR-35b) | *(empty)*       |
 | `INCLUDE_PAYEES`                   | Comma-separated payee include list, matched against `destination_name` (FR-36a)     | *(empty = all)* |
 | `EXCLUDE_PAYEES`                   | Comma-separated payee exclude list, matched against `destination_name` (FR-36b)     | *(empty)*       |
+| `HOUSEHOLD_MEMBERS`                | Pipe-separated household member names (FR-38a)                                      | *(empty = off)* |
+| `HOUSEHOLD_INCOMES`                | Pipe-separated `name:amount` monthly income pairs (FR-38a)                          | *(empty)*       |
+| `HOUSEHOLD_MEMBER_ACCOUNTS`        | Pipe-separated `name:acct,acct` source-account lists per member (FR-38a)            | *(empty)*       |
+| `HOUSEHOLD_SHARED_ACCOUNTS`        | Comma-separated source-account names funded by member transfers (FR-38a)            | *(empty)*       |
+| `HOUSEHOLD_SPLIT_METHOD`           | `equal-remainder`, `proportional`, or `both` (FR-38c, FR-38d)                        | `both`          |
 | `WEB_PORT`                         | Port the web server listens on                                                      | `5000`          |
 | `WEB_HOST`                         | IP address the web server binds to                                                  | `127.0.0.1`     |
 | `CACHE_DIR`                        | Directory for cache files                                                           | `./cache`       |
@@ -634,10 +709,84 @@ Decisions required from the requirement owner before this specification is basel
 | --- | ---- | --------------------- |
 | 5 | Web framework selection: Flask or FastAPI — **deferred**: no task through TASK-009 touches `app.py` or a web framework, so this costs nothing to postpone. Open question behind it: is a web UI needed at all, given `--dry-run` + `EXPORT_FORMAT=csv` already covers category filtering (`.env`), cache clearing (`--clear-cache`), and reviewing suggestions in a spreadsheet? The concrete gap if the web UI is dropped is FR-17b's inline edit + an import-edited-CSV-back-into-the-app path, which is unspecified today. Revisit after the CLI (through TASK-009) has been used in practice | NFR-02 |
 | 8 | **Further resolved (2026-07-11):** TASK-007 (cache layer) is un-deferred for its CLI-relevant scope. New motivation, independent of the web UI: fetching real transaction history from a remote Firefly III instance is slow enough (dozens of paginated requests) that re-fetching on every local development/test run against real data is a real cost; caching transactions and bills to disk removes that cost for repeated `--dry-run` runs during development. FR-21 (transactions + bills subsets), FR-22 (their two TTLs), FR-23, FR-25, and NFR-09 are therefore active requirements for the terminal-only MVP, implemented by TASK-007. FR-21's remaining two data sets (categories, payees) remain deferred — they are only consumed via the `/api/categories` web endpoint, which does not exist without a web UI. FR-24a/FR-24b (the web UI's "Clear cache" button) and NFR-06 (no external CDN) remain deferred for the same reason, contingent on Open Item #5 | FR-21, FR-22, FR-23, FR-24a, FR-24b, FR-25, NFR-06, NFR-09 |
+| 10 | Scope: does UC11 (household contribution split) belong in this repository at all? The stated purpose of the application is identifying recurring payments and creating bills for cash flow planning. UC11 consumes the same pattern set but answers a different question — how the members of a household divide a shared cost base — and it introduces the application's first configuration input that has no counterpart in Firefly III (member incomes). Three options: (a) accept UC11 here, since the pattern set with monthly equivalents is the expensive part and already exists; (b) keep FR-37 here and move UC11 to a separate consumer of this application's CSV/JSON export (FR-08), which requires no new configuration surface here at all; (c) drop UC11. FR-37 is useful under all three options and is not blocked by this item | FR-38a, FR-38b, FR-38c, FR-38d, FR-38e, FR-38f, NFR-12 |
 
 ---
 
 ## Changelog
+
+### 0.2.23 (2026-08-02)
+
+- Corrected the rationale attached to FR-32d, UC2 step 2.a, and UC2's
+  alternative-flow bullet. All three motivated source-account partitioning with
+  the example of "a fixed transfer funding a spending account, versus that
+  spending account's own purchases". A Firefly III transfer between two of the
+  user's own asset accounts has transaction type `transfer`, and UC1 fetches
+  withdrawals only, so such a transaction can never reach the partitioning step
+  and cannot be what FR-32d protects against. The real case behind TASK-014 was
+  withdrawals to one payee from two different source accounts. The normative
+  content of FR-32d is unchanged; only the justifying example is corrected, and
+  the withdrawal-only constraint is now stated explicitly so the example is not
+  reintroduced.
+- Revised FR-13b and added FR-13c. FR-13b stated that the category majority
+  share is computed "over all of the payee's transactions". Since FR-32a and
+  FR-32d introduced amount clusters, a payee group is no longer the unit a bill
+  is named from, and computing the share payee-wide would give every cluster of
+  a multi-charge payee the same category name, or none. The share is now
+  specified over the amount cluster, which is the unit FR-32c already names and
+  disambiguates. FR-13b additionally specifies that a tie between two or more
+  most-frequent categories resolves to no category name, which was previously
+  undefined and therefore dependent on transaction arrival order.
+- Revised FR-27 and the "Neutral" definition, and added the "Uncategorized
+  pattern" definition. FR-27 applied `UNCATEGORIZED_CONFIDENCE_PENALTY` whenever
+  "the pattern's category is absent", which conflates two different states: a
+  pattern with no categorized transactions at all, and a pattern whose
+  transactions are all categorized but spread across categories such that FR-13b
+  resolves no name. Penalizing the second is wrong — the user has categorized the
+  data, and the absence of a name is a bill-naming outcome, not a data-quality
+  signal. The penalty is now scoped to uncategorized patterns only, and FR-13c
+  states the exemption explicitly.
+- Revised FR-30a and added FR-30e. FR-30a specified resolution by mode across
+  the pattern's transactions, which predates FR-32d. Since FR-32d partitions
+  every payee group by `source_name` before clustering, each pattern's
+  transactions now share exactly one `source_name` value or none, so the mode is
+  always that single value and the "more than one distinct value" condition
+  cannot arise. FR-30a is restated to match that invariant; FR-30e retains the
+  recorded flag and the FR-30b/FR-30d "varies" indicator as an invariant check
+  that makes a future regression in FR-32d's partitioning visible, rather than
+  as a description of a normal outcome.
+
+### 0.2.22 (2026-08-02)
+
+- Added FR-37 and the "Monthly equivalent" definition, plus a new UC2 step 9 (old
+  step 9 renumbered to 10) and an alternative-flow bullet. Patterns already carry
+  a frequency bucket (FR-03) and a mean amount, but nothing normalized a quarterly
+  or yearly amount to a per-month figure, so a report mixing frequencies could not
+  be summed without the reader applying the divisor table by hand. FR-37 performs
+  that normalization at pattern-build time using divisors derived from the
+  frequency bucket rather than from the observed median interval, so the figure
+  agrees with the `repeat_freq` of the bill FR-06 would actually create; a
+  median-interval-derived figure would drift away from it (an 88-day quarterly
+  median would report 1/2.89 of the mean rather than 1/3). `irregular` patterns
+  get no monthly equivalent, matching UC4's existing behavior of skipping them for
+  want of a valid `repeat_freq` mapping. The field reaches the CSV and JSON export
+  (FR-08) without further specification, since the export field list is derived
+  from the pattern's own fields.
+- Added UC11 and FR-38a-f, the household contribution split report, together with
+  the "Household member" and "Shared account" definitions, NFR-12, SE-04 through
+  SE-06, five configuration parameters, `household.py` in the project structure,
+  and Open Item #10. The report groups patterns by resolved source account (FR-30a)
+  into per-member and shared buckets, sums their monthly equivalents (FR-37), and
+  computes what each member must transfer to the shared account under either an
+  equal-remainder or a proportional split. Both methods are specified so that the
+  members' contributions sum to the shared bucket total, which is the arithmetic
+  identity worth verifying. A negative contribution is a valid result reported as
+  such (FR-38e) rather than clamped, since it means the member already pays more
+  than their share directly. The report is read-only by construction (FR-38f):
+  it consumes an already-computed pattern list and holds no Firefly III client.
+  All six requirements and NFR-12 carry [SCOPE TBD] pending Open Item #10, which
+  asks whether this use case belongs in this application or in a separate consumer
+  of its export.
 
 ### 0.2.21 (2026-07-20)
 

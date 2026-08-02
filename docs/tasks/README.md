@@ -26,6 +26,12 @@ and is the single authoritative ordering.
 | 11 | [TASK-016](TASK-016-account-filtering.md) Filter transactions by source account (UC9) | TASK-002 | done | Spec v0.2.18: `INCLUDE_ACCOUNTS`/`EXCLUDE_ACCOUNTS`, modeled on TASK-006's category filter but exclude-and-include only, no confidence weighting. FR-35c (web UI multiselect) deferred, contingent on Open Item #5. Renumbered from TASK-014 to resolve a task-ID collision with the source-account-partitioning task above, which was merged upstream (PR #15) under the same number on a diverging branch |
 | 12 | [TASK-017](TASK-017-payee-filtering.md) Filter transactions by payee / destination account (UC10) | TASK-002 | done | Spec v0.2.19: `INCLUDE_PAYEES`/`EXCLUDE_PAYEES`, modeled on TASK-016's account filter but matched against `destination_name` instead of `source_name`. Also updates `.env.example` with the new variables. FR-36c (web UI multiselect) deferred, contingent on Open Item #5. Renumbered from TASK-015 for the same reason as TASK-016 |
 | 13 | [TASK-018](TASK-018-solo-transaction-interval-bucket-split.md) Separate solo transactions into their own cluster when frequency buckets disagree (FR-32e) | TASK-012, TASK-014 | done | Owner review of a real report found payee "STOCKHOLM VATTEN AB" merging a yearly garden-waste charge into a quarterly garbage-collection cluster, because FR-32a's nearest-mean assignment (TASK-012/TASK-014) only considers amount proximity for solo (non-co-occurring) transactions. FR-32e (spec v0.2.21) adds a secondary interval/frequency-bucket check, reusing the existing `_classify_frequency()` helper: 2+ solo transactions whose own median interval disagrees with their nearest cluster's now split off into their own cluster instead of being folded in |
+| 14 | [TASK-019](TASK-019-normalized-monthly-equivalent-per-pattern.md) Normalized monthly equivalent per pattern (FR-37) | TASK-012 | todo | Spec v0.2.22: adds a `monthly_equivalent` field to `RecurringPattern`, derived from `frequency` and `amount_mean` via fixed divisors; `None` for `irregular`. Flows into the CSV/JSON export automatically via `exporter._FIELDNAMES` |
+| 15 | [TASK-020](TASK-020-Household-contribution-split-report.md) Household contribution split report (UC11) | TASK-019, TASK-016 | blocked | Spec v0.2.22: groups patterns by resolved source account into per-member and shared buckets, sums monthly equivalents, and computes each member's transfer to the shared account under equal-remainder and proportional splits. Blocked on Open Item #10 (does this use case belong in this repository?) |
+| 16 | [TASK-021](TASK-021-fr32d-rationale-correction.md) Correct FR-32d's transfer-based rationale (documentation only) | TASK-014 | todo | Spec v0.2.23: FR-32d, UC2 step 2.a, and the `_partition_by_source_account()` docstring motivated source-account partitioning with a transfer-versus-spending example that cannot occur, since `fetch_transactions()` only ever supplies withdrawals. Normative content of FR-32d is unchanged; this task brings the code comment into line and adds the assertion that keeps the claim true |
+| 17 | [TASK-022](TASK-022-category-scope-and-tiebreak.md) Align category resolution scope with amount clusters and define tie-breaking (FR-13b) | TASK-008, TASK-012, TASK-014 | todo | Spec v0.2.23: FR-13b required the category majority share to be computed over all of a payee's transactions, but `_build_pattern()` computes it over the amount cluster, which is the unit FR-32c names a bill from. The requirement was stale, not the implementation; this task revises FR-13b to cluster scope and defines tie-breaking |
+| 18 | [TASK-023](TASK-023-uncategorized-penalty-misapplied.md) Stop penalizing fully categorized patterns that resolve no category name (FR-13c, FR-27) | TASK-022 | todo | `_confidence()` applies `UNCATEGORIZED_CONFIDENCE_PENALTY` whenever `category_name is None`, conflating "no transaction carries a category" with "categories present but none reaches `CATEGORY_MAJORITY_THRESHOLD`". Only the first is a data-quality signal; the second is a naming outcome and must not be penalized |
+| 19 | [TASK-024](TASK-024-source-account-varies-invariant.md) Turn the source-account "varies" flag into an FR-32d invariant check (FR-30a, FR-30e) | TASK-011, TASK-014 | todo | FR-32d partitions every payee group by `source_name` before clustering, so FR-30a's mode computation is redundant and `source_account_varies` can no longer be `True`, leaving FR-30b's CLI "(varies)" branch and FR-30d's exported field describing an unreachable state. Retained as an invariant check rather than deleted |
 
 ## Dependency graph
 
@@ -56,6 +62,16 @@ graph LR
     T002 --> T016[TASK-016<br/>account filter]
     T002 --> T017[TASK-017<br/>payee filter]
     T014 --> T018[TASK-018<br/>solo transaction interval bucket split]
+    T012 --> T019[TASK-019<br/>monthly equivalent]
+    T019 --> T020[TASK-020<br/>household split report]
+    T016 --> T020
+    T014 --> T021[TASK-021<br/>FR-32d rationale correction]
+    T008 --> T022[TASK-022<br/>category scope + tiebreak]
+    T012 --> T022
+    T014 --> T022
+    T022 --> T023[TASK-023<br/>uncategorized penalty]
+    T011 --> T024[TASK-024<br/>source-account varies invariant]
+    T014 --> T024
 ```
 
 ## Rules
