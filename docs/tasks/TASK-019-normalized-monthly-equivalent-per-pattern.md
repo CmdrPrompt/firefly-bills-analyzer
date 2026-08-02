@@ -91,53 +91,39 @@ equivalent is left to whichever task first needs it on screen.
 
 ## Acceptance criteria (Gherkin)
 
-- [ ] Scenario: Monthly pattern reports its mean amount unchanged
-      Given a payee group whose billing events recur at a median interval inside the monthly range (25-35 days)
-      When `identify_recurring()` builds the pattern
-      Then the pattern's `monthly_equivalent` equals its `amount_mean` divided by 1
+**Feature files:** tests/bdd/features/TASK-019-monthly-equivalent.feature
 
-- [ ] Scenario: Quarterly pattern is divided by 3
-      Given a payee group whose billing events recur at a median interval inside the quarterly range (80-100 days)
-      When `identify_recurring()` builds the pattern
-      Then the pattern's `monthly_equivalent` equals its `amount_mean` divided by 3
+- [ ] 1. Scenario: Monthly pattern reports its mean amount unchanged
+      See tests/bdd/features/TASK-019-monthly-equivalent.feature: Scenario: Monthly pattern reports its mean amount unchanged
 
-- [ ] Scenario: Half-yearly pattern is divided by 6
-      Given a payee group whose billing events recur at a median interval inside the half-yearly range (160-200 days)
-      When `identify_recurring()` builds the pattern
-      Then the pattern's `monthly_equivalent` equals its `amount_mean` divided by 6
+- [ ] 2. Scenario: Quarterly pattern is divided by 3
+      See tests/bdd/features/TASK-019-monthly-equivalent.feature: Scenario: Quarterly pattern is divided by 3
 
-- [ ] Scenario: Yearly pattern is divided by 12
-      Given a payee group whose billing events recur at a median interval inside the yearly range (340-390 days)
-      When `identify_recurring()` builds the pattern
-      Then the pattern's `monthly_equivalent` equals its `amount_mean` divided by 12
+- [ ] 3. Scenario: Half-yearly pattern is divided by 6
+      See tests/bdd/features/TASK-019-monthly-equivalent.feature: Scenario: Half-yearly pattern is divided by 6
 
-- [ ] Scenario: Irregular pattern records no monthly equivalent
-      Given a payee group whose billing events recur at a median interval outside every range in `_FREQUENCY_RANGES`
-      When `identify_recurring()` builds the pattern
-      Then the pattern's `frequency` is `irregular` and its `monthly_equivalent` is `None`
+- [ ] 4. Scenario: Yearly pattern is divided by 12
+      See tests/bdd/features/TASK-019-monthly-equivalent.feature: Scenario: Yearly pattern is divided by 12
 
-- [ ] Scenario: A single billing event yields no monthly equivalent
-      Given a payee group that produces exactly one billing event, so no interval can be computed and `median_interval_days` is 0.0
-      When `identify_recurring()` builds the pattern
-      Then the pattern's `frequency` is `irregular` and its `monthly_equivalent` is `None`
+- [ ] 5. Scenario: Irregular pattern records no monthly equivalent
+      See tests/bdd/features/TASK-019-monthly-equivalent.feature: Scenario: Irregular pattern records no monthly equivalent
 
-- [ ] Scenario: The monthly equivalent reaches the CSV export
-      Given a list of patterns containing one quarterly pattern and one irregular pattern
-      When `exporter.export(patterns, "csv", path)` writes the file
-      Then the header row contains a `monthly_equivalent` column, the quarterly row carries its computed value, and the irregular row carries an empty cell
+- [ ] 6. Scenario: A single billing event yields no monthly equivalent
+      See tests/bdd/features/TASK-019-monthly-equivalent.feature: Scenario: A single billing event yields no monthly equivalent
 
-- [ ] Scenario: The monthly equivalent reaches the JSON export
-      Given the same list of patterns
-      When `exporter.export(patterns, "json", path)` writes the file
-      Then each object carries a `monthly_equivalent` key, `null` for the irregular pattern
+- [ ] 7. Scenario: The monthly equivalent reaches the CSV export
+      See tests/bdd/features/TASK-019-monthly-equivalent.feature: Scenario: The monthly equivalent reaches the CSV export
 
-- [ ] `_MONTHLY_DIVISORS` has exactly the same key set as `_FREQUENCY_RANGES`, asserted by a test rather than by inspection
+- [ ] 8. Scenario: The monthly equivalent reaches the JSON export
+      See tests/bdd/features/TASK-019-monthly-equivalent.feature: Scenario: The monthly equivalent reaches the JSON export
 
-- [ ] Hypothesis property test: for any mean amount and any median interval, `monthly_equivalent` is either `None` (exactly when `frequency == "irregular"`) or equals `amount_mean / _MONTHLY_DIVISORS[frequency]`
+- [ ] 9. `_MONTHLY_DIVISORS` has exactly the same key set as `_FREQUENCY_RANGES`, asserted by a test rather than by inspection
 
-- [ ] Hypothesis property test: multiplying a pattern's `monthly_equivalent` by its bucket divisor recovers its `amount_mean` within floating-point tolerance
+- [ ] 10. Hypothesis property test: for any mean amount and any median interval, `monthly_equivalent` is either `None` (exactly when `frequency == "irregular"`) or equals `amount_mean / _MONTHLY_DIVISORS[frequency]`
 
-- [ ] `make lint && make test` pass with coverage >= the TASK-018 baseline (100% on `analyzer.py`)
+- [ ] 11. Hypothesis property test: multiplying a pattern's `monthly_equivalent` by its bucket divisor recovers its `amount_mean` within floating-point tolerance
+
+- [ ] 12. `make lint && make test` pass with coverage >= the TASK-018 baseline (100% on `analyzer.py`)
 
 ## Out of scope
 
@@ -167,8 +153,8 @@ None
 - `docs/REQUIREMENTS_new.md` — modified prior to implementation (v0.2.21 → v0.2.22)
 - `CHANGELOG.md` — modified
 - `docs/tasks/README.md` — modified (status)
-- `docs/tasks/TASK-019-monthly-equivalent.md` — this file
+- `docs/tasks/TASK-019-normalized-monthly-equivalent-per-pattern.md` — this file
 
 **Branch:** `git checkout task/019-monthly-equivalent`
-**Stage:** `git add src/firefly_bills_analyzer/analyzer.py tests/test_analyzer.py tests/test_exporter.py docs/REQUIREMENTS_new.md CHANGELOG.md docs/tasks/README.md docs/tasks/TASK-019-monthly-equivalent.md`
+**Stage:** `git add src/firefly_bills_analyzer/analyzer.py tests/test_analyzer.py tests/test_exporter.py docs/REQUIREMENTS_new.md CHANGELOG.md docs/tasks/README.md docs/tasks/TASK-019-normalized-monthly-equivalent-per-pattern.md`
 **Commit:** `git commit -m "feat: add a normalized monthly equivalent to each recurring pattern (FR-37)"`
