@@ -33,6 +33,10 @@ pattern_strategy = st.builds(
         st.none(), st.text(min_size=1, max_size=20).filter(lambda s: s.strip() != "")
     ),
     source_account_varies=st.booleans(),
+    monthly_equivalent=st.one_of(
+        st.none(),
+        st.floats(min_value=0.01, max_value=10_000, allow_nan=False, allow_infinity=False),
+    ),
 )
 
 
@@ -41,6 +45,8 @@ def _pattern(
     category_name: str | None = "Subscriptions",
     source_account_name: str | None = None,
     source_account_varies: bool = False,
+    frequency: str = "monthly",
+    monthly_equivalent: float | None = None,
 ) -> RecurringPattern:
     return RecurringPattern(
         destination_name=name,
@@ -50,10 +56,11 @@ def _pattern(
         amount_max=11.0,
         amount_mean=10.0,
         median_interval_days=30.0,
-        frequency="monthly",
+        frequency=frequency,
         confidence=0.9,
         source_account_name=source_account_name,
         source_account_varies=source_account_varies,
+        monthly_equivalent=monthly_equivalent,
     )
 
 
@@ -107,6 +114,26 @@ class TestCsv:
         assert rows[0]["source_account_varies"] == "False"
         assert rows[1]["source_account_varies"] == "True"
 
+    def test_monthly_equivalent_column_serializes_value_and_none(self, tmp_path: Path) -> None:
+        """FR-37: a `None` monthly_equivalent serializes as an empty CSV cell,
+        and a computed value serializes as its plain value."""
+        path = tmp_path / "out.csv"
+        patterns = [
+            _pattern("Water Bill", frequency="quarterly", monthly_equivalent=30.0),
+            _pattern("Corner Shop", frequency="irregular", monthly_equivalent=None),
+        ]
+        export(patterns, "csv", path)
+
+        with path.open(newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            assert reader.fieldnames is not None
+            assert "monthly_equivalent" in reader.fieldnames
+            rows = list(reader)
+
+        by_name = {row["destination_name"]: row for row in rows}
+        assert by_name["Water Bill"]["monthly_equivalent"] == "30.0"
+        assert by_name["Corner Shop"]["monthly_equivalent"] == ""
+
 
 class TestJson:
     def test_writes_list_of_objects(self, tmp_path: Path) -> None:
@@ -135,6 +162,22 @@ class TestJson:
 
         assert data[0]["source_account_name"] == "Checking"
         assert data[0]["source_account_varies"] is True
+
+    def test_monthly_equivalent_key_serializes_value_and_null(self, tmp_path: Path) -> None:
+        """FR-37: a `None` monthly_equivalent serializes as JSON `null`, and a
+        computed value serializes as its numeric value."""
+        path = tmp_path / "out.json"
+        patterns = [
+            _pattern("Water Bill", frequency="quarterly", monthly_equivalent=30.0),
+            _pattern("Corner Shop", frequency="irregular", monthly_equivalent=None),
+        ]
+        export(patterns, "json", path)
+
+        data = json.loads(path.read_text(encoding="utf-8"))
+
+        by_name = {obj["destination_name"]: obj for obj in data}
+        assert by_name["Water Bill"]["monthly_equivalent"] == 30.0
+        assert by_name["Corner Shop"]["monthly_equivalent"] is None
 
 
 class TestUnsupportedFormat:

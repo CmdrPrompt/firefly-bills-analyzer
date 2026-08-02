@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Each identified recurring pattern now carries a normalized monthly
+  equivalent (its mean amount divided by the fixed divisor for its frequency
+  bucket: 1 for monthly, 3 for quarterly, 6 for half-yearly, 12 for yearly),
+  so patterns billed at different cadences can be summed into a single
+  monthly figure without doing the division by hand after every export.
+  Patterns classified `irregular` carry no monthly equivalent. The field
+  flows through to both the CSV and JSON export. (TASK-019)
+
 - Amount-cluster splitting now also checks the recurrence interval of any
   transaction that never shares a date with a sibling ("solo" transaction)
   before folding it into the amount cluster it's numerically closest to. If

@@ -21,6 +21,7 @@ dev = [
     "pre-commit",
     "hypothesis",
     "types-tqdm",
+    "pytest-bdd>=8.1.0",
 ]
 
 [dependency-groups]
