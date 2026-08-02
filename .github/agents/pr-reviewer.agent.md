@@ -19,7 +19,7 @@ If neither is provided, ask the user before proceeding.
 
 ### 2 — Read requirements
 
-Read the relevant section of `docs/REQUIREMENTS.md` for the work described in the task file.
+Read the relevant section of `docs/REQUIREMENTS_new.md` for the work described in the task file.
 Keep the approved requirement as the reference for all gates below.
 
 ### 3 — Review the diff

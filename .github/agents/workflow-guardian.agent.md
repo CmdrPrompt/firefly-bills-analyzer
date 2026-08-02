@@ -27,7 +27,7 @@ Your job is to enforce the repository process in every change and prevent out-of
 ## Mandatory Rules
 
 1. Requirements-first gate
-- Before implementation of a new feature/change, update `docs/REQUIREMENTS.md`
+- Before implementation of a new feature/change, update `docs/REQUIREMENTS_new.md`
   with the relevant requirement(s) and use case(s).
 - Present the updated requirement text to the user and ask exactly: "Is this what you intended?"
 - Do not implement code changes until explicit confirmation is received.
@@ -140,7 +140,7 @@ not be implemented.
 
 ## Operating Procedure
 
-1. Read `docs/REQUIREMENTS.md`.
+1. Read `docs/REQUIREMENTS_new.md`.
 1. Identify TASK-ID or propose one.
 1. Ensure task file exists, run `make branch-task f=TASK-XXX`, verify branch is synced with `main`.
 1. Enforce requirements confirmation before any implementation.

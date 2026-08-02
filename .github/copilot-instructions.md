@@ -4,9 +4,9 @@
 
 ## Project Context
 
-Describe your project here.
+Analyzes your Firefly III transaction history to automatically identify recurring payments and create subscriptions (bills) via the Firefly III API. Designed for cash flow planning across the full year, including low-frequency bills such as quarterly and annual payments.
 
-**Primary source of truth:** `docs/REQUIREMENTS.md` - read it before
+**Primary source of truth:** `docs/REQUIREMENTS_new.md` - read it before
 writing any code.
 
 ## Spec-Driven Development
@@ -15,7 +15,7 @@ All changes must be grounded in the requirements specification.
 
 Before writing any code for a new feature or change:
 
-1. Update `docs/REQUIREMENTS.md` with the relevant requirement(s) and use case(s).
+1. Update `docs/REQUIREMENTS_new.md` with the relevant requirement(s) and use case(s).
 2. Present the updated text and ask the user: "Is this what you intended?"
 3. Wait for explicit confirmation.
 4. Only then follow the TDD cycle.
@@ -87,7 +87,7 @@ Describe shipped behavior, not internal task bookkeeping.
 
 ## What NOT to Do
 
-- Do not write code before reading `docs/REQUIREMENTS.md`.
+- Do not write code before reading `docs/REQUIREMENTS_new.md`.
 - Do not skip writing tests first (TDD).
 - Do not write code before the requirements spec is confirmed.
 - Do not commit code that fails `make lint` or `make test`.

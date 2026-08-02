@@ -1,14 +1,14 @@
-# my-project
+# firefly-bills-analyzer
 
-Describe your project here.
+Analyzes your Firefly III transaction history to automatically identify recurring payments and create subscriptions (bills) via the Firefly III API. Designed for cash flow planning across the full year, including low-frequency bills such as quarterly and annual payments.
 
 ## Spec-Driven Development
 
-All changes must be grounded in a requirements specification at `docs/REQUIREMENTS.md`.
+All changes must be grounded in a requirements specification at `docs/REQUIREMENTS_new.md`.
 
 Before writing any code for a new feature or change:
 
-1. Update `docs/REQUIREMENTS.md` with the relevant requirement(s) and use case(s).
+1. Update `docs/REQUIREMENTS_new.md` with the relevant requirement(s) and use case(s).
 2. Present the updated text and ask the user: "Is this what you intended?"
 3. Wait for explicit confirmation.
 4. Only then follow the TDD cycle.
