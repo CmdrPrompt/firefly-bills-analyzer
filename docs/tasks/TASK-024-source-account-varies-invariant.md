@@ -2,7 +2,7 @@
 
 ## Status
 
-todo
+done
 
 ## Requirements
 
@@ -127,19 +127,31 @@ None
 
 ## Completion
 
-**Date:** YYYY-MM-DD
-**Summary:**
+**Date:** 2026-08-03
+**Summary:** `_resolve_source_account()` now returns the single distinct
+non-`None` `source_name` value and `False`, or `None` and `False` when none
+is present, instead of computing a mode. When a caller bypasses FR-32d's
+partitioning and passes transactions spanning more than one distinct
+`source_name`, it returns that value set's first element and `True`, and
+logs a warning naming the payee and the conflicting account names. Added a
+direct test asserting the warning and `varies=True` on a mixed-source list,
+and a Hypothesis property test asserting any single-`source_name`
+transaction list, in any order, resolves that name with `varies=False`.
+`_format_suggestion()`'s "(varies)" branch is unchanged in behavior; its
+comment now states it is the anomaly path.
 **Files changed:**
 
 - `src/firefly_bills_analyzer/analyzer.py` — modified
 - `src/firefly_bills_analyzer/__main__.py` — modified (comment only)
 - `tests/test_analyzer.py` — modified
-- `tests/test_main.py` — modified
-- `docs/REQUIREMENTS_new.md` — modified prior to implementation (v0.2.22 → v0.2.23)
 - `CHANGELOG.md` — modified
 - `docs/tasks/README.md` — modified (status)
 - `docs/tasks/TASK-024-source-account-varies-invariant.md` — this file
 
+`docs/REQUIREMENTS_new.md` and `tests/test_main.py` were not touched on this
+branch: FR-30e's revision to v0.2.23 and `test_main.py`'s "(varies)" CLI
+coverage had already landed on `main` ahead of this task.
+
 **Branch:** `git checkout task/024-source-account-varies-invariant`
-**Stage:** `git add src/firefly_bills_analyzer/analyzer.py src/firefly_bills_analyzer/__main__.py tests/test_analyzer.py tests/test_main.py docs/REQUIREMENTS_new.md CHANGELOG.md docs/tasks/README.md docs/tasks/TASK-024-source-account-varies-invariant.md`
+**Stage:** `git add src/firefly_bills_analyzer/analyzer.py src/firefly_bills_analyzer/__main__.py tests/test_analyzer.py CHANGELOG.md docs/tasks/README.md docs/tasks/TASK-024-source-account-varies-invariant.md`
 **Commit:** `git commit -m "fix: resolve a pattern's source account from FR-32d's single-account invariant and flag violations of it (FR-30e)"`
