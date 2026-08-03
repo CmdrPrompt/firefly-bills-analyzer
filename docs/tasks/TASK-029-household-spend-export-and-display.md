@@ -2,7 +2,7 @@
 
 ## Status
 
-blocked
+in-progress
 
 ## Requirements
 
@@ -11,7 +11,7 @@ blocked
 **Depends on:** TASK-028 (the aggregate this writes), TASK-005 (the CLI flow
 this inserts into), TASK-011 (FR-31's file path reporting, which FR-51d
 mirrors), TASK-027 (the second export file, whose naming pattern this follows)
-**Blocked on:** TASK-028
+**Blocked on:** nothing (TASK-028 is done and merged, commit 3cde68e).
 **Precedence:** The requirements document is the binding definition of this task.
 The story and scenarios below are derived from it. On any discrepancy, the
 requirements document wins. Stop and report discrepancies; do not build from
@@ -136,7 +136,7 @@ existing table formatting; do not introduce a third style.
 
 ## Blockers
 
-TASK-028.
+None.
 
 ## Completion
 
@@ -144,5 +144,5 @@ TASK-028.
 **Summary:**
 **Files changed:**
 **Branch:**
-**Stage:**
-**Commit:**
+**Stage:** `git add docs/tasks/TASK-029-household-spend-export-and-display.md`
+**Commit:** `git commit -m "docs(TASK-029): resolve TASK-028 blocker and start implementation"`
