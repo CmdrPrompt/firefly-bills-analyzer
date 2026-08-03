@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import pytest
 from firefly_python_api import TransactionRead
-from hypothesis import example, given
+from hypothesis import example, given, settings
 from hypothesis import strategies as st
 
 from firefly_bills_analyzer.analyzer import (
@@ -1709,3 +1709,80 @@ def test_pattern_member_transactions_skips_transactions_with_no_destination() ->
     ]
 
     assert pattern_member_transactions(transactions, config) == []
+
+
+# ---------------------------------------------------------------------------
+# pattern_member_transactions confidence gating (TASK-032, FR-48b)
+# ---------------------------------------------------------------------------
+
+
+def test_pattern_member_transactions_includes_high_confidence_cluster() -> None:
+    """A cluster whose confidence (computed the same way `identify_recurring()`
+    computes it) is at or above `high_confidence_threshold` is still returned,
+    so household spend (FR-48b) keeps excluding a genuine subscription."""
+    config = _make_config(min_occurrences=2, high_confidence_threshold=0.80)
+    monthly_dates = [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1), date(2026, 4, 1)]
+    subscription = [_transaction(d, "99.00", "Netflix", "Streaming") for d in monthly_dates]
+
+    members = pattern_member_transactions(subscription, config)
+
+    assert len(members) == len(subscription)
+    assert all(any(member is original for original in subscription) for member in members)
+
+
+def test_pattern_member_transactions_excludes_low_confidence_cluster() -> None:
+    """A cluster meeting `min_occurrences` but whose confidence falls below
+    `high_confidence_threshold` must not be returned, so its transactions
+    remain eligible for household spend measurement (UC13 step 3, FR-48b)."""
+    config = _make_config(min_occurrences=2, high_confidence_threshold=0.80)
+    irregular = [
+        _transaction(date(2026, 1, 1), "50.00", "Corner Shop", "Groceries"),
+        _transaction(date(2026, 3, 20), "480.00", "Corner Shop", "Groceries"),
+    ]
+
+    assert pattern_member_transactions(irregular, config) == []
+
+
+@given(
+    st.lists(
+        st.tuples(
+            st.integers(min_value=0, max_value=3),
+            st.integers(min_value=0, max_value=600),
+        ),
+        min_size=1,
+        max_size=20,
+    )
+)
+@settings(max_examples=50)
+def test_pattern_member_transactions_matches_identify_recurring_confidence(
+    payee_days: list[tuple[int, int]],
+) -> None:
+    """Every transaction `pattern_member_transactions()` returns must belong
+    to a destination whose `identify_recurring()` pattern has confidence at
+    or above `config.high_confidence_threshold`; a destination whose sole
+    pattern falls below the threshold contributes no member at all (FR-48b).
+
+    Each payee is billed a fixed amount so it forms exactly one amount
+    cluster (FR-32a), keeping the destination -> pattern mapping unambiguous.
+    """
+    config = _make_config(min_occurrences=2, high_confidence_threshold=0.80)
+    start = date(2026, 1, 1)
+    transactions = [
+        _transaction(
+            start + timedelta(days=day_offset),
+            f"{10 * (payee_index + 1):.2f}",
+            f"Payee {payee_index}",
+            None,
+        )
+        for payee_index, day_offset in payee_days
+    ]
+
+    members = pattern_member_transactions(transactions, config)
+    patterns = identify_recurring(transactions, config)
+
+    low_confidence_destinations = {
+        p.destination_name for p in patterns if p.confidence < config.high_confidence_threshold
+    }
+
+    member_destinations = {m["destination_name"] for m in members}
+    assert member_destinations.isdisjoint(low_confidence_destinations)
