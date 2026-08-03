@@ -122,5 +122,5 @@ direct unit tests.
 - `CHANGELOG.md` - modified
 
 **Branch:** `git checkout task/033-per-category-one-off-thresholds`
-**Stage:** `git add docs/REQUIREMENTS_new.md docs/tasks/README.md docs/tasks/TASK-033-per-category-one-off-thresholds.md src/firefly_bills_analyzer/config.py src/firefly_bills_analyzer/household_spend.py src/firefly_bills_analyzer/exporter.py src/firefly_bills_analyzer/__main__.py tests/test_config.py tests/test_household_spend.py tests/test_exporter.py tests/test_main.py tests/bdd/steps/test_task_029_steps.py CHANGELOG.md`
-**Commit:** `git commit -m "feat: per-category one-off purchase thresholds for household spend (FR-47e, TASK-033)"`
+**Stage:** `git add docs/tasks/TASK-033-per-category-one-off-thresholds.md`
+**Commit:** `git commit -m "docs: record TASK-033 completion notes (TASK-033)"`
