@@ -53,6 +53,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Household spend can now be measured per source account and category
+  (`HOUSEHOLD_SPEND_CATEGORIES`, comma-separated; empty disables the
+  feature): withdrawals in a configured category, or carrying
+  `HOUSEHOLD_SPEND_INCLUDE_TAG`, are summed per account, category, and
+  calendar month, with the median of the complete months in the analysis
+  window reported as the monthly figure alongside its mean, minimum,
+  maximum, and month count. A month with no qualifying spending counts as
+  zero rather than being omitted, so an account that shops for groceries
+  irregularly isn't reported at an inflated average; the first and last
+  calendar months of the window, which are partial by construction, never
+  contribute a monthly total. A withdrawal already counted as a recurring
+  pattern (UC2) is excluded by its own transaction identity, not by payee
+  name, so a subscription in a household category is never counted twice.
+  A withdrawal above `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD` (default 2000) is
+  reported separately as a one-off purchase instead of distorting the
+  monthly figures, and `HOUSEHOLD_SPEND_EXCLUDE_TAG` removes a transaction
+  from household spend entirely, overriding every other qualifying rule
+  including the include tag. A configured category matching no
+  transaction in the window is reported as unmatched. This aggregation
+  runs entirely in memory against data already fetched for UC1/UC2 and
+  issues no request of its own to Firefly III. (FR-47a-FR-47d, FR-48a-g,
+  FR-49a-e, FR-50, TASK-028)
+
 - Detected income sources, and the income accounts an income source could
   not be resolved for, are now written to their own `firefly-income-*` file
   (CSV or JSON, matching `EXPORT_FORMAT`) alongside the recurring-payment

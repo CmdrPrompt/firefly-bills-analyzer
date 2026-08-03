@@ -388,6 +388,36 @@ def _build_pattern(
     )
 
 
+def pattern_member_transactions(
+    transactions: list[TransactionRead], config: Config
+) -> list[TransactionRead]:
+    """Every transaction belonging to a qualifying recurring pattern (UC2).
+
+    Uses the same grouping ``identify_recurring()`` does (payee grouping,
+    FR-32d source-account partitioning, FR-32a amount clustering, and the
+    ``min_occurrences`` threshold) and returns the very ``TransactionRead``
+    objects passed in, unmodified. This lets a caller (e.g. UC13's household
+    spend, FR-48b) exclude a pattern's transactions by ``id()`` identity
+    rather than by reconstructing a match from payee name or other fields,
+    which would risk conflating a subscription with unrelated household
+    spending that happens to share a payee.
+    """
+    groups: dict[str, list[TransactionRead]] = defaultdict(list)
+    for transaction in transactions:
+        destination_name = transaction["destination_name"]
+        if destination_name is None:
+            continue
+        groups[destination_name].append(transaction)
+
+    members: list[TransactionRead] = []
+    for group in groups.values():
+        if len(group) < config.min_occurrences:
+            continue
+        for cluster, _events in _qualifying_clusters(group, config):
+            members.extend(cluster)
+    return members
+
+
 def identify_recurring(
     transactions: list[TransactionRead], config: Config
 ) -> list[RecurringPattern]:

@@ -18,6 +18,7 @@ from firefly_bills_analyzer.analyzer import (
     _resolve_source_account,
     _split_into_amount_clusters,
     identify_recurring,
+    pattern_member_transactions,
 )
 from firefly_bills_analyzer.config import Config
 
@@ -55,6 +56,11 @@ def _make_config(**overrides: object) -> Config:
         income_accounts=[],
         income_min_occurrences=3,
         income_variance_tolerance=0.10,
+        household_spend_categories=[],
+        household_spend_one_off_threshold=2000.0,
+        household_spend_min_months=3,
+        household_spend_include_tag=None,
+        household_spend_exclude_tag=None,
     )
     base.update(overrides)
     return Config(**base)  # type: ignore[arg-type]
@@ -1572,3 +1578,46 @@ def test_monthly_equivalent_times_divisor_recovers_mean_amount(
     assert pattern.monthly_equivalent * _MONTHLY_DIVISORS[frequency] == pytest.approx(
         pattern.amount_mean
     )
+
+
+# ---------------------------------------------------------------------------
+# pattern_member_transactions (TASK-028, FR-48b)
+# ---------------------------------------------------------------------------
+
+
+def test_pattern_member_transactions_returns_the_qualifying_cluster_objects() -> None:
+    """FR-48b: household spend (UC13) must exclude a pattern's own
+    transactions by identity, not by reconstructing a match from payee name.
+    ``pattern_member_transactions`` must therefore return the very
+    ``TransactionRead`` objects passed in, not copies, so callers can use
+    ``id()`` for exclusion."""
+    config = _make_config(min_occurrences=2)
+    monthly_dates = [date(2026, 1, 1), date(2026, 2, 1), date(2026, 3, 1)]
+    subscription = [_transaction(d, "10.00", "Netflix", "Streaming") for d in monthly_dates]
+    one_off = [_transaction(date(2026, 1, 15), "50.00", "Corner Shop", "Groceries")]
+
+    members = pattern_member_transactions(subscription + one_off, config)
+
+    assert len(members) == len(subscription)
+    assert all(any(member is original for original in subscription) for member in members)
+    assert not any(member is one_off[0] for member in members)
+
+
+def test_pattern_member_transactions_empty_below_min_occurrences() -> None:
+    config = _make_config(min_occurrences=3)
+    transactions = [
+        _transaction(date(2026, 1, 1), "10.00", "Netflix", "Streaming"),
+        _transaction(date(2026, 2, 1), "10.00", "Netflix", "Streaming"),
+    ]
+
+    assert pattern_member_transactions(transactions, config) == []
+
+
+def test_pattern_member_transactions_skips_transactions_with_no_destination() -> None:
+    config = _make_config(min_occurrences=2)
+    transactions = [
+        _transaction(date(2026, 1, 1), "10.00", None, None),
+        _transaction(date(2026, 2, 1), "10.00", None, None),
+    ]
+
+    assert pattern_member_transactions(transactions, config) == []
