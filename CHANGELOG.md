@@ -53,6 +53,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Deposits landing on one or more configured income accounts
+  (`INCOME_ACCOUNTS`, comma-separated) are now fetched from Firefly III
+  alongside withdrawal transactions, over the same lookback window and cached
+  under their own `deposits` cache key so they don't invalidate or get served
+  by the existing transactions cache. Only deposits whose `destination_name`
+  matches a configured income account are kept; when `INCOME_ACCOUNTS` is
+  unset the fetch is skipped entirely with no network or cache access. The
+  fetched deposits are not yet used anywhere in the pipeline — recognizing an
+  income source from them, via `INCOME_MIN_OCCURRENCES` and
+  `INCOME_VARIANCE_TOLERANCE`, is a follow-up. (FR-39, FR-40, TASK-025)
+
 - Each identified recurring pattern now carries a normalized monthly
   equivalent (its mean amount divided by the fixed divisor for its frequency
   bucket: 1 for monthly, 3 for quarterly, 6 for half-yearly, 12 for yearly),

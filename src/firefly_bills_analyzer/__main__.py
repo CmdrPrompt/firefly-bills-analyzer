@@ -8,6 +8,7 @@ and approve suggestions, then create bills or report them in dry-run mode.
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +27,8 @@ from firefly_bills_analyzer import (
 )
 from firefly_bills_analyzer.analyzer import RecurringPattern
 from firefly_bills_analyzer.config import Config, ConfigError
+
+logger = logging.getLogger(__name__)
 
 _EXPORT_EXTENSIONS = {"csv": "csv", "json": "json"}
 
@@ -158,6 +161,8 @@ def main(argv: list[str] | None = None) -> int:
     dry_run = args.dry_run or config.dry_run
 
     transactions = fetcher.fetch_transactions(config)
+    deposits = fetcher.fetch_deposits(config)
+    logger.debug("fetch_deposits() returned %d deposit(s)", len(deposits))
     transactions = category_filter.filter_transactions(transactions, config)
     transactions = account_filter.filter_transactions(transactions, config)
     transactions = payee_filter.filter_transactions(transactions, config)

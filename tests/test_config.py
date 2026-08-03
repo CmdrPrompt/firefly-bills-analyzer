@@ -69,3 +69,61 @@ def test_dry_run_override() -> None:
     with patch.dict(os.environ, env, clear=True):
         cfg = Config.from_env()
     assert cfg.dry_run is True
+
+
+# ---------------------------------------------------------------------------
+# Income accounts (TASK-025, FR-39a/FR-39b/FR-39c)
+# ---------------------------------------------------------------------------
+
+
+def test_income_accounts_defaults_to_empty_list() -> None:
+    with patch.dict(os.environ, BASE_ENV, clear=True):
+        cfg = Config.from_env()
+    assert cfg.income_accounts == []
+
+
+def test_income_accounts_unset_env_var_is_empty_list() -> None:
+    env = {**BASE_ENV, "INCOME_ACCOUNTS": ""}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.income_accounts == []
+
+
+def test_income_accounts_parses_single_value() -> None:
+    env = {**BASE_ENV, "INCOME_ACCOUNTS": "Salary Checking"}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.income_accounts == ["Salary Checking"]
+
+
+def test_income_accounts_parses_comma_separated_values() -> None:
+    env = {**BASE_ENV, "INCOME_ACCOUNTS": "Salary Checking, Freelance Account"}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.income_accounts == ["Salary Checking", "Freelance Account"]
+
+
+def test_income_min_occurrences_defaults_to_three() -> None:
+    with patch.dict(os.environ, BASE_ENV, clear=True):
+        cfg = Config.from_env()
+    assert cfg.income_min_occurrences == 3
+
+
+def test_income_min_occurrences_override() -> None:
+    env = {**BASE_ENV, "INCOME_MIN_OCCURRENCES": "5"}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.income_min_occurrences == 5
+
+
+def test_income_variance_tolerance_defaults_to_point_one() -> None:
+    with patch.dict(os.environ, BASE_ENV, clear=True):
+        cfg = Config.from_env()
+    assert cfg.income_variance_tolerance == 0.10
+
+
+def test_income_variance_tolerance_override() -> None:
+    env = {**BASE_ENV, "INCOME_VARIANCE_TOLERANCE": "0.25"}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.income_variance_tolerance == 0.25

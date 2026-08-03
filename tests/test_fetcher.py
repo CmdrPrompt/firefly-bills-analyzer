@@ -5,10 +5,12 @@ from unittest.mock import patch
 
 import pytest
 from firefly_python_api import FireflyClient, FireflyConnectionError, TransactionRead
+from hypothesis import given
+from hypothesis import strategies as st
 
 from firefly_bills_analyzer import cache
 from firefly_bills_analyzer.config import Config
-from firefly_bills_analyzer.fetcher import fetch_transactions
+from firefly_bills_analyzer.fetcher import fetch_deposits, fetch_transactions
 
 
 def _make_config(**overrides: object) -> Config:
@@ -39,6 +41,9 @@ def _make_config(**overrides: object) -> Config:
         cache_ttl_bills=3600,
         cache_ttl_transactions=3600,
         cache_ttl_payees=86400,
+        income_accounts=[],
+        income_min_occurrences=3,
+        income_variance_tolerance=0.10,
     )
     base.update(overrides)
     return Config(**base)  # type: ignore[arg-type]
@@ -265,3 +270,236 @@ def test_cache_for_different_window_is_ignored(tmp_path: Path) -> None:
             fetch_transactions(config)
 
     mock_client_cls.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Deposit fetch layer (TASK-025, FR-39/FR-40, UC12)
+# ---------------------------------------------------------------------------
+
+
+def _deposit(destination_name: str, source_name: str = "Employer") -> TransactionRead:
+    return TransactionRead(
+        date="2026-01-01",
+        amount="2500.00",
+        destination_name=destination_name,
+        source_name=source_name,
+    )
+
+
+def test_no_income_accounts_returns_empty_without_constructing_client(tmp_path: Path) -> None:
+    """FR-40b/NFR-14: an empty income_accounts list disables the feature
+    entirely, without touching the network."""
+    with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
+        result = fetch_deposits(_make_config(income_accounts=[], cache_dir=str(tmp_path)))
+
+    assert result == []
+    mock_client_cls.assert_not_called()
+
+
+def test_fetches_deposits_for_configured_window(tmp_path: Path) -> None:
+    """FR-40a: same window derivation as fetch_transactions()."""
+    with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
+        mock_client_cls.return_value.get_deposit_transactions.return_value = []
+        with patch("firefly_bills_analyzer.fetcher._today", return_value=date(2026, 7, 10)):
+            fetch_deposits(
+                _make_config(
+                    income_accounts=["Salary Checking"],
+                    lookback_months=24,
+                    cache_dir=str(tmp_path),
+                )
+            )
+
+    args, kwargs = mock_client_cls.return_value.get_deposit_transactions.call_args
+    assert args == ("2024-07-10", "2026-07-10")
+    assert callable(kwargs["on_page"])
+
+
+def test_on_page_callback_drives_progress_bar_for_deposits(tmp_path: Path) -> None:
+    def fake_get_deposit_transactions(start: str, end: str, on_page: object = None) -> list[object]:
+        assert callable(on_page)
+        on_page(1, 2)  # type: ignore[operator]
+        on_page(2, 2)  # type: ignore[operator]
+        return []
+
+    with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
+        mock_client_cls.return_value.get_deposit_transactions.side_effect = (
+            fake_get_deposit_transactions
+        )
+        with patch("firefly_bills_analyzer.fetcher.tqdm") as mock_tqdm:
+            bar = mock_tqdm.return_value.__enter__.return_value
+            bar.total = None
+            fetch_deposits(
+                _make_config(income_accounts=["Salary Checking"], cache_dir=str(tmp_path))
+            )
+
+    assert bar.total == 2
+    assert bar.update.call_count == 2
+
+
+def test_deposits_to_other_accounts_are_discarded(tmp_path: Path) -> None:
+    """FR-40c: only records whose destination_name is a configured income
+    account survive."""
+    deposits = [_deposit("Salary Checking"), _deposit("Some Other Account")]
+    with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
+        mock_client_cls.return_value.get_deposit_transactions.return_value = deposits
+        result = fetch_deposits(
+            _make_config(income_accounts=["Salary Checking"], cache_dir=str(tmp_path))
+        )
+
+    assert result == [_deposit("Salary Checking")]
+
+
+def test_connection_error_exits_with_human_readable_message_for_deposits(
+    tmp_path: Path,
+) -> None:
+    with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
+        mock_client_cls.return_value.get_deposit_transactions.side_effect = FireflyConnectionError(
+            "GET /api/v1/transactions failed: connection refused"
+        )
+        with pytest.raises(SystemExit) as exc_info:
+            fetch_deposits(
+                _make_config(income_accounts=["Salary Checking"], cache_dir=str(tmp_path))
+            )
+
+    assert exc_info.value.code != 0
+    assert "connection refused" in str(exc_info.value)
+
+
+def test_deposits_cache_hit_skips_api_call(tmp_path: Path) -> None:
+    with patch("firefly_bills_analyzer.fetcher._today", return_value=date(2026, 7, 10)):
+        config = _make_config(
+            income_accounts=["Salary Checking"], lookback_months=24, cache_dir=str(tmp_path)
+        )
+        cache.write(
+            "deposits",
+            {
+                "start": "2024-07-10",
+                "end": "2026-07-10",
+                "transactions": [_deposit("Salary Checking")],
+            },
+            tmp_path,
+        )
+
+        with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
+            result = fetch_deposits(config)
+
+    mock_client_cls.assert_not_called()
+    assert result == [_deposit("Salary Checking")]
+
+
+def test_deposits_cache_miss_fetches_live_and_writes_own_cache_key(tmp_path: Path) -> None:
+    expected = [_deposit("Salary Checking")]
+    with patch("firefly_bills_analyzer.fetcher._today", return_value=date(2026, 7, 10)):
+        config = _make_config(
+            income_accounts=["Salary Checking"], lookback_months=24, cache_dir=str(tmp_path)
+        )
+        with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
+            mock_client_cls.return_value.get_deposit_transactions.return_value = expected
+            result = fetch_deposits(config)
+
+    assert result == expected
+    mock_client_cls.assert_called_once()
+    cached_deposits = cache.read("deposits", config.cache_ttl_transactions, tmp_path)
+    assert cached_deposits == {"start": "2024-07-10", "end": "2026-07-10", "transactions": expected}
+    # Distinct cache key: the transactions entry must remain untouched.
+    assert cache.read("transactions", config.cache_ttl_transactions, tmp_path) is None
+
+
+def test_deposits_cache_for_different_window_is_ignored(tmp_path: Path) -> None:
+    with patch("firefly_bills_analyzer.fetcher._today", return_value=date(2026, 7, 10)):
+        config = _make_config(
+            income_accounts=["Salary Checking"], lookback_months=24, cache_dir=str(tmp_path)
+        )
+        cache.write(
+            "deposits",
+            {"start": "2025-01-01", "end": "2025-12-31", "transactions": []},
+            tmp_path,
+        )
+
+        with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
+            mock_client_cls.return_value.get_deposit_transactions.return_value = []
+            fetch_deposits(config)
+
+    mock_client_cls.assert_called_once()
+
+
+def test_fetch_deposits_calls_get_deposit_transactions_only(tmp_path: Path) -> None:
+    """Mirrors the withdrawal-only guarantee for fetch_transactions(): the
+    deposit path must call get_deposit_transactions() and no other client
+    method."""
+    with patch("firefly_bills_analyzer.fetcher.FireflyClient", autospec=True) as mock_client_cls:
+        mock_client = mock_client_cls.return_value
+        mock_client.get_deposit_transactions.return_value = []
+        fetch_deposits(_make_config(income_accounts=["Salary Checking"], cache_dir=str(tmp_path)))
+
+    mock_client.get_deposit_transactions.assert_called_once()
+    other_transaction_methods = [
+        name
+        for name in dir(FireflyClient)
+        if "transaction" in name.lower() and name != "get_deposit_transactions"
+    ]
+    assert other_transaction_methods, (
+        "expected at least one sibling transaction-fetching method on FireflyClient "
+        "to assert was not called; if none exist, this list needs revisiting"
+    )
+    for method_name in other_transaction_methods:
+        getattr(mock_client, method_name).assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# AC-8: Hypothesis property test for income-account filtering
+# ---------------------------------------------------------------------------
+
+ACCOUNT_NAMES = ["Salary Checking", "Freelance Account", "Groceries", "Rent"]
+
+destination_or_none = st.one_of(st.none(), st.sampled_from(ACCOUNT_NAMES))
+deposits_strategy = st.lists(
+    destination_or_none.map(
+        lambda name: TransactionRead(
+            date="2026-01-01",
+            amount="1.00",
+            destination_name=name,
+            source_name="Employer",
+        )
+    ),
+    max_size=20,
+)
+income_accounts_strategy = st.lists(st.sampled_from(ACCOUNT_NAMES), max_size=4, unique=True)
+
+
+@given(deposits_strategy, income_accounts_strategy)
+def test_every_result_record_matches_an_income_account(
+    tmp_path_factory: pytest.TempPathFactory,
+    deposits: list[TransactionRead],
+    income_accounts: list[str],
+) -> None:
+    # A fresh cache directory per example: fetch_deposits() caches under a
+    # window-keyed entry that is otherwise indistinguishable across examples
+    # sharing the same (unmocked) "today", which would let one example's
+    # cached result leak into the next.
+    cache_dir = tmp_path_factory.mktemp("cache")
+    with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
+        mock_client_cls.return_value.get_deposit_transactions.return_value = deposits
+        result = fetch_deposits(
+            _make_config(income_accounts=income_accounts, cache_dir=str(cache_dir))
+        )
+
+    for record in result:
+        assert record["destination_name"] in income_accounts
+
+
+@given(deposits_strategy, income_accounts_strategy)
+def test_no_matching_record_is_dropped(
+    tmp_path_factory: pytest.TempPathFactory,
+    deposits: list[TransactionRead],
+    income_accounts: list[str],
+) -> None:
+    cache_dir = tmp_path_factory.mktemp("cache")
+    with patch("firefly_bills_analyzer.fetcher.FireflyClient") as mock_client_cls:
+        mock_client_cls.return_value.get_deposit_transactions.return_value = deposits
+        result = fetch_deposits(
+            _make_config(income_accounts=income_accounts, cache_dir=str(cache_dir))
+        )
+
+    expected_matches = [d for d in deposits if d["destination_name"] in income_accounts]
+    assert result == expected_matches

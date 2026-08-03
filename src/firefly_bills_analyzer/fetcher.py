@@ -88,3 +88,67 @@ def fetch_transactions(config: Config) -> list[TransactionRead]:
         cache_dir,
     )
     return cast(list[TransactionRead], transactions)
+
+
+def fetch_deposits(config: Config) -> list[TransactionRead]:
+    """Fetch deposits landing on the configured income accounts (UC12).
+
+    Parameters
+    ----------
+    config:
+        Runtime configuration; ``income_accounts`` names the asset accounts
+        whose incoming deposits are of interest. An empty list disables the
+        feature entirely (FR-40b, NFR-14): no client is constructed and no
+        network or cache access happens. ``lookback_months`` sets the window
+        start, same as :func:`fetch_transactions`.
+
+    Returns
+    -------
+    list[TransactionRead]
+        Deposit transaction splits whose ``destination_name`` is one of
+        ``config.income_accounts`` (FR-40c).
+    """
+    if not config.income_accounts:
+        return []
+
+    end = _today()
+    start = _subtract_months(end, config.lookback_months)
+    start_str = start.strftime("%Y-%m-%d")
+    end_str = end.strftime("%Y-%m-%d")
+
+    cache_dir = Path(config.cache_dir)
+    cached = cache.read("deposits", config.cache_ttl_transactions, cache_dir)
+    if cached is not None and cached["start"] == start_str and cached["end"] == end_str:
+        logger.debug(
+            "Using cached deposits for %s..%s (%d transaction(s))",
+            start_str,
+            end_str,
+            len(cached["transactions"]),
+        )
+        return cast(list[TransactionRead], cached["transactions"])
+
+    client = FireflyClient(config.firefly_url, config.firefly_token)
+
+    logger.debug("Calling get_deposit_transactions(%s, %s)", start_str, end_str)
+    try:
+        with tqdm(desc="Fetching deposits", unit="page") as bar:
+
+            def on_page(page: int, total_pages: int) -> None:
+                if bar.total is None:
+                    bar.total = total_pages
+                bar.update(1)
+
+            deposits = client.get_deposit_transactions(start_str, end_str, on_page=on_page)
+    except FireflyConnectionError as exc:
+        logger.debug("get_deposit_transactions failed: %s", exc)
+        raise SystemExit(f"Could not fetch transactions from Firefly III: {exc}") from exc
+
+    logger.debug("get_deposit_transactions succeeded: %d transaction(s)", len(deposits))
+    deposits = [d for d in deposits if d.get("destination_name") in config.income_accounts]
+
+    cache.write(
+        "deposits",
+        {"start": start_str, "end": end_str, "transactions": deposits},
+        cache_dir,
+    )
+    return deposits

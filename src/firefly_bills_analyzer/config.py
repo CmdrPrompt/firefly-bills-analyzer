@@ -47,6 +47,10 @@ class Config:
     cache_ttl_bills: int
     cache_ttl_transactions: int
     cache_ttl_payees: int
+    # Income (UC12)
+    income_accounts: list[str]
+    income_min_occurrences: int
+    income_variance_tolerance: float
 
     @classmethod
     def from_env(cls) -> Config:
@@ -93,4 +97,7 @@ class Config:
             cache_ttl_bills=int(os.environ.get("CACHE_TTL_BILLS", "3600")),
             cache_ttl_transactions=int(os.environ.get("CACHE_TTL_TRANSACTIONS", "3600")),
             cache_ttl_payees=int(os.environ.get("CACHE_TTL_PAYEES", "86400")),
+            income_accounts=_csv("INCOME_ACCOUNTS"),
+            income_min_occurrences=int(os.environ.get("INCOME_MIN_OCCURRENCES", "3")),
+            income_variance_tolerance=float(os.environ.get("INCOME_VARIANCE_TOLERANCE", "0.10")),
         )

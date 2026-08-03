@@ -52,6 +52,9 @@ def _make_config(**overrides: object) -> Config:
         cache_ttl_bills=3600,
         cache_ttl_transactions=3600,
         cache_ttl_payees=86400,
+        income_accounts=[],
+        income_min_occurrences=3,
+        income_variance_tolerance=0.10,
     )
     base.update(overrides)
     return Config(**base)  # type: ignore[arg-type]
