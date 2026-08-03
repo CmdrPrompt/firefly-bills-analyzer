@@ -471,6 +471,7 @@ one_off_purchase_strategy = st.builds(
     source_account=st.one_of(
         st.none(), st.text(min_size=1, max_size=20).filter(lambda s: s.strip() != "")
     ),
+    threshold=st.floats(min_value=0.0, max_value=100_000, allow_nan=False, allow_infinity=False),
 )
 
 
@@ -498,9 +499,15 @@ def _one_off_purchase(
     payee: str | None = "Furniture Shop",
     category: str | None = "Household",
     source_account: str | None = "Checking",
+    threshold: float = 2000.0,
 ) -> OneOffPurchase:
     return OneOffPurchase(
-        date=date, amount=amount, payee=payee, category=category, source_account=source_account
+        date=date,
+        amount=amount,
+        payee=payee,
+        category=category,
+        source_account=source_account,
+        threshold=threshold,
     )
 
 
@@ -508,6 +515,7 @@ def _household_spend_result(
     records: list[HouseholdSpendRecord] | None = None,
     one_off_purchases: list[OneOffPurchase] | None = None,
     unmatched_categories: list[str] | None = None,
+    unmatched_threshold_overrides: list[str] | None = None,
     include_tag_count: int = 0,
     exclude_tag_count: int = 0,
 ) -> HouseholdSpendResult:
@@ -515,6 +523,7 @@ def _household_spend_result(
         records=records or [],
         one_off_purchases=one_off_purchases or [],
         unmatched_categories=unmatched_categories or [],
+        unmatched_threshold_overrides=unmatched_threshold_overrides or [],
         include_tag_count=include_tag_count,
         exclude_tag_count=exclude_tag_count,
     )
@@ -602,6 +611,34 @@ class TestOneOffPurchaseRows:
         assert one_off_rows[0]["category_name"] == "Household"
         assert one_off_rows[0]["source_account_name"] == "Checking"
 
+    def test_one_off_row_carries_the_threshold_that_excluded_it(self, tmp_path: Path) -> None:
+        """FR-47f/FR-48c/FR-51c: the per-category (or default) threshold that
+        excluded the purchase is exported alongside it."""
+        path = tmp_path / "out.csv"
+        export_household_spend(
+            _household_spend_result(one_off_purchases=[_one_off_purchase(threshold=6000.0)]),
+            "csv",
+            path,
+        )
+
+        with path.open(newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+
+        one_off_rows = [r for r in rows if r["record_type"] == "one-off"]
+        assert one_off_rows[0]["threshold"] == "6000.0"
+
+    def test_one_off_row_carries_the_threshold_in_json(self, tmp_path: Path) -> None:
+        path = tmp_path / "out.json"
+        export_household_spend(
+            _household_spend_result(one_off_purchases=[_one_off_purchase(threshold=6000.0)]),
+            "json",
+            path,
+        )
+
+        data = json.loads(path.read_text(encoding="utf-8"))
+        one_off_rows = [r for r in data if r["record_type"] == "one-off"]
+        assert one_off_rows[0]["threshold"] == 6000.0
+
     def test_household_spend_and_one_off_rows_are_distinguishable(self, tmp_path: Path) -> None:
         """FR-51c: distinguishable via `record_type`, not via which fields
         are empty."""
@@ -647,6 +684,39 @@ class TestUnmatchedCategoriesAndTagCounts:
         unmatched_rows = [r for r in data if r["record_type"] == "unmatched-category"]
         assert len(unmatched_rows) == 1
         assert unmatched_rows[0]["category_name"] == "Home Improvement"
+
+    def test_unmatched_threshold_override_appears_as_its_own_row(self, tmp_path: Path) -> None:
+        """FR-47f: reported on the same terms FR-50 reports an unmatched
+        household spend category — its own `record_type`, distinct from
+        `unmatched-category`."""
+        path = tmp_path / "out.csv"
+        export_household_spend(
+            _household_spend_result(unmatched_threshold_overrides=["Nonexistent Category"]),
+            "csv",
+            path,
+        )
+
+        with path.open(newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+
+        unmatched_rows = [r for r in rows if r["record_type"] == "unmatched-threshold-override"]
+        assert len(unmatched_rows) == 1
+        assert unmatched_rows[0]["category_name"] == "Nonexistent Category"
+
+    def test_unmatched_threshold_override_appears_as_its_own_row_in_json(
+        self, tmp_path: Path
+    ) -> None:
+        path = tmp_path / "out.json"
+        export_household_spend(
+            _household_spend_result(unmatched_threshold_overrides=["Nonexistent Category"]),
+            "json",
+            path,
+        )
+
+        data = json.loads(path.read_text(encoding="utf-8"))
+        unmatched_rows = [r for r in data if r["record_type"] == "unmatched-threshold-override"]
+        assert len(unmatched_rows) == 1
+        assert unmatched_rows[0]["category_name"] == "Nonexistent Category"
 
     def test_tag_counts_appear_in_a_row(self, tmp_path: Path) -> None:
         path = tmp_path / "out.csv"
@@ -706,6 +776,7 @@ class TestHouseholdSpendFieldDerivation:
             "date",
             "amount",
             "destination_name",
+            "threshold",
             "include_tag_count",
             "exclude_tag_count",
         ):
@@ -776,3 +847,6 @@ def test_household_spend_one_off_csv_round_trip_preserves_purchases(
             assert row["source_account_name"] == expected_source_account
             assert row["date"] == purchase.date
             assert math.isclose(float(row["amount"]), purchase.amount, rel_tol=1e-9, abs_tol=1e-9)
+            assert math.isclose(
+                float(row["threshold"]), purchase.threshold, rel_tol=1e-9, abs_tol=1e-9
+            )

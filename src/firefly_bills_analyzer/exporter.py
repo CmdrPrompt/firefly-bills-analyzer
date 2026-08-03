@@ -187,6 +187,13 @@ def _unmatched_category_row(category: str) -> dict[str, Any]:
     return {"record_type": "unmatched-category", "category_name": category}
 
 
+def _unmatched_threshold_override_row(category: str) -> dict[str, Any]:
+    """A threshold override category matching no household spend category
+    (FR-47f), reported on the same terms `_unmatched_category_row()` reports
+    an unmatched household spend category (FR-50)."""
+    return {"record_type": "unmatched-threshold-override", "category_name": category}
+
+
 def _tag_counts_row(include_tag_count: int, exclude_tag_count: int) -> dict[str, Any]:
     """The include/exclude tag correction counts (FR-48f)."""
     return {
@@ -212,6 +219,7 @@ def export_household_spend(result: HouseholdSpendResult, fmt: str, path: str | P
     rows: list[dict[str, Any]] = [_household_spend_record_row(r) for r in result.records]
     rows += [_one_off_purchase_row(p) for p in result.one_off_purchases]
     rows += [_unmatched_category_row(c) for c in result.unmatched_categories]
+    rows += [_unmatched_threshold_override_row(c) for c in result.unmatched_threshold_overrides]
     rows.append(_tag_counts_row(result.include_tag_count, result.exclude_tag_count))
     if fmt == "csv":
         _export_household_spend_csv(rows, Path(path))

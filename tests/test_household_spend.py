@@ -12,7 +12,12 @@ from hypothesis import strategies as st
 
 from firefly_bills_analyzer.analyzer import pattern_member_transactions
 from firefly_bills_analyzer.config import Config
-from firefly_bills_analyzer.household_spend import _today, aggregate_household_spend
+from firefly_bills_analyzer.household_spend import (
+    _split_one_off_purchases,
+    _today,
+    _unmatched_threshold_overrides,
+    aggregate_household_spend,
+)
 
 
 def _make_config(**overrides: object) -> Config:
@@ -48,6 +53,7 @@ def _make_config(**overrides: object) -> Config:
         income_variance_tolerance=0.10,
         household_spend_categories=["Groceries"],
         household_spend_one_off_threshold=2000.0,
+        household_spend_one_off_thresholds={},
         household_spend_min_months=3,
         household_spend_include_tag=None,
         household_spend_exclude_tag=None,
@@ -359,6 +365,141 @@ def test_unmatched_category_is_reported() -> None:
         result = aggregate_household_spend(withdrawals, config)
 
     assert result.unmatched_categories == ["Clothing"]
+
+
+# ---------------------------------------------------------------------------
+# TASK-033: per-category one-off purchase thresholds (FR-47e, FR-47f, FR-48c)
+# ---------------------------------------------------------------------------
+
+
+def test_split_one_off_purchases_uses_category_override_threshold() -> None:
+    """A withdrawal above the default but at/under its category's override
+    threshold is not set aside as a one-off purchase (FR-47e)."""
+    config = _make_config(
+        household_spend_one_off_threshold=2000.0,
+        household_spend_one_off_thresholds={"Groceries": 3000.0},
+    )
+    withdrawals = [_withdrawal(date(2026, 6, 10), "2500.00", "Groceries")]
+
+    one_off_purchases, monthly_input = _split_one_off_purchases(withdrawals, config)
+
+    assert one_off_purchases == []
+    assert monthly_input == withdrawals
+
+
+def test_split_one_off_purchases_still_excludes_above_the_category_override() -> None:
+    config = _make_config(
+        household_spend_one_off_threshold=2000.0,
+        household_spend_one_off_thresholds={"Groceries": 3000.0},
+    )
+    withdrawals = [_withdrawal(date(2026, 6, 10), "3500.00", "Groceries")]
+
+    one_off_purchases, monthly_input = _split_one_off_purchases(withdrawals, config)
+
+    assert monthly_input == []
+    assert len(one_off_purchases) == 1
+    assert one_off_purchases[0].amount == pytest.approx(3500.0)
+
+
+def test_split_one_off_purchases_falls_back_to_default_for_unconfigured_category() -> None:
+    """A category with no entry in `household_spend_one_off_thresholds`
+    keeps using the plain default threshold, unchanged from prior behavior."""
+    config = _make_config(
+        household_spend_categories=["Groceries", "Transport"],
+        household_spend_one_off_threshold=2000.0,
+        household_spend_one_off_thresholds={"Groceries": 3000.0},
+    )
+    withdrawals = [_withdrawal(date(2026, 6, 10), "2500.00", "Transport")]
+
+    one_off_purchases, monthly_input = _split_one_off_purchases(withdrawals, config)
+
+    assert monthly_input == []
+    assert len(one_off_purchases) == 1
+    assert one_off_purchases[0].amount == pytest.approx(2500.0)
+
+
+def test_one_off_purchase_records_the_threshold_that_excluded_it() -> None:
+    config = _make_config(
+        household_spend_categories=["Groceries", "Transport"],
+        household_spend_one_off_threshold=2000.0,
+        household_spend_one_off_thresholds={"Transport": 6000.0},
+    )
+    withdrawals = [
+        _withdrawal(date(2026, 6, 10), "8000.00", "Transport", destination_name="Car Workshop")
+    ]
+
+    one_off_purchases, _ = _split_one_off_purchases(withdrawals, config)
+
+    assert len(one_off_purchases) == 1
+    assert one_off_purchases[0].threshold == pytest.approx(6000.0)
+
+
+def test_one_off_purchase_records_the_default_threshold_when_no_override_applies() -> None:
+    config = _make_config(
+        household_spend_categories=["Groceries"],
+        household_spend_one_off_threshold=2000.0,
+        household_spend_one_off_thresholds={},
+    )
+    withdrawals = [_withdrawal(date(2026, 6, 10), "15000.00", "Groceries")]
+
+    one_off_purchases, _ = _split_one_off_purchases(withdrawals, config)
+
+    assert len(one_off_purchases) == 1
+    assert one_off_purchases[0].threshold == pytest.approx(2000.0)
+
+
+def test_large_purchase_reported_as_one_off_via_aggregate_carries_its_threshold() -> None:
+    """Integration-level: the threshold set by `_split_one_off_purchases`
+    reaches `aggregate_household_spend`'s result unchanged."""
+    config = _make_config(
+        household_spend_categories=["Groceries"],
+        household_spend_one_off_threshold=2000.0,
+        household_spend_one_off_thresholds={"Groceries": 3000.0},
+    )
+    withdrawals = [
+        _withdrawal(date(2026, 6, 10), "15000.00", "Groceries", destination_name="Furniture Store")
+    ]
+
+    with patch("firefly_bills_analyzer.household_spend._today", return_value=date(2026, 12, 31)):
+        result = aggregate_household_spend(withdrawals, config)
+
+    assert len(result.one_off_purchases) == 1
+    assert result.one_off_purchases[0].threshold == pytest.approx(3000.0)
+
+
+def test_unmatched_threshold_overrides_reports_category_absent_from_categories() -> None:
+    """FR-47f: a category named in `household_spend_one_off_thresholds` but
+    not in `household_spend_categories` is reported, on the same terms
+    FR-50 reports an unmatched household spend category."""
+    config = _make_config(
+        household_spend_categories=["Groceries"],
+        household_spend_one_off_thresholds={"Groceries": 3000.0, "Nonexistent Category": 5000.0},
+    )
+
+    assert _unmatched_threshold_overrides(config) == ["Nonexistent Category"]
+
+
+def test_unmatched_threshold_overrides_empty_when_every_override_matches() -> None:
+    config = _make_config(
+        household_spend_categories=["Groceries", "Transport"],
+        household_spend_one_off_thresholds={"Groceries": 3000.0, "Transport": 6000.0},
+    )
+
+    assert _unmatched_threshold_overrides(config) == []
+
+
+def test_aggregate_household_spend_reports_unmatched_threshold_override() -> None:
+    config = _make_config(
+        household_spend_categories=["Groceries"],
+        household_spend_min_months=1,
+        household_spend_one_off_thresholds={"Nonexistent Category": 5000.0},
+    )
+    withdrawals = [_withdrawal(date(2026, 6, 5), "300.00", "Groceries")]
+
+    with patch("firefly_bills_analyzer.household_spend._today", return_value=date(2026, 12, 31)):
+        result = aggregate_household_spend(withdrawals, config)
+
+    assert result.unmatched_threshold_overrides == ["Nonexistent Category"]
 
 
 # ---------------------------------------------------------------------------

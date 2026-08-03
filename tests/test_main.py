@@ -14,9 +14,10 @@ import pytest
 from firefly_python_api import TransactionRead
 
 from firefly_bills_analyzer import cache as cache_module
-from firefly_bills_analyzer.__main__ import _format_suggestion, main
+from firefly_bills_analyzer.__main__ import _format_suggestion, _print_household_spend, main
 from firefly_bills_analyzer.analyzer import RecurringPattern
 from firefly_bills_analyzer.bills_creator import BillOutcome
+from firefly_bills_analyzer.household_spend import HouseholdSpendResult
 
 BASE_ENV = {"FIREFLY_URL": "https://firefly.example.com", "FIREFLY_TOKEN": "tok"}
 
@@ -329,6 +330,24 @@ class TestBillOutcomesPrinted:
 
         assert code == 0
         assert "Netflix" in capsys.readouterr().out
+
+
+class TestPrintHouseholdSpend:
+    def test_unmatched_threshold_override_is_printed(self, capsys: pytest.CaptureFixture) -> None:
+        """FR-47f: an override for a category outside HOUSEHOLD_SPEND_CATEGORIES
+        is surfaced in the CLI, mirroring FR-50's unmatched-category printing."""
+        result = HouseholdSpendResult(
+            records=[],
+            one_off_purchases=[],
+            unmatched_categories=[],
+            unmatched_threshold_overrides=["Nöjen"],
+            include_tag_count=0,
+            exclude_tag_count=0,
+        )
+
+        _print_household_spend(result)
+
+        assert "unmatched threshold override: Nöjen" in capsys.readouterr().out
 
 
 def test_no_network_calls_made(monkeypatch: pytest.MonkeyPatch) -> None:
