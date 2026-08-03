@@ -2,7 +2,7 @@
 
 ## Status
 
-in-progress
+done
 
 ## Requirements
 
@@ -70,61 +70,61 @@ configured and `DRY_RUN` unset issues no additional creation call.
 
 ## Acceptance criteria (Gherkin)
 
-- [ ] Scenario: Income is exported to its own file
+- [x] Scenario: Income is exported to its own file
       Given a run with one detected income source and `EXPORT_FORMAT=csv`
       When the run completes
       Then two files are written, the pattern export and an income export, and
       the income file contains one row with `status` `ok`
 
-- [ ] Scenario: JSON format is honored
+- [x] Scenario: JSON format is honored
       Given the same run with `EXPORT_FORMAT=json`
       When the run completes
       Then the income export is valid JSON with the same field names
 
-- [ ] Scenario: No export when the format is none
+- [x] Scenario: No export when the format is none
       Given `EXPORT_FORMAT=none` and a detected income source
       When the run completes
       Then no income file is written and the CLI still displays the income source
 
-- [ ] Scenario: No export when income detection is disabled
+- [x] Scenario: No export when income detection is disabled
       Given `INCOME_ACCOUNTS` empty and `EXPORT_FORMAT=csv`
       When the run completes
       Then only the pattern export is written
 
-- [ ] Scenario: An ambiguous account appears as a row
+- [x] Scenario: An ambiguous account appears as a row
       Given an income account with two qualifying payers
       When the run completes
       Then the income export contains a row for that account with `status`
       `ambiguous`, an empty observed net income, and both payers named
 
-- [ ] Scenario: An account with no qualifying candidate appears as a row
+- [x] Scenario: An account with no qualifying candidate appears as a row
       Given an income account whose only candidate is quarterly
       When the run completes
       Then the income export contains a row for that account with `status`
       `no-qualifying-candidate`
 
-- [ ] Scenario: The written path is reported
+- [x] Scenario: The written path is reported
       Given a completed income export
       When the run finishes
       Then the income file path is printed, on the same terms as FR-31
 
-- [ ] Scenario: Income is displayed before the review flow
+- [x] Scenario: Income is displayed before the review flow
       Given a run with a detected income source and pending suggestions
       When the CLI runs
       Then the income block is printed before the first suggestion prompt
 
-- [ ] Scenario: Nothing is created in Firefly III from the income path
+- [x] Scenario: Nothing is created in Firefly III from the income path
       Given a run with income accounts configured and `DRY_RUN` unset
       When the run completes
       Then no bill-creation call is issued beyond those the approved
       withdrawal suggestions produce
 
-- [ ] Scenario: A new field flows through without an exporter change
+- [x] Scenario: A new field flows through without an exporter change
       Given a field added to `IncomeSource`
       When the income export runs
       Then the new field appears in the output without editing the field list
 
-- [ ] `make lint && make test` pass with coverage >= the task-start baseline
+- [x] `make lint && make test` pass with coverage >= the task-start baseline
 
 ## Out of scope
 
@@ -173,5 +173,5 @@ side's own call) even with income accounts configured and `DRY_RUN` unset.
 - `CHANGELOG.md` - added a behavior-first entry for this task
 - `docs/tasks/TASK-027-income-export-and-display.md` - Completion section
 **Branch:** `git checkout task/027-income-export-and-display`
-**Stage:** `src/firefly_bills_analyzer/exporter.py src/firefly_bills_analyzer/__main__.py tests/test_exporter.py CHANGELOG.md docs/tasks/TASK-027-income-export-and-display.md`
+**Stage:** `git add src/firefly_bills_analyzer/exporter.py src/firefly_bills_analyzer/__main__.py tests/test_exporter.py CHANGELOG.md docs/tasks/TASK-027-income-export-and-display.md`
 **Commit:** `git commit -m "Export and display detected income sources and issue accounts (TASK-027)"`
