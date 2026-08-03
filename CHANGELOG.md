@@ -76,6 +76,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   issues no request of its own to Firefly III. (FR-47a-FR-47d, FR-48a-g,
   FR-49a-e, FR-50, TASK-028)
 
+- Measured household spend figures, one-off purchases, unmatched categories,
+  and the include/exclude tag correction counts are now written to their own
+  `firefly-household-spend-*` file (CSV or JSON, matching `EXPORT_FORMAT`)
+  alongside the pattern and income exports, and printed to the CLI before the
+  recurring payment review flow. Household spend rows and one-off purchase
+  rows share the file but are distinguished by a `record_type` column rather
+  than by which fields happen to be empty, and a record with fewer than
+  `HOUSEHOLD_SPEND_MIN_MONTHS` complete months exports with its month count
+  and an empty median rather than a fabricated figure. No file is written
+  when household spend measurement is disabled or `EXPORT_FORMAT` is `none`.
+  (FR-51a, FR-51b, FR-51c, FR-51d, FR-52, TASK-029)
+
 - Detected income sources, and the income accounts an income source could
   not be resolved for, are now written to their own `firefly-income-*` file
   (CSV or JSON, matching `EXPORT_FORMAT`) alongside the recurring-payment

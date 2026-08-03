@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
@@ -12,7 +13,12 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from firefly_bills_analyzer.analyzer import RecurringPattern
-from firefly_bills_analyzer.exporter import export, export_income
+from firefly_bills_analyzer.exporter import export, export_household_spend, export_income
+from firefly_bills_analyzer.household_spend import (
+    HouseholdSpendRecord,
+    HouseholdSpendResult,
+    OneOffPurchase,
+)
 from firefly_bills_analyzer.income import IncomeAccountIssue, IncomeCandidateSummary, IncomeSource
 
 pattern_strategy = st.builds(
@@ -416,3 +422,357 @@ def test_income_json_round_trip_preserves_income_accounts(sources: list[IncomeSo
         export_income(sources, [], "json", path)
         data = json.loads(path.read_text(encoding="utf-8"))
         assert [obj["income_account"] for obj in data] == [s.income_account for s in sources]
+
+
+# ---------------------------------------------------------------------------
+# TASK-029: household spend export (FR-51a, FR-51b, FR-51c, FR-48f, FR-50).
+# `export_household_spend` writes household spend records, one-off purchases
+# (TASK-028's `aggregate_household_spend` output), unmatched categories, and
+# tag correction counts to a file separate from the pattern and income
+# exports.
+# ---------------------------------------------------------------------------
+
+household_spend_record_strategy = st.builds(
+    HouseholdSpendRecord,
+    source_account=st.one_of(
+        st.none(), st.text(min_size=1, max_size=20).filter(lambda s: s.strip() != "")
+    ),
+    category=st.one_of(
+        st.none(), st.text(min_size=1, max_size=20).filter(lambda s: s.strip() != "")
+    ),
+    month_count=st.integers(min_value=0, max_value=24),
+    monthly_totals=st.lists(
+        st.floats(min_value=0.0, max_value=10_000, allow_nan=False, allow_infinity=False),
+        min_size=0,
+        max_size=24,
+    ),
+    median=st.one_of(
+        st.none(), st.floats(min_value=0.0, max_value=10_000, allow_nan=False, allow_infinity=False)
+    ),
+    mean=st.one_of(
+        st.none(), st.floats(min_value=0.0, max_value=10_000, allow_nan=False, allow_infinity=False)
+    ),
+    minimum=st.one_of(
+        st.none(), st.floats(min_value=0.0, max_value=10_000, allow_nan=False, allow_infinity=False)
+    ),
+    maximum=st.one_of(
+        st.none(), st.floats(min_value=0.0, max_value=10_000, allow_nan=False, allow_infinity=False)
+    ),
+)
+
+one_off_purchase_strategy = st.builds(
+    OneOffPurchase,
+    date=st.just("2026-01-15"),
+    amount=st.floats(min_value=0.01, max_value=100_000, allow_nan=False, allow_infinity=False),
+    payee=st.one_of(st.none(), st.text(min_size=1, max_size=20).filter(lambda s: s.strip() != "")),
+    category=st.one_of(
+        st.none(), st.text(min_size=1, max_size=20).filter(lambda s: s.strip() != "")
+    ),
+    source_account=st.one_of(
+        st.none(), st.text(min_size=1, max_size=20).filter(lambda s: s.strip() != "")
+    ),
+)
+
+
+def _household_spend_record(
+    source_account: str | None = "Checking",
+    category: str | None = "Groceries",
+    month_count: int = 6,
+    median: float | None = 250.0,
+) -> HouseholdSpendRecord:
+    return HouseholdSpendRecord(
+        source_account=source_account,
+        category=category,
+        month_count=month_count,
+        monthly_totals=[250.0] * month_count,
+        median=median,
+        mean=250.0,
+        minimum=200.0,
+        maximum=300.0,
+    )
+
+
+def _one_off_purchase(
+    date: str = "2026-01-15",
+    amount: float = 1200.0,
+    payee: str | None = "Furniture Shop",
+    category: str | None = "Household",
+    source_account: str | None = "Checking",
+) -> OneOffPurchase:
+    return OneOffPurchase(
+        date=date, amount=amount, payee=payee, category=category, source_account=source_account
+    )
+
+
+def _household_spend_result(
+    records: list[HouseholdSpendRecord] | None = None,
+    one_off_purchases: list[OneOffPurchase] | None = None,
+    unmatched_categories: list[str] | None = None,
+    include_tag_count: int = 0,
+    exclude_tag_count: int = 0,
+) -> HouseholdSpendResult:
+    return HouseholdSpendResult(
+        records=records or [],
+        one_off_purchases=one_off_purchases or [],
+        unmatched_categories=unmatched_categories or [],
+        include_tag_count=include_tag_count,
+        exclude_tag_count=exclude_tag_count,
+    )
+
+
+class TestHouseholdSpendNoneFormat:
+    def test_is_a_noop(self, tmp_path: Path) -> None:
+        path = tmp_path / "out.csv"
+        result = _household_spend_result(records=[_household_spend_record()])
+        export_household_spend(result, "none", path)
+        assert not path.exists()
+
+
+class TestHouseholdSpendUnsupportedFormat:
+    def test_raises_value_error(self, tmp_path: Path) -> None:
+        import pytest
+
+        path = tmp_path / "out.xml"
+        with pytest.raises(ValueError, match="xml"):
+            export_household_spend(_household_spend_result(), "xml", path)
+
+
+class TestHouseholdSpendRecordRows:
+    def test_record_row_has_record_type_household_spend(self, tmp_path: Path) -> None:
+        path = tmp_path / "out.csv"
+        export_household_spend(
+            _household_spend_result(records=[_household_spend_record()]), "csv", path
+        )
+
+        with path.open(newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+
+        household_rows = [r for r in rows if r["record_type"] == "household-spend"]
+        assert len(household_rows) == 1
+        assert household_rows[0]["source_account_name"] == "Checking"
+        assert household_rows[0]["category_name"] == "Groceries"
+        assert household_rows[0]["median_monthly"] == "250.0"
+        assert household_rows[0]["complete_months"] == "6"
+
+    def test_median_is_empty_for_a_record_with_too_few_months(self, tmp_path: Path) -> None:
+        """FR-49e/AC-6: fewer than the minimum complete months yields a
+        record with its month count and an empty median."""
+        path = tmp_path / "out.csv"
+        export_household_spend(
+            _household_spend_result(records=[_household_spend_record(month_count=2, median=None)]),
+            "csv",
+            path,
+        )
+
+        with path.open(newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+
+        household_rows = [r for r in rows if r["record_type"] == "household-spend"]
+        assert household_rows[0]["median_monthly"] == ""
+        assert household_rows[0]["complete_months"] == "2"
+
+    def test_median_is_null_in_json_for_a_record_with_too_few_months(self, tmp_path: Path) -> None:
+        path = tmp_path / "out.json"
+        export_household_spend(
+            _household_spend_result(records=[_household_spend_record(month_count=2, median=None)]),
+            "json",
+            path,
+        )
+
+        data = json.loads(path.read_text(encoding="utf-8"))
+        household_rows = [r for r in data if r["record_type"] == "household-spend"]
+        assert household_rows[0]["median_monthly"] is None
+
+
+class TestOneOffPurchaseRows:
+    def test_one_off_row_has_record_type_one_off(self, tmp_path: Path) -> None:
+        path = tmp_path / "out.csv"
+        export_household_spend(
+            _household_spend_result(one_off_purchases=[_one_off_purchase()]), "csv", path
+        )
+
+        with path.open(newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+
+        one_off_rows = [r for r in rows if r["record_type"] == "one-off"]
+        assert len(one_off_rows) == 1
+        assert one_off_rows[0]["date"] == "2026-01-15"
+        assert one_off_rows[0]["amount"] == "1200.0"
+        assert one_off_rows[0]["destination_name"] == "Furniture Shop"
+        assert one_off_rows[0]["category_name"] == "Household"
+        assert one_off_rows[0]["source_account_name"] == "Checking"
+
+    def test_household_spend_and_one_off_rows_are_distinguishable(self, tmp_path: Path) -> None:
+        """FR-51c: distinguishable via `record_type`, not via which fields
+        are empty."""
+        path = tmp_path / "out.csv"
+        export_household_spend(
+            _household_spend_result(
+                records=[_household_spend_record()], one_off_purchases=[_one_off_purchase()]
+            ),
+            "csv",
+            path,
+        )
+
+        with path.open(newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+
+        record_types = {row["record_type"] for row in rows}
+        assert "household-spend" in record_types
+        assert "one-off" in record_types
+
+
+class TestUnmatchedCategoriesAndTagCounts:
+    def test_unmatched_category_appears_as_its_own_row(self, tmp_path: Path) -> None:
+        path = tmp_path / "out.csv"
+        export_household_spend(
+            _household_spend_result(unmatched_categories=["Home Improvement"]), "csv", path
+        )
+
+        with path.open(newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+
+        unmatched_rows = [r for r in rows if r["record_type"] == "unmatched-category"]
+        assert len(unmatched_rows) == 1
+        assert unmatched_rows[0]["category_name"] == "Home Improvement"
+
+    def test_unmatched_category_appears_as_its_own_row_in_json(self, tmp_path: Path) -> None:
+        path = tmp_path / "out.json"
+        export_household_spend(
+            _household_spend_result(unmatched_categories=["Home Improvement"]), "json", path
+        )
+
+        data = json.loads(path.read_text(encoding="utf-8"))
+
+        unmatched_rows = [r for r in data if r["record_type"] == "unmatched-category"]
+        assert len(unmatched_rows) == 1
+        assert unmatched_rows[0]["category_name"] == "Home Improvement"
+
+    def test_tag_counts_appear_in_a_row(self, tmp_path: Path) -> None:
+        path = tmp_path / "out.csv"
+        export_household_spend(
+            _household_spend_result(include_tag_count=2, exclude_tag_count=1), "csv", path
+        )
+
+        with path.open(newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+
+        tag_rows = [r for r in rows if r["record_type"] == "tag-counts"]
+        assert len(tag_rows) == 1
+        assert tag_rows[0]["include_tag_count"] == "2"
+        assert tag_rows[0]["exclude_tag_count"] == "1"
+
+    def test_tag_counts_appear_in_a_row_in_json(self, tmp_path: Path) -> None:
+        path = tmp_path / "out.json"
+        export_household_spend(
+            _household_spend_result(include_tag_count=2, exclude_tag_count=1), "json", path
+        )
+
+        data = json.loads(path.read_text(encoding="utf-8"))
+
+        tag_rows = [r for r in data if r["record_type"] == "tag-counts"]
+        assert len(tag_rows) == 1
+        assert tag_rows[0]["include_tag_count"] == 2
+        assert tag_rows[0]["exclude_tag_count"] == 1
+
+
+class TestHouseholdSpendFieldDerivation:
+    """The field list is derived from `HouseholdSpendRecord` and
+    `OneOffPurchase`'s own fields (excluding the internal `monthly_totals`),
+    matching how `_FIELDNAMES`/`_INCOME_FIELDNAMES` are derived, so a later
+    field addition flows through without an exporter change."""
+
+    def test_csv_header_excludes_internal_monthly_totals(self, tmp_path: Path) -> None:
+        path = tmp_path / "out.csv"
+        export_household_spend(
+            _household_spend_result(records=[_household_spend_record()]), "csv", path
+        )
+
+        with path.open(newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            fieldnames = reader.fieldnames
+
+        assert fieldnames is not None
+        assert "monthly_totals" not in fieldnames
+        assert "record_type" in fieldnames
+        for name in (
+            "source_account_name",
+            "category_name",
+            "median_monthly",
+            "mean_monthly",
+            "min_monthly",
+            "max_monthly",
+            "complete_months",
+            "date",
+            "amount",
+            "destination_name",
+            "include_tag_count",
+            "exclude_tag_count",
+        ):
+            assert name in fieldnames
+
+
+@given(st.lists(household_spend_record_strategy, min_size=0, max_size=10))
+def test_household_spend_csv_round_trip_preserves_records(
+    records: list[HouseholdSpendRecord],
+) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "out.csv"
+        export_household_spend(_household_spend_result(records=records), "csv", path)
+        with path.open(newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        household_rows = [r for r in rows if r["record_type"] == "household-spend"]
+        assert len(household_rows) == len(records)
+        for row, record in zip(household_rows, records, strict=True):
+            expected_category = record.category if record.category is not None else ""
+            assert row["category_name"] == expected_category
+            assert row["complete_months"] == str(record.month_count)
+            for csv_field, value in (
+                ("median_monthly", record.median),
+                ("mean_monthly", record.mean),
+                ("min_monthly", record.minimum),
+                ("max_monthly", record.maximum),
+            ):
+                if value is None:
+                    assert row[csv_field] == ""
+                else:
+                    assert math.isclose(float(row[csv_field]), value, rel_tol=1e-9, abs_tol=1e-9)
+
+
+@given(st.lists(household_spend_record_strategy, min_size=0, max_size=10))
+def test_household_spend_json_round_trip_preserves_records(
+    records: list[HouseholdSpendRecord],
+) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "out.json"
+        export_household_spend(_household_spend_result(records=records), "json", path)
+        data = json.loads(path.read_text(encoding="utf-8"))
+        household_rows = [r for r in data if r["record_type"] == "household-spend"]
+        assert len(household_rows) == len(records)
+        for row, record in zip(household_rows, records, strict=True):
+            assert row["category_name"] == record.category
+            assert row["median_monthly"] == record.median
+
+
+@given(st.lists(one_off_purchase_strategy, min_size=0, max_size=10))
+def test_household_spend_one_off_csv_round_trip_preserves_purchases(
+    purchases: list[OneOffPurchase],
+) -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "out.csv"
+        export_household_spend(_household_spend_result(one_off_purchases=purchases), "csv", path)
+        with path.open(newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        one_off_rows = [r for r in rows if r["record_type"] == "one-off"]
+        assert len(one_off_rows) == len(purchases)
+        for row, purchase in zip(one_off_rows, purchases, strict=True):
+            expected_payee = purchase.payee if purchase.payee is not None else ""
+            expected_category = purchase.category if purchase.category is not None else ""
+            expected_source_account = (
+                purchase.source_account if purchase.source_account is not None else ""
+            )
+            assert row["destination_name"] == expected_payee
+            assert row["category_name"] == expected_category
+            assert row["source_account_name"] == expected_source_account
+            assert row["date"] == purchase.date
+            assert math.isclose(float(row["amount"]), purchase.amount, rel_tol=1e-9, abs_tol=1e-9)
