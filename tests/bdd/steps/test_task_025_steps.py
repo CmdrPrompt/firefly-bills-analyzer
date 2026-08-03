@@ -50,6 +50,11 @@ def _make_config(**overrides: object) -> Config:
         income_accounts=[],
         income_min_occurrences=3,
         income_variance_tolerance=0.10,
+        household_spend_categories=[],
+        household_spend_one_off_threshold=2000.0,
+        household_spend_min_months=3,
+        household_spend_include_tag=None,
+        household_spend_exclude_tag=None,
     )
     base.update(overrides)
     return Config(**base)  # type: ignore[arg-type]

@@ -51,6 +51,12 @@ class Config:
     income_accounts: list[str]
     income_min_occurrences: int
     income_variance_tolerance: float
+    # Household spend (UC13)
+    household_spend_categories: list[str]
+    household_spend_one_off_threshold: float
+    household_spend_min_months: int
+    household_spend_include_tag: str | None
+    household_spend_exclude_tag: str | None
 
     @classmethod
     def from_env(cls) -> Config:
@@ -100,4 +106,13 @@ class Config:
             income_accounts=_csv("INCOME_ACCOUNTS"),
             income_min_occurrences=int(os.environ.get("INCOME_MIN_OCCURRENCES", "3")),
             income_variance_tolerance=float(os.environ.get("INCOME_VARIANCE_TOLERANCE", "0.10")),
+            household_spend_categories=_csv("HOUSEHOLD_SPEND_CATEGORIES"),
+            household_spend_one_off_threshold=float(
+                os.environ.get("HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD", "2000")
+            ),
+            household_spend_min_months=int(os.environ.get("HOUSEHOLD_SPEND_MIN_MONTHS", "3")),
+            household_spend_include_tag=os.environ.get("HOUSEHOLD_SPEND_INCLUDE_TAG", "").strip()
+            or None,
+            household_spend_exclude_tag=os.environ.get("HOUSEHOLD_SPEND_EXCLUDE_TAG", "").strip()
+            or None,
         )

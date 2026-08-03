@@ -2,7 +2,7 @@
 
 ## Status
 
-todo
+done
 
 ## Requirements
 
@@ -103,88 +103,88 @@ TASK-029 to display.
 
 **Feature files:** tests/bdd/features/TASK-028-household-spend-aggregation.feature
 
-- [ ] 1. Scenario: Groceries bought several times a month are measured
+- [x] 1. Scenario: Groceries bought several times a month are measured
       Given twelve complete months of grocery withdrawals from one account, several per month
       When household spend is aggregated
       Then one record is produced for that account and category, with a median of the twelve
       monthly totals
 
-- [ ] 2. Scenario: The figure is the median, not the mean
+- [x] 2. Scenario: The figure is the median, not the mean
       Given eleven monthly totals of 5000 and one of 20000
       When household spend is aggregated
       Then the reported median is 5000 and the reported mean is higher than it
 
-- [ ] 3. Scenario: A month with no spending counts as zero
+- [x] 3. Scenario: A month with no spending counts as zero
       Given nine months with grocery spending and three complete months with none
       When household spend is aggregated
       Then twelve monthly totals contribute to the median, three of them zero
 
-- [ ] 4. Scenario: A subscription already counted as a pattern is not counted twice
+- [x] 4. Scenario: A subscription already counted as a pattern is not counted twice
       Given a monthly subscription in a household spend category that UC2 identified as a pattern
       When household spend is aggregated
       Then none of that subscription's transactions appear in any monthly total
 
-- [ ] 5. Scenario: A large purchase is set aside
+- [x] 5. Scenario: A large purchase is set aside
       Given a single withdrawal of 15000 in a household category and a threshold of 2000
       When household spend is aggregated
       Then that withdrawal appears as a one-off purchase with its date, amount, payee, category,
       and source account, and contributes to no monthly total
 
-- [ ] 6. Scenario: Partial months at the window edges are dropped
+- [x] 6. Scenario: Partial months at the window edges are dropped
       Given an analysis window starting and ending mid-month
       When household spend is aggregated
       Then the first and last calendar months contribute no monthly total
 
-- [ ] 7. Scenario: The exclude tag removes a transaction from a household category
+- [x] 7. Scenario: The exclude tag removes a transaction from a household category
       Given a withdrawal in a household spend category carrying the exclude tag
       When household spend is aggregated
       Then it contributes to no monthly total and is counted in the exclude-tag count
 
-- [ ] 8. Scenario: The include tag admits a transaction from a personal category
+- [x] 8. Scenario: The include tag admits a transaction from a personal category
       Given a withdrawal in a category that is not a household spend category, carrying the
       include tag
       When household spend is aggregated
       Then it contributes to its account's monthly total and is counted in the include-tag count
 
-- [ ] 9. Scenario: The exclude tag beats the include tag
+- [x] 9. Scenario: The exclude tag beats the include tag
       Given a withdrawal carrying both override tags
       When household spend is aggregated
       Then it contributes to no monthly total
 
-- [ ] 10. Scenario: No tags configured leaves category behavior intact
+- [x] 10. Scenario: No tags configured leaves category behavior intact
       Given neither override tag is configured, and records with no `tags` field
       When household spend is aggregated
       Then qualification is by category alone and no error is raised
 
-- [ ] 11. Scenario: Too few complete months yields no median
+- [x] 11. Scenario: Too few complete months yields no median
       Given two complete months of data and `HOUSEHOLD_SPEND_MIN_MONTHS` of 3
       When household spend is aggregated
       Then the record carries a month count of 2 and no median figure
 
-- [ ] 12. Scenario: An unmatched category is reported
+- [x] 12. Scenario: An unmatched category is reported
       Given a configured category appearing on no transaction in the window
       When household spend is aggregated
       Then that category is reported as unmatched
 
-- [ ] 13. Scenario: Two accounts are measured independently
+- [x] 13. Scenario: Two accounts are measured independently
       Given household spending from two different source accounts
       When household spend is aggregated
       Then each account and category pair has its own record
 
-- [ ] 14. Scenario: The feature is inert when unconfigured
+- [x] 14. Scenario: The feature is inert when unconfigured
       Given `HOUSEHOLD_SPEND_CATEGORIES` is empty
       When the analysis runs
       Then no aggregation is performed, no request is issued, and the run's behavior is
       identical to today's
 
-- [ ] 15. Hypothesis property test: for any set of withdrawals, the sum of every monthly total
+- [x] 15. Hypothesis property test: for any set of withdrawals, the sum of every monthly total
       plus the sum of the one-off purchases plus the sum of the excluded transactions equals
       the sum of all qualifying withdrawals; no amount is created or lost by the partitioning
 
-- [ ] 16. Hypothesis property test: no transaction belonging to an identified pattern appears in
+- [x] 16. Hypothesis property test: no transaction belonging to an identified pattern appears in
       any monthly total, for any combination of categories and tags
 
-- [ ] `make bdd` and `make test` pass, with coverage >= the task-start baseline
+- [x] `make bdd` and `make test` pass, with coverage >= the task-start baseline
 
 ## Out of scope
 
@@ -198,17 +198,57 @@ TASK-029 to display.
 
 ## Blockers
 
-None for the category path. FR-48d's include tag and FR-48e's exclude tag
-require `tags` on `TransactionRead`, which is `firefly-python-api` REQ-012 /
-TASK-017 and not yet implemented. Implement the category path first and guard
-the tag reads so the module works either way; complete the tag scenarios once
-the vendored `lib/firefly-python-api` copy has been re-synced.
+None. `firefly-python-api` REQ-012 / TASK-017 (`tags` on `TransactionRead`)
+was already present in both the vendored `lib/firefly-python-api` copy and
+the installed package by the time this task started, so the tag-path
+scenarios (7-9) were implemented and tested alongside the category path.
 
 ## Completion
 
-**Date:**
-**Summary:**
+**Date:** 2026-08-03
+**Summary:** Implemented `household_spend.py` (UC13): a pure, in-memory
+consumer of the withdrawal list, `Config`, and pattern identity from UC2.
+Added `household_spend_*` config fields (FR-47a-d). Added
+`analyzer.pattern_member_transactions()`, a new UC2 helper that returns the
+exact `TransactionRead` objects belonging to a qualifying recurring pattern
+cluster (reusing the existing FR-32d/FR-32a grouping), so FR-48b's exclusion
+is by `id()` identity rather than by reconstructing a match from payee name.
+Qualification order (exclude tag -> category/include tag -> pattern
+exclusion -> one-off threshold), monthly aggregation with zero-filled
+months, median/mean/min/max/month-count per (source account, category), and
+unmatched-category reporting are all implemented per FR-48/FR-49/FR-50. The
+tag-path scenarios (FR-48d/FR-48e) were in scope from the start since the
+underlying blocker was already resolved. All 16 acceptance criteria pass via
+`tests/test_household_spend.py` (unit + 2 Hypothesis property tests) and
+`tests/bdd/features/TASK-028-household-spend-aggregation.feature` (14
+scenarios). Coverage on `household_spend.py` and `analyzer.py` is 100%;
+overall suite coverage is unchanged at 99%. `aggregate_household_spend` was
+split into `_select_qualifying`, `_split_one_off_purchases`,
+`_group_monthly_totals`, and `_unmatched_categories` to stay under the
+complexity-15 lint gate. Out of scope, as specified: exporting/displaying
+the result (TASK-029) and wiring this into the CLI pipeline.
 **Files changed:**
-**Branch:**
-**Stage:**
-**Commit:**
+
+- `src/firefly_bills_analyzer/household_spend.py` - created
+- `src/firefly_bills_analyzer/analyzer.py` - modified (added
+  `pattern_member_transactions()`)
+- `src/firefly_bills_analyzer/config.py` - modified (added
+  `household_spend_*` fields)
+- `tests/test_household_spend.py` - created
+- `tests/test_analyzer.py` - modified (added
+  `pattern_member_transactions()` tests)
+- `tests/test_config.py` - modified (added `household_spend_*` config tests)
+- `tests/bdd/features/TASK-028-household-spend-aggregation.feature` - created
+- `tests/bdd/steps/test_task_028_steps.py` - created
+- `tests/test_payee_filter.py`, `tests/test_analyzer.py`,
+  `tests/benchmark_analyzer.py`, `tests/test_account_filter.py`,
+  `tests/test_income.py`, `tests/test_bills_creator.py`,
+  `tests/test_fetcher.py`, `tests/test_category_filter.py`,
+  `tests/bdd/steps/test_task_019_steps.py`,
+  `tests/bdd/steps/test_task_025_steps.py` - modified (added the new
+  `household_spend_*` fields to existing `Config(...)` construction sites)
+- `CHANGELOG.md` - modified
+- `docs/tasks/TASK-028-household-spend-aggregation.md` - modified
+**Branch:** `git checkout task/028-household-spend-aggregation`
+**Stage:** `git add src/firefly_bills_analyzer/household_spend.py src/firefly_bills_analyzer/analyzer.py src/firefly_bills_analyzer/config.py tests/test_household_spend.py tests/test_analyzer.py tests/test_config.py tests/bdd/features/TASK-028-household-spend-aggregation.feature tests/bdd/steps/test_task_028_steps.py tests/test_payee_filter.py tests/benchmark_analyzer.py tests/test_account_filter.py tests/test_income.py tests/test_bills_creator.py tests/test_fetcher.py tests/test_category_filter.py tests/bdd/steps/test_task_019_steps.py tests/bdd/steps/test_task_025_steps.py CHANGELOG.md docs/tasks/TASK-028-household-spend-aggregation.md`
+**Commit:** `git commit -m "Add household spend aggregation per account and category (TASK-028)"`

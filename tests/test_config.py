@@ -127,3 +127,73 @@ def test_income_variance_tolerance_override() -> None:
     with patch.dict(os.environ, env, clear=True):
         cfg = Config.from_env()
     assert cfg.income_variance_tolerance == 0.25
+
+
+# ---------------------------------------------------------------------------
+# Household spend (TASK-028, FR-47a/FR-47b/FR-47c/FR-47d)
+# ---------------------------------------------------------------------------
+
+
+def test_household_spend_categories_defaults_to_empty_list() -> None:
+    with patch.dict(os.environ, BASE_ENV, clear=True):
+        cfg = Config.from_env()
+    assert cfg.household_spend_categories == []
+
+
+def test_household_spend_categories_parses_comma_separated_values() -> None:
+    env = {**BASE_ENV, "HOUSEHOLD_SPEND_CATEGORIES": "Groceries, Household"}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.household_spend_categories == ["Groceries", "Household"]
+
+
+def test_household_spend_one_off_threshold_defaults_to_2000() -> None:
+    with patch.dict(os.environ, BASE_ENV, clear=True):
+        cfg = Config.from_env()
+    assert cfg.household_spend_one_off_threshold == 2000.0
+
+
+def test_household_spend_one_off_threshold_override() -> None:
+    env = {**BASE_ENV, "HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD": "5000"}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.household_spend_one_off_threshold == 5000.0
+
+
+def test_household_spend_min_months_defaults_to_3() -> None:
+    with patch.dict(os.environ, BASE_ENV, clear=True):
+        cfg = Config.from_env()
+    assert cfg.household_spend_min_months == 3
+
+
+def test_household_spend_min_months_override() -> None:
+    env = {**BASE_ENV, "HOUSEHOLD_SPEND_MIN_MONTHS": "6"}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.household_spend_min_months == 6
+
+
+def test_household_spend_include_tag_defaults_to_none() -> None:
+    with patch.dict(os.environ, BASE_ENV, clear=True):
+        cfg = Config.from_env()
+    assert cfg.household_spend_include_tag is None
+
+
+def test_household_spend_include_tag_override() -> None:
+    env = {**BASE_ENV, "HOUSEHOLD_SPEND_INCLUDE_TAG": "shared"}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.household_spend_include_tag == "shared"
+
+
+def test_household_spend_exclude_tag_defaults_to_none() -> None:
+    with patch.dict(os.environ, BASE_ENV, clear=True):
+        cfg = Config.from_env()
+    assert cfg.household_spend_exclude_tag is None
+
+
+def test_household_spend_exclude_tag_override() -> None:
+    env = {**BASE_ENV, "HOUSEHOLD_SPEND_EXCLUDE_TAG": "personal"}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.household_spend_exclude_tag == "personal"
