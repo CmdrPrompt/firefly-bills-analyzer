@@ -1,0 +1,16 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  ci:
+    uses: CmdrPrompt/python-butler/.github/workflows/python-ci.yml@main
+    with:
+      python-version: "3.11"
+      install-command: "uv sync --extra dev"
+      lint-command: "make lint"
+      test-command: "make test"
+      audit-command: "uv run pip-audit --progress-spinner=off"
