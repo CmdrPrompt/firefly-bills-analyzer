@@ -23,11 +23,13 @@ from firefly_bills_analyzer import (
     category_filter,
     exporter,
     fetcher,
+    household_spend,
     income,
     payee_filter,
 )
 from firefly_bills_analyzer.analyzer import RecurringPattern
 from firefly_bills_analyzer.config import Config, ConfigError
+from firefly_bills_analyzer.household_spend import HouseholdSpendResult
 from firefly_bills_analyzer.income import IncomeResult
 
 logger = logging.getLogger(__name__)
@@ -126,6 +128,43 @@ def _print_income(result: IncomeResult) -> None:
         print(f"[income] {_format_income_issue(issue)}")
 
 
+def _format_household_spend_record(record: household_spend.HouseholdSpendRecord) -> str:
+    category = f" [{record.category}]" if record.category else ""
+    account = f" from {record.source_account}" if record.source_account else ""
+    if record.median is None:
+        return (
+            f"{record.source_account}{category}{account}: only {record.month_count} "
+            "complete month(s), no median yet"
+        )
+    return (
+        f"{record.source_account}{category}{account}: median {record.median:.2f}/mo "
+        f"(mean {record.mean:.2f}, range {record.minimum:.2f}-{record.maximum:.2f}, "
+        f"{record.month_count} complete month(s))"
+    )
+
+
+def _format_one_off_purchase(purchase: household_spend.OneOffPurchase) -> str:
+    category = f" [{purchase.category}]" if purchase.category else ""
+    account = f" from {purchase.source_account}" if purchase.source_account else ""
+    return f"{purchase.date} {purchase.payee}{category}{account}: {purchase.amount:.2f}"
+
+
+def _print_household_spend(result: HouseholdSpendResult) -> None:
+    """FR-52: display household spend figures, one-off purchases, and
+    anything reported under FR-49e or FR-50, before the review flow."""
+    for record in result.records:
+        print(f"[household-spend] {_format_household_spend_record(record)}")
+    for purchase in result.one_off_purchases:
+        print(f"[household-spend] one-off: {_format_one_off_purchase(purchase)}")
+    for category in result.unmatched_categories:
+        print(f"[household-spend] unmatched category: {category}")
+    if result.include_tag_count or result.exclude_tag_count:
+        print(
+            f"[household-spend] tag corrections: {result.include_tag_count} included, "
+            f"{result.exclude_tag_count} excluded"
+        )
+
+
 def _review(
     patterns: list[RecurringPattern], config: Config, *, auto_approve: bool
 ) -> list[RecurringPattern]:
@@ -174,6 +213,12 @@ def _default_income_export_path(fmt: str) -> str:
     return f"./firefly-income-{timestamp}.{ext}"
 
 
+def _default_household_spend_export_path(fmt: str) -> str:
+    ext = _EXPORT_EXTENSIONS[fmt]
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    return f"./firefly-household-spend-{timestamp}.{ext}"
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
 
@@ -189,16 +234,19 @@ def main(argv: list[str] | None = None) -> int:
 
     dry_run = args.dry_run or config.dry_run
 
-    transactions = fetcher.fetch_transactions(config)
+    raw_transactions = fetcher.fetch_transactions(config)
     deposits = fetcher.fetch_deposits(config)
     logger.debug("fetch_deposits() returned %d deposit(s)", len(deposits))
-    transactions = category_filter.filter_transactions(transactions, config)
+    transactions = category_filter.filter_transactions(raw_transactions, config)
     transactions = account_filter.filter_transactions(transactions, config)
     transactions = payee_filter.filter_transactions(transactions, config)
     patterns = analyzer.identify_recurring(transactions, config)
 
     income_result = income.detect_income(deposits, config)
     _print_income(income_result)
+
+    household_spend_result = household_spend.aggregate_household_spend(raw_transactions, config)
+    _print_household_spend(household_spend_result)
 
     approved: list[RecurringPattern] = []
     if not patterns:
@@ -225,6 +273,20 @@ def main(argv: list[str] | None = None) -> int:
             income_result.sources, income_result.issues, config.export_format, income_path
         )
         print(f"Exported {len(income_result.sources)} income source(s) to {income_path}")
+
+    household_spend_enabled = bool(
+        household_spend_result.records
+        or household_spend_result.one_off_purchases
+        or household_spend_result.unmatched_categories
+        or household_spend_result.include_tag_count
+        or household_spend_result.exclude_tag_count
+    )
+    if household_spend_enabled and config.export_format != "none":
+        household_spend_path = _default_household_spend_export_path(config.export_format)
+        exporter.export_household_spend(
+            household_spend_result, config.export_format, household_spend_path
+        )
+        print(f"Exported household spend to {household_spend_path}")
 
     return 0
 
