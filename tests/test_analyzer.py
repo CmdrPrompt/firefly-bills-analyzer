@@ -1069,6 +1069,48 @@ def test_amount_for_name_set_when_multiple_clusters_qualify() -> None:
     assert by_amount[25.00].amount_for_name == "25.00"
 
 
+def test_each_amount_cluster_resolves_its_own_category_name() -> None:
+    """FR-13b: a payee whose two amount clusters each carry a distinct
+    category resolves each cluster's own category name, not a payee-wide
+    50/50 share that would resolve to None for both."""
+    config = _make_config(category_majority_threshold=0.80)
+    start = date(2026, 1, 1)
+    water = [
+        _transaction(start + timedelta(days=30 * i), "100.00", "Stockholm Vatten", "Vatten")
+        for i in range(4)
+    ]
+    waste = [
+        _transaction(start + timedelta(days=30 * i), "1000.00", "Stockholm Vatten", "Sophantering")
+        for i in range(4)
+    ]
+
+    patterns = identify_recurring(water + waste, config)
+
+    by_amount = {p.amount_mean: p for p in patterns}
+    assert by_amount[100.00].category_name == "Vatten"
+    assert by_amount[1000.00].category_name == "Sophantering"
+
+
+def test_category_majority_measured_against_cluster_not_payee() -> None:
+    """FR-13b: a cluster entirely in one category resolves that category even
+    though the payee overall is 90% a different category."""
+    config = _make_config(category_majority_threshold=0.80, min_occurrences=2)
+    start = date(2026, 1, 1)
+    el = [
+        _transaction(start + timedelta(days=10 * i), "50.00", "Energibolaget", "El")
+        for i in range(36)
+    ]
+    nat = [
+        _transaction(start + timedelta(days=30 * i), "500.00", "Energibolaget", "Nat")
+        for i in range(4)
+    ]
+
+    patterns = identify_recurring(el + nat, config)
+
+    by_amount = {p.amount_mean: p for p in patterns}
+    assert by_amount[500.00].category_name == "Nat"
+
+
 def test_single_uncorroborated_co_occurrence_is_absorbed_not_split() -> None:
     """Regression for "ICA": a single day's coincidental double purchase
     (only one co-occurrence date) is not corroborated (FR-32a, revised) and

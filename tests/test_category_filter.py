@@ -160,3 +160,36 @@ def test_resolve_category_name_threshold_property(count: int, threshold: float) 
     config = _make_config(category_majority_threshold=threshold)
     transactions = [_transaction("Streaming") for _ in range(count)]
     assert resolve_category_name(transactions, config) == "Streaming"
+
+
+def test_resolve_category_name_tie_resolves_to_none() -> None:
+    config = _make_config(category_majority_threshold=0.40)
+    transactions = [_transaction("Streaming")] * 2 + [_transaction("Groceries")] * 2
+    assert resolve_category_name(transactions, config) is None
+
+
+def test_resolve_category_name_tie_is_order_invariant() -> None:
+    config = _make_config(category_majority_threshold=0.40)
+    forward = [_transaction("Streaming")] * 2 + [_transaction("Groceries")] * 2
+    reversed_order = list(reversed(forward))
+    assert resolve_category_name(reversed_order, config) == resolve_category_name(forward, config)
+
+
+def test_resolve_category_name_outright_majority_unaffected_by_tie_rule() -> None:
+    config = _make_config(category_majority_threshold=0.40)
+    transactions = [_transaction("Streaming")] * 3 + [_transaction("Groceries")] * 2
+    assert resolve_category_name(transactions, config) == "Streaming"
+
+
+@given(st.permutations([1, 2, 3, 4, 5]))
+def test_resolve_category_name_invariant_under_permutation(order: list[int]) -> None:
+    config = _make_config(category_majority_threshold=0.80)
+    pool = {
+        1: _transaction("Streaming"),
+        2: _transaction("Streaming"),
+        3: _transaction("Streaming"),
+        4: _transaction("Streaming"),
+        5: _transaction("Groceries"),
+    }
+    transactions = [pool[i] for i in order]
+    assert resolve_category_name(transactions, config) == "Streaming"

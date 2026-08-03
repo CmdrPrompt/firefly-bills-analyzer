@@ -39,21 +39,31 @@ def filter_transactions(
 
 
 def resolve_category_name(
-    transactions_for_payee: list[TransactionRead], config: Config
+    transactions_for_cluster: list[TransactionRead], config: Config
 ) -> str | None:
     """Return the category name accounting for at least
-    ``config.category_majority_threshold`` of a payee's transactions (FR-13b).
+    ``config.category_majority_threshold`` of an amount cluster's
+    transactions (FR-13b).
 
-    Uncategorized transactions count as their own non-matching bucket, so a
-    majority of uncategorized transactions also resolves to ``None``.
+    The share is computed over the cluster passed in, not over all of a
+    payee's transactions, so that a payee bundling several distinct
+    recurring charges under one name resolves a category name per cluster
+    rather than one name for all of them. Uncategorized transactions count
+    as their own non-matching bucket, so a majority of uncategorized
+    transactions also resolves to ``None``. When two or more categories are
+    tied for most frequent, no category name is resolved, regardless of
+    ``config.category_majority_threshold``.
     """
-    if not transactions_for_payee:
+    if not transactions_for_cluster:
         return None
 
-    counts = Counter[str | None](t["category_name"] for t in transactions_for_payee)
-    category, count = counts.most_common(1)[0]
+    counts = Counter[str | None](t["category_name"] for t in transactions_for_cluster)
+    ranked = counts.most_common()
+    category, count = ranked[0]
+    if len(ranked) > 1 and ranked[1][1] == count:
+        return None
     if category is None:
         return None
-    if count / len(transactions_for_payee) >= config.category_majority_threshold:
+    if count / len(transactions_for_cluster) >= config.category_majority_threshold:
         return str(category)
     return None
