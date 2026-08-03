@@ -1,3 +1,0 @@
-[submodule ".butler"]
-	path = .butler
-	url = https://github.com/CmdrPrompt/python-butler.git
