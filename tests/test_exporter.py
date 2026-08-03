@@ -389,6 +389,15 @@ class TestIncomeExportNoneFormat:
         assert not path.exists()
 
 
+class TestIncomeUnsupportedFormat:
+    def test_raises_value_error(self, tmp_path: Path) -> None:
+        import pytest
+
+        path = tmp_path / "out.xml"
+        with pytest.raises(ValueError, match="xml"):
+            export_income([_income_source()], [], "xml", path)
+
+
 @given(st.lists(income_source_strategy, min_size=0, max_size=10))
 def test_income_csv_round_trip_preserves_income_accounts(sources: list[IncomeSource]) -> None:
     with tempfile.TemporaryDirectory() as tmp:

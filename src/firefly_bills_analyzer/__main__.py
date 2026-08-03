@@ -23,10 +23,12 @@ from firefly_bills_analyzer import (
     category_filter,
     exporter,
     fetcher,
+    income,
     payee_filter,
 )
 from firefly_bills_analyzer.analyzer import RecurringPattern
 from firefly_bills_analyzer.config import Config, ConfigError
+from firefly_bills_analyzer.income import IncomeResult
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +105,27 @@ def _format_suggestion(pattern: RecurringPattern) -> str:
     )
 
 
+def _format_income_source(source: income.IncomeSource) -> str:
+    return (
+        f"{source.income_account}: {source.payer} "
+        f"{source.observed_net_income:.2f} observed {source.observed_date} "
+        f"({source.occurrences} occurrences)"
+    )
+
+
+def _format_income_issue(issue: income.IncomeAccountIssue) -> str:
+    candidates = ", ".join(candidate.payer for candidate in issue.candidates)
+    return f"{issue.income_account}: {issue.reason} (candidates: {candidates})"
+
+
+def _print_income(result: IncomeResult) -> None:
+    """FR-46: display income sources and issue accounts before the review flow."""
+    for source in result.sources:
+        print(f"[income] {_format_income_source(source)}")
+    for issue in result.issues:
+        print(f"[income] {_format_income_issue(issue)}")
+
+
 def _review(
     patterns: list[RecurringPattern], config: Config, *, auto_approve: bool
 ) -> list[RecurringPattern]:
@@ -145,6 +168,12 @@ def _default_export_path(fmt: str) -> str:
     return f"./firefly-bills-{timestamp}.{ext}"
 
 
+def _default_income_export_path(fmt: str) -> str:
+    ext = _EXPORT_EXTENSIONS[fmt]
+    timestamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    return f"./firefly-income-{timestamp}.{ext}"
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
 
@@ -168,6 +197,9 @@ def main(argv: list[str] | None = None) -> int:
     transactions = payee_filter.filter_transactions(transactions, config)
     patterns = analyzer.identify_recurring(transactions, config)
 
+    income_result = income.detect_income(deposits, config)
+    _print_income(income_result)
+
     approved: list[RecurringPattern] = []
     if not patterns:
         print("No recurring payment patterns found.")
@@ -185,6 +217,14 @@ def main(argv: list[str] | None = None) -> int:
         path = _default_export_path(config.export_format)
         exporter.export(patterns, config.export_format, path)
         print(f"Exported {len(patterns)} pattern(s) to {path}")
+
+    income_detection_enabled = bool(income_result.sources or income_result.issues)
+    if income_detection_enabled and config.export_format != "none":
+        income_path = _default_income_export_path(config.export_format)
+        exporter.export_income(
+            income_result.sources, income_result.issues, config.export_format, income_path
+        )
+        print(f"Exported {len(income_result.sources)} income source(s) to {income_path}")
 
     return 0
 

@@ -141,9 +141,37 @@ None
 
 ## Completion
 
-**Date:**
-**Summary:**
+**Date:** 2026-08-03
+**Summary:** Added `exporter.export_income()`, writing income sources and
+income-account issues (FR-42b/FR-42c) to a `firefly-income-*.csv/json` file
+separate from the pattern export, gated on `EXPORT_FORMAT != "none"` and on
+the detected `IncomeResult` carrying at least one source or issue. The field
+list (`_INCOME_FIELDNAMES`) is derived from `IncomeSource`'s dataclass
+fields plus `status`, mirroring how `_FIELDNAMES` is derived for the pattern
+export, so a later field addition to `IncomeSource` flows through
+unmodified. A source row carries `status` `ok`; an issue row carries an
+empty `payer`/`observed_net_income` and a `status` naming the reason plus
+the candidate payers considered. Wired `income.detect_income()` into
+`__main__.main()`, printing the income sources and issue accounts (FR-46)
+before the review flow, and printing the written income file path on the
+same terms as the existing FR-31 pattern-export path message (FR-45d). SE-04
+holds by construction: no code on this path constructs a bill payload; the
+AC-9 scenario asserts `create_bills` is called exactly once (the withdrawal
+side's own call) even with income accounts configured and `DRY_RUN` unset.
+
 **Files changed:**
-**Branch:**
-**Stage:**
-**Commit:**
+
+- `src/firefly_bills_analyzer/exporter.py` - added `export_income()` and its
+  CSV/JSON helpers, deriving `_INCOME_FIELDNAMES` from `IncomeSource`
+- `src/firefly_bills_analyzer/__main__.py` - wired `income.detect_income()`
+  into `main()`, added `_print_income()`, `_format_income_source()`,
+  `_format_income_issue()` (FR-46), and `_default_income_export_path()`
+  (FR-45a/FR-45d)
+- `tests/test_exporter.py` - added `TestIncomeUnsupportedFormat` alongside
+  the Test Writer's existing `export_income` coverage, for parity with
+  `export()`'s unsupported-format test
+- `CHANGELOG.md` - added a behavior-first entry for this task
+- `docs/tasks/TASK-027-income-export-and-display.md` - Completion section
+**Branch:** `git checkout task/027-income-export-and-display`
+**Stage:** `src/firefly_bills_analyzer/exporter.py src/firefly_bills_analyzer/__main__.py tests/test_exporter.py CHANGELOG.md docs/tasks/TASK-027-income-export-and-display.md`
+**Commit:** `git commit -m "Export and display detected income sources and issue accounts (TASK-027)"`
