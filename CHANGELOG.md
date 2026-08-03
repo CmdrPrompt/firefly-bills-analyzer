@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An income source's observed net income no longer takes a small
+  reimbursement or allowance landing on the account right after that
+  month's main salary at face value: when the most recent occurrence
+  deviates from the median of all its occurrences by more than
+  `INCOME_VARIANCE_TOLERANCE`, the application now falls back to the
+  amount and date of the most recent occurrence that does not so deviate.
+  The skipped occurrence is still counted in the minimum, maximum, mean,
+  and outlier figures, so the anomaly stays visible in the reported
+  variance even though it no longer sets the headline figure.
+  (FR-43a, TASK-030)
+
 - A pattern's source account name is now resolved from the single distinct
   `source_name` value shared by its transactions, instead of a mode
   computation left over from before FR-32d's source-account partitioning

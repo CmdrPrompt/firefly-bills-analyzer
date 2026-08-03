@@ -1,7 +1,7 @@
 # Requirements Specification: Firefly III Bills Analyzer
 
-**Version:** 0.2.26
-**Date:** 2026-08-02
+**Version:** 0.2.27
+**Date:** 2026-08-03
 **Status:** Draft, pending owner confirmation of items marked TBD (see Open Items)
 
 ## Purpose
@@ -446,6 +446,9 @@ files keep pointing at a single meaning.
 5. The candidate that is `monthly` and meets `INCOME_MIN_OCCURRENCES` becomes that
    account's income source
 6. The income source's observed net income is the amount of its most recent occurrence
+   that does not deviate from the candidate's median amount by more than
+   `INCOME_VARIANCE_TOLERANCE`; a deviating final occurrence is skipped in favor of the
+   next most recent one, but still counted under FR-44 (FR-43a)
 7. Its variance figures are computed over all its occurrences
 8. Income sources are written to their own export file, separate from the recurring
    payment export (FR-45a)
@@ -462,6 +465,10 @@ files keep pointing at a single meaning.
   that looks authoritative and is not
 - Occurrences deviate from the observed net income beyond the tolerance: the deviating
   occurrences are counted and reported alongside the income source
+- The most recent occurrence itself deviates from the candidate's median beyond the
+  tolerance (e.g. a reimbursement landing on the income account after that month's
+  salary): the observed net income falls back to the most recent non-deviating
+  occurrence instead (FR-43a); the deviating occurrence is still counted under FR-44
 
 ---
 
@@ -583,6 +590,7 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-42b | If no candidate on an income account qualifies, then the application shall emit no income source for that account and shall report the account together with each rejected candidate's payer, occurrence count, and frequency | UC12 |
 | FR-42c | If more than one candidate on an income account qualifies, then the application shall emit no income source for that account, and shall report the account and every qualifying payer as an ambiguity for the user to resolve; the application shall not sum, average, or otherwise combine the qualifying candidates | UC12 |
 | FR-43  | The application shall set an income source's observed net income to the amount of its most recent occurrence, and shall not use the mean over the analysis window; the split this figure feeds is forward-looking, and a mean makes a pay rise invisible for as many months as the window is long | UC12 |
+| FR-43a | If the most recent occurrence deviates from the candidate's median occurrence amount by more than `INCOME_VARIANCE_TOLERANCE`, the application shall instead set the observed net income to the amount of the most recent occurrence that does not so deviate; occurrences skipped this way remain counted in the variance figures required by FR-44. The median, not the observed net income itself, is the reference point, since comparing an occurrence to the very figure it would set is circular | UC12 |
 | FR-44  | The application shall compute, for each income source, the minimum, maximum, and mean of its occurrence amounts, and the number of occurrences whose amount deviates from the observed net income by more than `INCOME_VARIANCE_TOLERANCE` | UC12 |
 | FR-45a | When income detection is enabled and the export format (`EXPORT_FORMAT`) is not `none`, the application shall write the income sources to a file separate from the recurring payment export (FR-08), in the same format | UC12, UC5 |
 | FR-45b | Each exported income source record shall carry the income account name, the payer name, the observed net income, its date, the occurrence count, the median interval in days, and the variance figures required by FR-44 | UC12, UC5 |
@@ -814,6 +822,19 @@ Decisions required from the requirement owner before this specification is basel
 ---
 
 ## Changelog
+
+### 0.2.27 (2026-08-03)
+
+- Added FR-43a: an income source's observed net income now falls back to the most
+  recent occurrence that does not deviate from the candidate's median amount, instead
+  of unconditionally taking the most recent occurrence. Discovered against real data:
+  a household member's income account occasionally receives a small expense
+  reimbursement after that month's salary deposit, which under FR-43 alone would have
+  been reported as the observed net income for that month.
+- The median is the reference point for the deviation check, not the observed net
+  income itself — comparing an occurrence's amount to the very figure it would produce
+  is circular. FR-44's variance figures are unaffected: skipped occurrences are still
+  counted there.
 
 ### 0.2.26 (2026-08-02)
 
