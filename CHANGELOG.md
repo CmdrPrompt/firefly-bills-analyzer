@@ -53,6 +53,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Detected income sources, and the income accounts an income source could
+  not be resolved for, are now written to their own `firefly-income-*` file
+  (CSV or JSON, matching `EXPORT_FORMAT`) alongside the recurring-payment
+  export, and printed to the CLI before the recurring payment review flow so
+  a failed detection is seen before spending attention on bill approvals. An
+  account with no qualifying payer or an ambiguous one still gets a row —
+  with an empty payer and observed net income, and a `status` column naming
+  the reason and the candidate payers considered — so a missing member's
+  income is visible in the file rather than only absent from it; a resolved
+  income source's row carries `status` `ok`. The exported field list is
+  derived from `IncomeSource`'s own dataclass fields rather than hard-coded,
+  the same way the pattern export's field list already is. Nothing in this
+  path creates a bill or any other Firefly III entity. (FR-45a, FR-45b,
+  FR-45c, FR-45d, FR-46, SE-04, TASK-027)
+
 - Deposits fetched for a configured income account are now analyzed to
   recognize the payer who actually pays a monthly income source there:
   deposits are grouped by income account and payer, same-date deposits from
