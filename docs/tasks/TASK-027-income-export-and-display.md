@@ -7,7 +7,7 @@ blocked
 ## Requirements
 
 **Binding:** FR-45a, FR-45b, FR-45c, FR-45d, FR-46, SE-04
-**BDD mode:** BDD-ABSENT
+**BDD mode:** BDD-ACTIVE
 **Depends on:** TASK-026 (the `IncomeSource` and `IncomeAccountIssue` records
 this writes), TASK-005 (the CLI flow this inserts into), TASK-011 (FR-31's file
 path reporting, which FR-45d mirrors)
