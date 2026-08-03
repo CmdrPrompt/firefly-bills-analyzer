@@ -484,8 +484,10 @@ files keep pointing at a single meaning.
 2. Withdrawals are qualified by category, corrected by the two override tags: a transaction
    carrying the include tag is admitted whatever its category, one carrying the exclude tag is
    removed whatever its category, and the exclude tag wins when both are present
-3. Withdrawals belonging to a recurring payment pattern identified in UC2 are discarded, so that a
-   subscription categorized as household spending is not counted twice
+3. Withdrawals belonging to a recurring payment pattern identified in UC2, whose confidence score is
+   at or above `HIGH_CONFIDENCE_THRESHOLD`, are discarded, so that a subscription categorized as
+   household spending is not counted twice; withdrawals belonging to a low-confidence pattern remain
+   eligible for household spend, since UC2 itself does not trust that classification enough to act on it
 4. Withdrawals above the one-off threshold are set aside as one-off purchases
 5. The remainder is summed per source account, category, and calendar month
 6. Months not falling entirely inside the analysis window are dropped
@@ -500,6 +502,8 @@ files keep pointing at a single meaning.
   the months that were available and no median, rather than a median computed from one month
 - A category is configured that appears on no transaction: reported, so a typo in the category
   name is visible rather than silently producing nothing
+- A withdrawal's pattern has confidence below `HIGH_CONFIDENCE_THRESHOLD`: the withdrawal is not
+  excluded by step 3, and is measured as household spend like any other qualifying withdrawal
 
 **Why this exists.** UC2 answers "what recurs". A household where one member buys the groceries,
 the children's clothes, and the household supplies from their own account has a real, continuous,
@@ -520,7 +524,7 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-01  | The application shall communicate with Firefly III via REST API (v1) exclusively through the shared `firefly-python-api` package, which provides an authenticated session, URL validation, and configuration loading | UC1, UC4 |
 | FR-02  | The application shall read the analysis time window from configuration, with a default of 24 months | UC1 |
 | FR-03  | The application shall classify each recurring payment pattern into exactly one of the frequencies monthly, quarterly, half-yearly, yearly, or irregular | UC2 |
-| FR-04a | The application shall read the confidence threshold for automatic approval from configuration (`HIGH_CONFIDENCE_THRESHOLD`, default 0.80) | UC3 |
+| FR-04a | The application shall read the confidence threshold for automatic approval from configuration (`HIGH_CONFIDENCE_THRESHOLD`, default 0.80) | UC3, UC13 |
 | FR-04b | The application shall read the minimum occurrence threshold for classifying a pattern as recurring from configuration (`MIN_OCCURRENCES`, default 2) | UC2 |
 | FR-05a | When the application is about to create a bill, the application shall verify whether a duplicate bill (see Definitions) already exists in Firefly III before creating the bill | UC4 |
 | FR-05b | If a duplicate bill exists and its amount range and frequency equal the candidate's, then the application shall skip creation and report the outcome "already exists" | UC4 |
@@ -604,7 +608,7 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-47c | The application shall read the minimum number of complete months required for a median from configuration (`HOUSEHOLD_SPEND_MIN_MONTHS`, default 3) | UC13 |
 | FR-47d | The application shall read the household spend override tags from configuration (`HOUSEHOLD_SPEND_INCLUDE_TAG` and `HOUSEHOLD_SPEND_EXCLUDE_TAG`), each a single tag name, both optional | UC13 |
 | FR-48a | The application shall measure household spend from the withdrawals already fetched for UC1, and shall not issue an additional request to Firefly III for it | UC13, UC1 |
-| FR-48b | The application shall exclude from household spend every withdrawal that belongs to a recurring payment pattern identified in UC2, so that no transaction is counted both as a pattern and as household spend | UC13, UC2 |
+| FR-48b | The application shall exclude from household spend every withdrawal that belongs to a recurring payment pattern identified in UC2 whose confidence score is at or above `HIGH_CONFIDENCE_THRESHOLD` (FR-04a), so that a transaction is excluded only when UC2's own evidence is already strong enough to trust it as a bill. A withdrawal belonging to a pattern below that threshold remains eligible for household spend: UC2's clustering (FR-32a) falls back to a single cluster whenever it finds no corroborated same-date evidence of distinct amounts, however much a payee's amounts vary across different dates, and such a cluster's low confidence reflects that its "recurring" classification is not to be relied on — including for the purpose of deciding what UC13 has already counted | UC13, UC2 |
 | FR-48c | The application shall exclude from the monthly totals every withdrawal whose amount exceeds `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD`, and shall report each such withdrawal separately with its date, amount, payee, category, and source account | UC13 |
 | FR-48d | The application shall qualify a withdrawal as household spend when its category is a household spend category, or when it carries the tag named in `HOUSEHOLD_SPEND_INCLUDE_TAG`, and shall exclude every other withdrawal | UC13 |
 | FR-48e | The application shall exclude from household spend every withdrawal carrying the tag named in `HOUSEHOLD_SPEND_EXCLUDE_TAG`, whatever its category, and this exclusion shall take precedence over every other qualifying rule including `HOUSEHOLD_SPEND_INCLUDE_TAG` | UC13 |

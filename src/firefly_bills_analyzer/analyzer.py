@@ -415,6 +415,13 @@ def pattern_member_transactions(
     rather than by reconstructing a match from payee name or other fields,
     which would risk conflating a subscription with unrelated household
     spending that happens to share a payee.
+
+    A cluster is only included when its confidence (computed the same way
+    ``identify_recurring()`` computes it) meets ``config.high_confidence_threshold``
+    (FR-48b). A low-confidence cluster is not yet trustworthy evidence of a
+    recurring pattern, so excluding its transactions from household spend
+    would silently drop real spending; keeping them in household spend is the
+    safer default until the pattern is confirmed.
     """
     groups: dict[str, list[TransactionRead]] = defaultdict(list)
     for transaction in transactions:
@@ -424,11 +431,15 @@ def pattern_member_transactions(
         groups[destination_name].append(transaction)
 
     members: list[TransactionRead] = []
-    for group in groups.values():
+    for destination_name, group in groups.items():
         if len(group) < config.min_occurrences:
             continue
-        for cluster, _events in _qualifying_clusters(group, config):
-            members.extend(cluster)
+        for cluster, events in _qualifying_clusters(group, config):
+            pattern = _build_pattern(
+                destination_name, cluster, events, multi_cluster=False, config=config
+            )
+            if pattern.confidence >= config.high_confidence_threshold:
+                members.extend(cluster)
     return members
 
 

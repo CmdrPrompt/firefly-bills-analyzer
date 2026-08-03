@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Household spend no longer silently drops real spending that happens to
+  fall into a low-confidence recurring-pattern cluster (e.g. a grocery
+  payee with many varying amounts and no corroborated same-date
+  co-occurrence). Only clusters whose confidence meets
+  `HIGH_CONFIDENCE_THRESHOLD` are now excluded as recurring bills; everything
+  else remains eligible for household spend measurement. (FR-48b, TASK-032)
+
 - An income source's observed net income no longer takes a small
   reimbursement or allowance landing on the account right after that
   month's main salary at face value: when the most recent occurrence
