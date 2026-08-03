@@ -94,8 +94,8 @@ their transactions silently excluded from household spend.
 - `tests/bdd/features/TASK-032-household-spend-confidence-threshold.feature` - created
 - `tests/bdd/steps/test_task_032_steps.py` - created
 - `CHANGELOG.md` - modified
+- `.gitignore` - modified (ignore generated `firefly-household-spend-*.csv/json`, the export this task's fix causes to actually be produced)
 
 **Branch:** `git checkout task/032-household-spend-confidence-threshold`
-**Stage:** `git add docs/REQUIREMENTS_new.md docs/tasks/README.md docs/tasks/TASK-032-household-spend-confidence-threshold.md src/firefly_bills_analyzer/analyzer.py tests/test_analyzer.py tests/bdd/features/TASK-032-household-spend-confidence-threshold.feature tests/bdd/steps/test_task_032_steps.py CHANGELOG.md`
-**Commit:** `git commit -m "fix: household spend no longer excludes low-confidence recurring patterns (FR-48b, TASK-032)"`
-**Commit:** feat: only exclude high-confidence recurring patterns from household spend (TASK-032)
+**Stage:** `git add .gitignore docs/tasks/TASK-032-household-spend-confidence-threshold.md`
+**Commit:** `git commit -m "chore: ignore generated firefly-household-spend export files (TASK-032)"`
