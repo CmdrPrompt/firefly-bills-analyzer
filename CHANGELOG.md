@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A bill name's category is now dropped when two or more categories are
+  tied for most frequent within the amount cluster it is named from,
+  regardless of `CATEGORY_MAJORITY_THRESHOLD`. Previously the tie was
+  broken by transaction arrival order from the Firefly III API, so the
+  same data could resolve a different category name (and therefore a
+  different bill name) across a re-fetch. Locked down with tests covering
+  the divergence between cluster-scoped and payee-wide category resolution
+  that TASK-012/TASK-014's clustering introduced with no test catching it.
+  `resolve_category_name()`'s first parameter is renamed
+  `transactions_for_cluster` to state the scope explicitly. (TASK-022)
+
 - Corrected the rationale documented for source-account partitioning
   (FR-32d's docstring in `analyzer.py`): it previously illustrated the need
   for partitioning with a fixed-transfer example that the withdrawal-only
