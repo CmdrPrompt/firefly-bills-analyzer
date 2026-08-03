@@ -67,3 +67,15 @@ def resolve_category_name(
     if count / len(transactions_for_cluster) >= config.category_majority_threshold:
         return str(category)
     return None
+
+
+def has_any_category(transactions_for_cluster: list[TransactionRead]) -> bool:
+    """Return whether at least one transaction in the cluster carries a
+    category name (FR-13c).
+
+    Used to gate ``UNCATEGORIZED_CONFIDENCE_PENALTY`` on genuine data-quality
+    absence, distinct from ``resolve_category_name()`` returning ``None`` as
+    a naming outcome (a tied or below-threshold majority among transactions
+    that are all categorized).
+    """
+    return any(t["category_name"] is not None for t in transactions_for_cluster)
