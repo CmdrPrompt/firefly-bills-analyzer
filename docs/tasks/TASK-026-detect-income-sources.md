@@ -199,15 +199,23 @@ never the mean (FR-43); `amount_min`/`amount_max`/`amount_mean` and
 alias so existing call sites/tests are unaffected) so `income.py` could
 import and reuse it rather than reimplementing the frequency-bucket
 boundaries, per the task's dependency on TASK-003. All 13 red tests in
-`tests/test_income.py` (committed in a730fed) now pass; no test was added,
-changed, or removed beyond what was already committed.
+`tests/test_income.py` (committed in a730fed) now pass.
+
+One property-test assertion (`test_observed_net_income_matches_latest_occurrence_within_range`)
+was corrected after implementation: it compared `observed_net_income` against
+the unrounded Hypothesis-generated float instead of the rounded 2-decimal
+amount actually carried by the deposit, causing an intermittent failure. The
+assertion now compares against `float(f"{amounts[-1]:.2f}")`; this is a fix to
+the test oracle, not a change in what the scenario verifies.
+
 **Files changed:**
 
 - `src/firefly_bills_analyzer/income.py` - created
 - `src/firefly_bills_analyzer/analyzer.py` - modified (promoted `_classify_frequency` to public `classify_frequency`, kept a backward-compatible private alias)
+- `tests/test_income.py` - modified (corrected rounding in one property-test assertion)
 - `CHANGELOG.md` - modified
 - `docs/tasks/TASK-026-detect-income-sources.md` - modified (Completion section)
 
 **Branch:** `git checkout task/026-detect-income-sources`
-**Stage:** `git add src/firefly_bills_analyzer/income.py src/firefly_bills_analyzer/analyzer.py CHANGELOG.md docs/tasks/TASK-026-detect-income-sources.md`
+**Stage:** `git add src/firefly_bills_analyzer/income.py src/firefly_bills_analyzer/analyzer.py tests/test_income.py CHANGELOG.md docs/tasks/TASK-026-detect-income-sources.md`
 **Commit:** `git commit -m "Detect income sources and resolve observed net income (UC12) (TASK-026)"`

@@ -363,5 +363,5 @@ def test_observed_net_income_matches_latest_occurrence_within_range(
 
     assert len(result.sources) == 1
     source = result.sources[0]
-    assert source.observed_net_income == pytest.approx(amounts[-1])
+    assert source.observed_net_income == pytest.approx(float(f"{amounts[-1]:.2f}"))
     assert source.amount_min <= source.observed_net_income <= source.amount_max
