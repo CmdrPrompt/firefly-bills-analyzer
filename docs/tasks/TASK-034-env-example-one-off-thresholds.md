@@ -62,7 +62,8 @@ from TASK-033.
 
 - `.env.example` - modified
 - `docs/tasks/TASK-034-env-example-one-off-thresholds.md` - created
+- `docs/tasks/README.md` - modified (added TASK-034 row)
 
 **Branch:** `git checkout task/034-env-example-one-off-thresholds`
-**Stage:** `git add .env.example docs/tasks/TASK-034-env-example-one-off-thresholds.md`
-**Commit:** `git commit -m "docs: add HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS to .env.example (TASK-034)"`
+**Stage:** `git add docs/tasks/TASK-034-env-example-one-off-thresholds.md`
+**Commit:** `git commit -m "docs: record TASK-034 completion notes (TASK-034)"`
