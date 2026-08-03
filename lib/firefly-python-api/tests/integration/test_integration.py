@@ -110,3 +110,19 @@ def test_get_summary_returns_dict(client: FireflyClient) -> None:
     result = client.get_summary(start="2024-01-01", end="2024-12-31")
     assert isinstance(result, dict)
     assert len(result) > 0
+
+
+# ---------------------------------------------------------------------------
+# UC-010-1: get_opening_balance
+# ---------------------------------------------------------------------------
+
+
+@skip_if_no_credentials
+def test_get_opening_balance_returns_balance_and_date(client: FireflyClient) -> None:
+    accounts = client.get_asset_accounts()
+    account_id = accounts[0]["id"]
+    result = client.get_opening_balance(account_id)
+    assert "balance" in result
+    assert "date" in result
+    if result["date"] is not None:
+        assert len(result["date"]) == 10, f"Expected YYYY-MM-DD, got: {result['date']}"

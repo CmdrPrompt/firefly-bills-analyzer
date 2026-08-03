@@ -1,7 +1,7 @@
 ---
 name: Implementation Worker
 description: "Use after requirements are explicitly approved. Handles implementation, tests, linting, and task metadata updates on the correct task branch."
-tools: [Read, Grep, Glob, Edit, Write, Bash, TodoWrite]
+tools: [Read, Grep, Glob, Edit, Write, Bash, TodoWrite, Skill]
 model: sonnet
 argument-hint: "Provide TASK-ID, approved requirement scope, and target files"
 user-invocable: false
@@ -15,23 +15,14 @@ You implement approved work only after requirements are confirmed.
 You are typically spawned with `isolation: "worktree"`, meaning you work in a
 temporary isolated copy of the repository on a dedicated git branch. Your file
 writes persist ONLY if you commit them — an uncommitted worktree is torn down
-with no branch returned, silently discarding your work. Use `make` targets for
-all git operations — do not run `git commit`, `git add`, or `git push`
-directly.
+with no branch returned, silently discarding your work.
 
-Your worktree's branch does not match `task/<NNN>-...`, so `make
-commit-current-task` and `make stage-current-task` are not available to you
-(they require that branch shape). Instead:
-
-- Run the equivalent auto-fix steps yourself (`ruff check --fix .`, `ruff
-  format .`, pymarkdown fix) and `git add` the changed files.
-- Commit with `make commit-output f="<changed files>" m="wip(TASK-XXX):
-  <short summary>"`, substituting the real TASK-ID and a one-line summary of
-  what you did. This is the only commit path guaranteed to work from an
-  isolated worktree branch.
-- The Workflow Guardian squashes this commit into the task branch and creates
-  the final real commit — your commit message does not need to match the task
-  file's `**Commit:**` line.
+Load the `commit-workflow` skill (Skill tool) and follow its worktree section
+for all git operations: auto-fix, `git add`, then `make commit-output
+f="<changed files>" m="wip(TASK-XXX): <short summary>"`. The Workflow
+Guardian squashes this commit into the task branch and creates the final real
+commit — your commit message does not need to match the task file's
+`**Commit:**` line.
 
 ## Tool usage
 
@@ -57,20 +48,18 @@ commit-current-task` and `make stage-current-task` are not available to you
 ## Implementation Rules
 
 1. Keep changes strictly inside approved scope.
-2. Follow TDD flow and characterization-test rule for previously untested behavior.
+2. Follow the `tdd-cycle` skill (Red -> Green -> Refactor, scenarios realized as
+   tests) and the `characterization-tests` skill for previously untested behavior.
 3. Run `make lint && make test` to verify all checks pass.
 4. Verify that total test coverage at completion is equal to or higher than the task-start
    baseline. If coverage has dropped, add tests before marking done.
-5. Update CHANGELOG.md with a concise behavior-first entry. This must happen **before** staging.
-   Follow the style rules in the Changelog section of CLAUDE.md.
-6. Ensure CHANGELOG.md is included on the `**Stage:**` line in the task file (or stage it
+5. Update CHANGELOG.md per the `changelog` skill. This must happen **before** staging,
+   and CHANGELOG.md must be included on the `**Stage:**` line in the task file (or staged
    explicitly with `git add CHANGELOG.md`) so it is not missed by `make stage-task`.
-7. Fix, format, `git add` the changed files, and commit with
-   `make commit-output f="<changed files>" m="wip(TASK-XXX): <short summary>"`
-   (see Execution context above — `stage-current-task`/`commit-current-task` are not
-   available on a worktree branch).
-8. Update task file metadata for status and completion before committing.
-9. Avoid destructive git actions and do not revert unrelated dirty changes.
+6. Fix, format, `git add` the changed files, and commit per the worktree section of the
+   `commit-workflow` skill (see Execution context above).
+7. Update task file metadata for status and completion before committing.
+8. Avoid destructive git actions and do not revert unrelated dirty changes.
 
 ## Output Contract
 

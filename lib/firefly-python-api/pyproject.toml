@@ -43,6 +43,7 @@ build-backend = "setuptools.build_meta"
 [dependency-groups]
 dev = [
     "butler-core",
+    "pytest-bdd>=8.1.0",
 ]
 
 [tool.setuptools.packages.find]

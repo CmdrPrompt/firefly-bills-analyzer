@@ -447,7 +447,10 @@ requires-dist = [
 provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "butler-core", git = "https://github.com/CmdrPrompt/python-butler.git" }]
+dev = [
+    { name = "butler-core", git = "https://github.com/CmdrPrompt/python-butler.git" },
+    { name = "pytest-bdd", specifier = ">=8.1.0" },
+]
 
 [[package]]
 name = "gherkin-official"

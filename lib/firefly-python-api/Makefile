@@ -9,7 +9,7 @@ help:
 	@echo ""
 
 test:
-	uv run pytest tests/ --ignore=tests/integration --cov=src --cov-report=term-missing
+	uv run pytest $(TESTS_DIR)/ --ignore=tests/integration --cov=$(SRC_DIR) --cov-report=term-missing
 
 test-integration:
-	uv run pytest tests/integration/ -v
+	uv run pytest tests/integration/ -v  --cov=$(SRC_DIR) --cov-report=term-missing
