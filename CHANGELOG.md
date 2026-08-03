@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- A pattern's `monthly_equivalent` is now rounded up to whole öre (two
+  decimal places) instead of carrying an unrounded float. Rounding always
+  goes up rather than to the nearest öre, so a set of summed monthly
+  equivalents never understates the actual cost. (FR-37, TASK-031)
+
 ### Fixed
 
 - An income source's observed net income no longer takes a small

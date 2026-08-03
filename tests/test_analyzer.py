@@ -1,6 +1,7 @@
 import time
 from collections import Counter
 from datetime import date, timedelta
+from decimal import Decimal
 
 import pytest
 from firefly_python_api import TransactionRead
@@ -1535,7 +1536,8 @@ def test_monthly_equivalent_matches_bucket_divisor_or_is_none(
     mean_amount: float, median_interval_days: int
 ) -> None:
     """FR-37: `monthly_equivalent` is `None` exactly when `frequency ==
-    "irregular"`, and otherwise equals `amount_mean / _MONTHLY_DIVISORS[frequency]`."""
+    "irregular"`, and otherwise equals `amount_mean / _MONTHLY_DIVISORS[frequency]`
+    rounded up (ceiling) to two decimal places."""
     config = _make_config()
     start = date(2026, 1, 1)
     dates = [start, start + timedelta(days=median_interval_days)]
@@ -1549,9 +1551,14 @@ def test_monthly_equivalent_matches_bucket_divisor_or_is_none(
     if frequency == "irregular":
         assert pattern.monthly_equivalent is None
     else:
-        assert pattern.monthly_equivalent == pytest.approx(
-            pattern.amount_mean / _MONTHLY_DIVISORS[frequency]
-        )
+        raw = pattern.amount_mean / _MONTHLY_DIVISORS[frequency]
+        rounded = pattern.monthly_equivalent
+        assert rounded is not None
+        # Ceiling to two decimals: never below the raw value, and never more
+        # than one whole öre above it.
+        assert rounded >= raw - 1e-9
+        assert rounded < raw + 0.01 + 1e-9
+        assert round(rounded * 100) == pytest.approx(rounded * 100, abs=1e-6)
 
 
 @given(
@@ -1562,7 +1569,8 @@ def test_monthly_equivalent_times_divisor_recovers_mean_amount(
     mean_amount: float, frequency: str
 ) -> None:
     """FR-37: multiplying a pattern's `monthly_equivalent` by its bucket
-    divisor recovers `amount_mean` within floating-point tolerance."""
+    divisor recovers `amount_mean` within the tolerance introduced by
+    rounding up to whole öre (up to one öre times the divisor)."""
     config = _make_config()
     low, high = _FREQUENCY_RANGES[frequency]
     median_interval_days = int((low + high) // 2)
@@ -1575,9 +1583,89 @@ def test_monthly_equivalent_times_divisor_recovers_mean_amount(
 
     assert pattern.frequency == frequency
     assert pattern.monthly_equivalent is not None
-    assert pattern.monthly_equivalent * _MONTHLY_DIVISORS[frequency] == pytest.approx(
-        pattern.amount_mean
+    divisor = _MONTHLY_DIVISORS[frequency]
+    assert pattern.monthly_equivalent * divisor == pytest.approx(
+        pattern.amount_mean, abs=0.01 * divisor + 1e-6
     )
+
+
+# ---------------------------------------------------------------------------
+# Round monthly equivalent up to the nearest öre (TASK-031, FR-37)
+# ---------------------------------------------------------------------------
+
+
+def test_monthly_equivalent_rounds_up_a_non_terminating_fraction() -> None:
+    config = _make_config(min_occurrences=2)
+    start = date(2026, 1, 1)
+    transactions = [
+        _transaction(start + timedelta(days=90 * i), "100.00", "Landlord", None) for i in range(4)
+    ]
+
+    patterns = identify_recurring(transactions, config)
+
+    assert patterns[0].frequency == "quarterly"
+    assert patterns[0].monthly_equivalent == 33.34
+
+
+def test_monthly_equivalent_already_exact_is_unchanged() -> None:
+    config = _make_config(min_occurrences=2)
+    start = date(2026, 1, 1)
+    transactions = [
+        _transaction(start + timedelta(days=30 * i), "42.50", "Gym", None) for i in range(4)
+    ]
+
+    patterns = identify_recurring(transactions, config)
+
+    assert patterns[0].frequency == "monthly"
+    assert patterns[0].monthly_equivalent == 42.5
+
+
+@given(
+    mean_amount=st.floats(min_value=0.01, max_value=100_000, allow_nan=False, allow_infinity=False),
+    frequency=st.sampled_from(sorted(_MONTHLY_DIVISORS)),
+)
+def test_monthly_equivalent_has_at_most_two_decimal_places(
+    mean_amount: float, frequency: str
+) -> None:
+    """FR-37: the stored `monthly_equivalent` always has at most two decimal
+    places, i.e. it is an exact multiple of one öre."""
+    config = _make_config()
+    low, high = _FREQUENCY_RANGES[frequency]
+    median_interval_days = int((low + high) // 2)
+    start = date(2026, 1, 1)
+    dates = [start, start + timedelta(days=median_interval_days)]
+    events = [{"date": d.isoformat(), "amount": mean_amount, "count": 1} for d in dates]
+    cluster = [_transaction(d, f"{mean_amount:.2f}", "Payee", None) for d in dates]
+
+    pattern = _build_pattern("Payee", cluster, events, multi_cluster=False, config=config)
+
+    assert pattern.monthly_equivalent is not None
+    cents = Decimal(str(pattern.monthly_equivalent)) * 100
+    assert cents == cents.to_integral_value()
+
+
+@given(
+    mean_amount=st.floats(min_value=0.01, max_value=100_000, allow_nan=False, allow_infinity=False),
+    frequency=st.sampled_from(sorted(_MONTHLY_DIVISORS)),
+)
+def test_monthly_equivalent_never_understates_the_raw_division(
+    mean_amount: float, frequency: str
+) -> None:
+    """FR-37: rounding is a ceiling, never an ordinary round-down, so the
+    stored value is always >= the raw `amount_mean / divisor` division."""
+    config = _make_config()
+    low, high = _FREQUENCY_RANGES[frequency]
+    median_interval_days = int((low + high) // 2)
+    start = date(2026, 1, 1)
+    dates = [start, start + timedelta(days=median_interval_days)]
+    events = [{"date": d.isoformat(), "amount": mean_amount, "count": 1} for d in dates]
+    cluster = [_transaction(d, f"{mean_amount:.2f}", "Payee", None) for d in dates]
+
+    pattern = _build_pattern("Payee", cluster, events, multi_cluster=False, config=config)
+
+    assert pattern.monthly_equivalent is not None
+    raw = pattern.amount_mean / _MONTHLY_DIVISORS[frequency]
+    assert pattern.monthly_equivalent >= raw - 1e-9
 
 
 # ---------------------------------------------------------------------------

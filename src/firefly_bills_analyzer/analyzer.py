@@ -10,6 +10,7 @@ from collections import Counter, defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
+from decimal import ROUND_CEILING, Decimal
 from typing import Any
 
 from firefly_python_api import TransactionRead
@@ -32,6 +33,17 @@ _MONTHLY_DIVISORS: dict[str, int] = {
 }
 
 logger = logging.getLogger(__name__)
+
+
+def _round_up_to_ore(amount: float) -> float:
+    """Round `amount` up (ceiling) to two decimal places (FR-37).
+
+    Goes through `Decimal(str(amount))` rather than `Decimal(amount)` so the
+    rounding operates on the same decimal digits the float's `repr` shows,
+    avoiding spurious round-ups on values that are already exact to two
+    decimals but carry binary floating-point noise (e.g. `2.675`).
+    """
+    return float(Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_CEILING))
 
 
 @dataclass(frozen=True)
@@ -368,7 +380,9 @@ def _build_pattern(
     )
     frequency = _classify_frequency(median_days)
     monthly_equivalent = (
-        mean_amount / _MONTHLY_DIVISORS[frequency] if frequency in _MONTHLY_DIVISORS else None
+        _round_up_to_ore(mean_amount / _MONTHLY_DIVISORS[frequency])
+        if frequency in _MONTHLY_DIVISORS
+        else None
     )
 
     return RecurringPattern(
