@@ -2,7 +2,7 @@
 
 ## Status
 
-blocked
+in-progress
 
 ## Requirements
 
@@ -11,7 +11,7 @@ blocked
 **Depends on:** TASK-026 (the `IncomeSource` and `IncomeAccountIssue` records
 this writes), TASK-005 (the CLI flow this inserts into), TASK-011 (FR-31's file
 path reporting, which FR-45d mirrors)
-**Blocked on:** TASK-026
+**Blocked on:** none
 **Precedence:** The requirements document is the binding definition of this task.
 The story and scenarios below are derived from it. On any discrepancy, the
 requirements document wins. Stop and report discrepancies; do not build from
@@ -137,7 +137,7 @@ configured and `DRY_RUN` unset issues no additional creation call.
 
 ## Blockers
 
-TASK-026, and through it TASK-025 and `firefly-python-api` REQ-011.
+None
 
 ## Completion
 
