@@ -38,14 +38,30 @@ of any consumer project's configuration flow.
 
 - UC-002-1: `get_asset_accounts()` — paginated `GET /api/v1/accounts?type=asset`;
   returns list of `{"id": str, "name": str}` dicts, all pages fetched automatically.
-- UC-002-2: `get_latest_transaction_date(account_id)` —
-  `GET /api/v1/accounts/{id}/transactions?limit=1&page=1`;
-  returns an ISO date string (`YYYY-MM-DD`) or `None` if the account has no
-  transactions. The system shall truncate the raw API value
-  (`YYYY-MM-DD HH:MM:SS`) to date only (`YYYY-MM-DD`) before returning it.
+- UC-002-2: `get_latest_transaction_date(account_id, transaction_type=None)` —
+  `GET /api/v1/accounts/{id}/transactions?limit=1&page=1`, plus a
+  `type={transaction_type}` query parameter when `transaction_type` is given
+  (e.g. `"withdrawal,deposit"` to exclude transfers, per Firefly III's
+  transaction type filter). Returns an ISO date string (`YYYY-MM-DD`) or
+  `None` if no matching transaction exists. The system shall truncate the
+  raw API value (`YYYY-MM-DD HH:MM:SS`) to date only (`YYYY-MM-DD`) before
+  returning it. When `transaction_type` is omitted, behavior is unchanged
+  from today (no `type` filter, matches any transaction).
 - UC-002-3: `create_transaction(payload)` — `POST /api/v1/transactions`;
   treats HTTP 200 and 201 as success; raises `FireflyConnectionError` on any
   other status code.
+- UC-002-4: `get_transactions_for_account(account_id)` — paginated
+  `GET /api/v1/accounts/{id}/transactions`; returns a list of transaction IDs
+  (as strings), all pages fetched automatically.
+- UC-002-5: `delete_transaction(transaction_id)` — `DELETE /api/v1/transactions/{id}`;
+  treats HTTP 204 as success; raises `FireflyConnectionError` on any other
+  status code.
+- UC-002-6: A consumer needing the latest date of only ordinary
+  (non-transfer) transactions on an account — because transfer transactions
+  may be posted with dates later than yet-unprocessed withdrawal/deposit
+  rows on the same account — can call
+  `get_latest_transaction_date(account_id, transaction_type="withdrawal,deposit")`
+  to exclude transfers from the result.
 
 ### Constraints
 
@@ -244,3 +260,137 @@ this library taking a dependency on any particular UI/progress-bar toolkit.
   no behavioral change.
 - `mypy --strict` must pass.
 - Unit test coverage must not drop below baseline.
+
+## REQ-009 Account Opening Balance
+
+**As a** consumer application (e.g. firefly-bank-importer),
+**I want** a method to set an account's opening balance and opening balance date via `FireflyClient`,
+**so that** I can establish a correct starting point for balance calculations after clearing
+and re-importing transaction history, without reimplementing the HTTP call.
+
+### Use cases
+
+- UC-009-1: `set_opening_balance(account_id, balance, date)` — `PUT /api/v1/accounts/{id}`
+  with body `{"opening_balance": balance, "opening_balance_date": date}`; treats HTTP 200
+  as success; raises `FireflyConnectionError` on any other status code.
+- UC-009-2: `balance` is a `str` (Firefly III represents monetary amounts as decimal
+  strings, consistent with `TransactionPayload.amount`); `date` is a `str` in
+  `YYYY-MM-DD` format.
+- UC-009-3: When `set_opening_balance()` raises `FireflyConnectionError` because the
+  response status was not 200, the system shall attach `status_code: int` to the raised
+  exception, and, when the response body is valid JSON, shall attach
+  `response_body: dict[str, Any]` to the raised exception, defaulting both attributes to
+  `None` when unavailable — mirroring the pattern established for `create_bill()`
+  (UC-007-4).
+- UC-009-4: The system shall add a `_put_expect` internal helper mirroring
+  `_post_expect` (same request/error-attachment behavior, using `session.put` instead of
+  `session.post`), used by `set_opening_balance` and available for future PUT-based
+  methods.
+
+### Constraints
+
+- No new runtime dependencies.
+- `mypy --strict` must pass.
+- Unit test coverage must not drop below baseline.
+
+## REQ-010 Account Opening Balance Read
+
+**As a** consumer application (e.g. firefly-bank-importer),
+**I want** a method to read an account's current opening balance and opening balance date via
+`FireflyClient`,
+**so that** I can decide whether `set_opening_balance()` needs to be called at all before
+clearing and re-importing transaction history, without reimplementing the HTTP call.
+
+### Use cases
+
+- UC-010-1: `get_opening_balance(account_id)` — `GET /api/v1/accounts/{id}`; on success,
+  returns an `OpeningBalance` (`TypedDict`) with `balance: str | None` and
+  `date: str | None`, read from the response's `attributes.opening_balance` and
+  `attributes.opening_balance_date`, defaulting to `None` when the account has no
+  opening balance set.
+- UC-010-2: Uses the existing `_get` helper (same behavior as `get_asset_accounts()` and
+  `get_latest_transaction_date()`); raises `FireflyConnectionError` on any network error
+  or non-2xx HTTP response, including a 404 for an unknown `account_id`.
+
+### Constraints
+
+- No new runtime dependencies.
+- `mypy --strict` must pass.
+- Unit test coverage must not drop below baseline.
+
+## REQ-011 Deposit Transaction Fetching
+
+**As a** consumer application (e.g. firefly-bills-analyzer),
+**I want** a method that returns all deposit transactions in a date range as typed data,
+**so that** I can analyze incoming money — recurring salary payments in particular —
+with the same pagination handling and split flattening the withdrawal side already
+gets, instead of reimplementing them for the opposite transaction direction.
+
+### Use cases
+
+- UC-011-1: `get_deposit_transactions(start, end, on_page=None)` — paginated
+  `GET /api/v1/transactions?type=deposit&start=YYYY-MM-DD&end=YYYY-MM-DD&page=N`;
+  follows all pages until `total_pages` is reached; returns `list[TransactionRead]`.
+- UC-011-2: When a Firefly III transaction object returned by
+  `get_deposit_transactions()` contains multiple splits under
+  `attributes.transactions`, the system shall flatten each split into its own
+  `TransactionRead` entry, by the same rule as UC-006-2.
+- UC-011-3: The system shall represent each deposit split with the existing
+  `TransactionRead` `TypedDict` and shall not introduce a separate type. The
+  fields carry the same API values as on the withdrawal side, with the account
+  roles reversed by Firefly III itself: for a deposit, `source_name` is the
+  revenue account the money came from (e.g. an employer) and
+  `destination_name` is the asset account it landed in. Absent fields are set
+  to `None`, per UC-006-3 and UC-006-5.
+- UC-011-4: The system shall accept the optional `on_page(page, total_pages)`
+  callback with the same semantics as REQ-008 defines for
+  `get_withdrawal_transactions()`: invoked after each page has been fetched and
+  parsed, with exceptions propagating to the caller and stopping further page
+  fetches.
+- UC-011-5: The system shall not return transactions of type `transfer`.
+  Firefly III types a movement between two of the user's own asset accounts as
+  `transfer`, not as a deposit, so the `type=deposit` filter excludes them at
+  the API. Consumers may therefore treat every returned record as money
+  entering the household from outside it.
+
+### Constraints
+
+- No new runtime dependencies.
+- `mypy --strict` must pass.
+- Unit test coverage must not drop below baseline.
+- Pagination, split flattening, and `TransactionRead` construction shall be
+  shared with `get_withdrawal_transactions()` rather than duplicated; the two
+  methods differ only in the `type` query parameter.
+
+## REQ-012 Transaction Tags
+
+**As a** consumer application (e.g. firefly-bills-analyzer),
+**I want** each transaction split to carry the tags the user applied to it,
+**so that** I can let the user override a classification I derived from the
+category, on individual transactions, without them having to restructure their
+categories to express an exception.
+
+### Use cases
+
+- UC-012-1: The system shall include a `tags: list[str]` field in
+  `TransactionRead`, holding the split's `attributes.transactions[].tags` value
+  from the Firefly III response.
+- UC-012-2: If the tags field is absent from the API response, or is `null`,
+  then the system shall set `tags` to an empty list, rather than to `None`. A
+  transaction with no tags and a transaction whose tags were not returned are
+  the same thing to a consumer, and an empty list removes a null check from
+  every call site.
+- UC-012-3: The system shall populate `tags` identically for
+  `get_withdrawal_transactions()` and `get_deposit_transactions()`, since both
+  build their records through the same split-flattening helper.
+- UC-012-4: The system shall preserve the tag strings as returned, without
+  case folding, trimming, or sorting. Tag matching semantics belong to the
+  consumer.
+
+### Constraints
+
+- No new runtime dependencies.
+- `mypy --strict` must pass.
+- Unit test coverage must not drop below baseline.
+- Additive only: existing fields of `TransactionRead` are unchanged, and no
+  existing method signature changes.

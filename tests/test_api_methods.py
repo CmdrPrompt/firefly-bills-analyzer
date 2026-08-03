@@ -123,6 +123,34 @@ class TestGetLatestTransactionDate:
             with pytest.raises(FireflyConnectionError):
                 client.get_latest_transaction_date("1")
 
+    def test_no_type_param_when_transaction_type_omitted(self):
+        client = make_client()
+        payload = {"data": [{"attributes": {"transactions": [{"date": "2024-03-15 00:00:00"}]}}]}
+        with patch.object(client.session, "get", return_value=mock_response(payload)) as mock_get:
+            client.get_latest_transaction_date("42")
+        mock_get.assert_called_once_with(
+            "https://firefly.example.com/api/v1/accounts/42/transactions",
+            params={"limit": 1, "page": 1},
+        )
+
+    def test_forwards_transaction_type_as_query_param(self):
+        client = make_client()
+        payload = {"data": [{"attributes": {"transactions": [{"date": "2024-03-10 00:00:00"}]}}]}
+        with patch.object(client.session, "get", return_value=mock_response(payload)) as mock_get:
+            result = client.get_latest_transaction_date("42", transaction_type="withdrawal,deposit")
+        mock_get.assert_called_once_with(
+            "https://firefly.example.com/api/v1/accounts/42/transactions",
+            params={"limit": 1, "page": 1, "type": "withdrawal,deposit"},
+        )
+        assert result == "2024-03-10"
+
+    def test_returns_none_when_no_transaction_matches_type(self):
+        client = make_client()
+        payload = {"data": []}
+        with patch.object(client.session, "get", return_value=mock_response(payload)):
+            result = client.get_latest_transaction_date("1", transaction_type="withdrawal,deposit")
+        assert result is None
+
 
 # ---------------------------------------------------------------------------
 # create_transaction
@@ -343,6 +371,7 @@ class TestGetWithdrawalTransactions:
                 "category_name": "Groceries",
                 "source_name": "Checking Account",
                 "source_id": "7",
+                "tags": [],
             }
         ]
 
@@ -415,6 +444,7 @@ class TestGetWithdrawalTransactions:
                 "category_name": "Misc",
                 "source_name": None,
                 "source_id": None,
+                "tags": [],
             },
             {
                 "date": "2024-02-05",
@@ -423,6 +453,7 @@ class TestGetWithdrawalTransactions:
                 "category_name": "Misc",
                 "source_name": None,
                 "source_id": None,
+                "tags": [],
             },
         ]
 
@@ -484,6 +515,7 @@ class TestGetWithdrawalTransactions:
                 "category_name": None,
                 "source_name": None,
                 "source_id": None,
+                "tags": [],
             }
         ]
 
@@ -547,6 +579,7 @@ class TestGetWithdrawalTransactions:
                 "category_name": None,
                 "source_name": None,
                 "source_id": None,
+                "tags": [],
             }
         ]
 
@@ -595,6 +628,137 @@ class TestGetWithdrawalTransactions:
             with pytest.raises(ValueError, match="boom"):
                 client.get_withdrawal_transactions("2024-01-01", "2024-12-31", on_page=on_page)
         assert mock_get.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# get_transactions_for_account
+# ---------------------------------------------------------------------------
+
+
+class TestGetTransactionsForAccount:
+    def test_returns_ids_from_single_page(self):
+        client = make_client()
+        payload = {
+            "data": [{"id": "10"}, {"id": "11"}],
+            "meta": {"pagination": {"total_pages": 1}},
+        }
+        with patch.object(client.session, "get", return_value=mock_response(payload)) as mock_get:
+            result = client.get_transactions_for_account("42")
+        mock_get.assert_called_once_with(
+            "https://firefly.example.com/api/v1/accounts/42/transactions",
+            params={"page": 1},
+        )
+        assert result == ["10", "11"]
+
+    def test_fetches_all_pages_in_order(self):
+        client = make_client()
+        page1 = {
+            "data": [{"id": "1"}],
+            "meta": {"pagination": {"total_pages": 3}},
+        }
+        page2 = {
+            "data": [{"id": "2"}],
+            "meta": {"pagination": {"total_pages": 3}},
+        }
+        page3 = {
+            "data": [{"id": "3"}],
+            "meta": {"pagination": {"total_pages": 3}},
+        }
+        with patch.object(
+            client.session,
+            "get",
+            side_effect=[mock_response(page1), mock_response(page2), mock_response(page3)],
+        ) as mock_get:
+            result = client.get_transactions_for_account("42")
+        assert mock_get.call_count == 3
+        assert mock_get.call_args_list == [
+            call(
+                "https://firefly.example.com/api/v1/accounts/42/transactions",
+                params={"page": 1},
+            ),
+            call(
+                "https://firefly.example.com/api/v1/accounts/42/transactions",
+                params={"page": 2},
+            ),
+            call(
+                "https://firefly.example.com/api/v1/accounts/42/transactions",
+                params={"page": 3},
+            ),
+        ]
+        assert result == ["1", "2", "3"]
+
+    def test_returns_empty_list_when_no_transactions(self):
+        client = make_client()
+        payload = {"data": [], "meta": {"pagination": {"total_pages": 1}}}
+        with patch.object(client.session, "get", return_value=mock_response(payload)):
+            result = client.get_transactions_for_account("42")
+        assert result == []
+
+    def test_raises_on_http_error(self):
+        client = make_client()
+        resp = MagicMock()
+        resp.raise_for_status.side_effect = requests.HTTPError("500")
+        with patch.object(client.session, "get", return_value=resp):
+            with pytest.raises(FireflyConnectionError):
+                client.get_transactions_for_account("42")
+
+
+# ---------------------------------------------------------------------------
+# delete_transaction
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteTransaction:
+    def test_deletes_and_returns_none_on_204(self):
+        client = make_client()
+        with patch.object(
+            client.session, "delete", return_value=mock_response(None, status_code=204)
+        ) as mock_delete:
+            result = client.delete_transaction("99")
+        mock_delete.assert_called_once_with("https://firefly.example.com/api/v1/transactions/99")
+        assert result is None
+
+    def test_raises_on_non_204_status(self):
+        client = make_client()
+        with patch.object(
+            client.session,
+            "delete",
+            return_value=mock_response({"message": "nope"}, status_code=404),
+        ):
+            with pytest.raises(FireflyConnectionError):
+                client.delete_transaction("99")
+
+    def test_non_204_status_carries_status_code_and_response_body(self):
+        client = make_client()
+        body = {"message": "not found"}
+        with patch.object(
+            client.session, "delete", return_value=mock_response(body, status_code=404)
+        ):
+            with pytest.raises(FireflyConnectionError) as exc_info:
+                client.delete_transaction("99")
+        assert exc_info.value.status_code == 404
+        assert exc_info.value.response_body == body
+
+    def test_non_json_error_body_leaves_response_body_none(self):
+        client = make_client()
+        resp = MagicMock()
+        resp.status_code = 500
+        resp.json.side_effect = requests.exceptions.JSONDecodeError(
+            "Expecting value", "not json", 0
+        )
+        with patch.object(client.session, "delete", return_value=resp):
+            with pytest.raises(FireflyConnectionError) as exc_info:
+                client.delete_transaction("99")
+        assert exc_info.value.status_code == 500
+        assert exc_info.value.response_body is None
+
+    def test_raises_on_connection_error(self):
+        client = make_client()
+        with patch.object(
+            client.session, "delete", side_effect=requests.ConnectionError("refused")
+        ):
+            with pytest.raises(FireflyConnectionError):
+                client.delete_transaction("99")
 
 
 # ---------------------------------------------------------------------------
@@ -734,3 +898,169 @@ class TestCreateBill:
             "https://firefly.example.com/api/v1/bills",
             json=payload,
         )
+
+
+# ---------------------------------------------------------------------------
+# set_opening_balance / _put_expect
+# ---------------------------------------------------------------------------
+
+
+class TestSetOpeningBalance:
+    def _payload(self) -> dict:
+        return {"opening_balance": "100.00", "opening_balance_date": "2024-01-01"}
+
+    def test_puts_to_accounts_endpoint(self):
+        client = make_client()
+        with patch.object(
+            client.session, "put", return_value=mock_response({}, status_code=200)
+        ) as mock_put:
+            client.set_opening_balance("42", "100.00", "2024-01-01")
+        mock_put.assert_called_once_with(
+            "https://firefly.example.com/api/v1/accounts/42",
+            json=self._payload(),
+        )
+
+    def test_accepts_200_as_success(self):
+        client = make_client()
+        with patch.object(client.session, "put", return_value=mock_response({}, status_code=200)):
+            client.set_opening_balance("42", "100.00", "2024-01-01")  # should not raise
+
+    @pytest.mark.parametrize("status_code", [201, 422, 404])
+    def test_raises_on_any_non_200_status(self, status_code: int):
+        client = make_client()
+        with patch.object(
+            client.session, "put", return_value=mock_response({}, status_code=status_code)
+        ):
+            with pytest.raises(FireflyConnectionError):
+                client.set_opening_balance("42", "100.00", "2024-01-01")
+
+    @pytest.mark.parametrize(
+        ("status_code", "body"),
+        [
+            pytest.param(422, {"message": "invalid"}, id="422-invalid"),
+            pytest.param(404, {"message": "not found"}, id="404-not-found"),
+        ],
+    )
+    def test_non_success_status_carries_status_code_and_response_body(
+        self, status_code: int, body: dict
+    ) -> None:
+        client = make_client()
+        resp = mock_response(body, status_code=status_code)
+        with patch.object(client.session, "put", return_value=resp):
+            with pytest.raises(FireflyConnectionError) as exc_info:
+                client.set_opening_balance("42", "100.00", "2024-01-01")
+        assert exc_info.value.status_code == status_code
+        assert exc_info.value.response_body == body
+
+    def test_non_json_error_body_leaves_response_body_none(self):
+        client = make_client()
+        resp = MagicMock()
+        resp.status_code = 500
+        resp.json.side_effect = requests.exceptions.JSONDecodeError(
+            "Expecting value", "not json", 0
+        )
+        with patch.object(client.session, "put", return_value=resp):
+            with pytest.raises(FireflyConnectionError) as exc_info:
+                client.set_opening_balance("42", "100.00", "2024-01-01")
+        assert exc_info.value.status_code == 500
+        assert exc_info.value.response_body is None
+
+    def test_raises_on_connection_error(self):
+        client = make_client()
+        with patch.object(client.session, "put", side_effect=requests.ConnectionError("refused")):
+            with pytest.raises(FireflyConnectionError):
+                client.set_opening_balance("42", "100.00", "2024-01-01")
+
+    def test_connection_error_leaves_attributes_none(self):
+        client = make_client()
+        with patch.object(client.session, "put", side_effect=requests.ConnectionError("refused")):
+            with pytest.raises(FireflyConnectionError) as exc_info:
+                client.set_opening_balance("42", "100.00", "2024-01-01")
+        assert exc_info.value.status_code is None
+        assert exc_info.value.response_body is None
+
+
+# ---------------------------------------------------------------------------
+# get_opening_balance
+# ---------------------------------------------------------------------------
+
+
+class TestGetOpeningBalance:
+    def test_returns_balance_and_date(self):
+        client = make_client()
+        payload = {
+            "data": {
+                "id": "42",
+                "attributes": {
+                    "opening_balance": "100.00",
+                    "opening_balance_date": "2024-01-01",
+                },
+            }
+        }
+        with patch.object(client.session, "get", return_value=mock_response(payload)) as mock_get:
+            result = client.get_opening_balance("42")
+        mock_get.assert_called_once_with("https://firefly.example.com/api/v1/accounts/42")
+        assert result == {"balance": "100.00", "date": "2024-01-01"}
+
+    def test_returns_none_when_opening_balance_absent(self):
+        client = make_client()
+        payload = {"data": {"id": "42", "attributes": {}}}
+        with patch.object(client.session, "get", return_value=mock_response(payload)):
+            result = client.get_opening_balance("42")
+        assert result == {"balance": None, "date": None}
+
+    def test_returns_none_when_opening_balance_null(self):
+        client = make_client()
+        payload = {
+            "data": {
+                "id": "42",
+                "attributes": {"opening_balance": None, "opening_balance_date": None},
+            }
+        }
+        with patch.object(client.session, "get", return_value=mock_response(payload)):
+            result = client.get_opening_balance("42")
+        assert result == {"balance": None, "date": None}
+
+    def test_raises_on_404(self):
+        client = make_client()
+        resp = MagicMock()
+        resp.raise_for_status.side_effect = requests.HTTPError("404")
+        with patch.object(client.session, "get", return_value=resp):
+            with pytest.raises(FireflyConnectionError):
+                client.get_opening_balance("does-not-exist")
+
+    def test_raises_on_connection_error(self):
+        client = make_client()
+        with patch.object(client.session, "get", side_effect=requests.ConnectionError("refused")):
+            with pytest.raises(FireflyConnectionError):
+                client.get_opening_balance("42")
+
+
+class TestPutExpectHelper:
+    def test_issues_put_with_json_payload(self):
+        client = make_client()
+        payload = {"foo": "bar"}
+        with patch.object(
+            client.session, "put", return_value=mock_response({}, status_code=200)
+        ) as mock_put:
+            client._put_expect("https://firefly.example.com/api/v1/whatever", payload, (200,))
+        mock_put.assert_called_once_with(
+            "https://firefly.example.com/api/v1/whatever", json=payload
+        )
+
+    def test_raises_when_status_outside_expected(self):
+        client = make_client()
+        with patch.object(
+            client.session, "put", return_value=mock_response({"message": "no"}, status_code=400)
+        ):
+            with pytest.raises(FireflyConnectionError) as exc_info:
+                client._put_expect("https://firefly.example.com/api/v1/whatever", {}, (200, 201))
+        assert exc_info.value.status_code == 400
+        assert exc_info.value.response_body == {"message": "no"}
+
+    def test_does_not_raise_when_status_expected(self):
+        client = make_client()
+        with patch.object(client.session, "put", return_value=mock_response({}, status_code=201)):
+            client._put_expect(
+                "https://firefly.example.com/api/v1/whatever", {}, (200, 201)
+            )  # should not raise

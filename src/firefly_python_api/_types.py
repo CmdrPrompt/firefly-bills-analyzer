@@ -91,6 +91,17 @@ class CategoryData(TypedDict):
     attributes: dict[str, Any]
 
 
+class OpeningBalance(TypedDict):
+    """An account's opening balance, returned by
+    :meth:`FireflyClient.get_opening_balance`.
+    """
+
+    balance: str | None
+    """Opening balance amount as a decimal string, or ``None`` when unset."""
+    date: str | None
+    """Opening balance date in ``YYYY-MM-DD`` format, or ``None`` when unset."""
+
+
 class TransactionRead(TypedDict):
     """A single flattened withdrawal split returned by
     :meth:`FireflyClient.get_withdrawal_transactions`.
@@ -108,3 +119,6 @@ class TransactionRead(TypedDict):
     """Source account name (funds are withdrawn from), or ``None`` when absent."""
     source_id: str | None
     """Source account ID, or ``None`` when absent."""
+    tags: list[str]
+    """Tag strings carried by this split, in API order. ``[]`` when absent or
+    ``null``; never ``None``."""
