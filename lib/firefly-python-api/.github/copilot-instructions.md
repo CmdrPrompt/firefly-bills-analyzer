@@ -4,7 +4,7 @@
 
 ## Project Context
 
-Python client library for the Firefly III REST API — shared HTTP layer with credential management and API coverage for accounts, transactions, and reporting resources.
+Python client library for the Firefly III REST API.Provides a shared HTTP layer with credential management and API coverage for accounts, transactions, and reporting resources. Designed to be used as a dependency by consumer projects such as firefly-bank-importer and firefly-bills-analyzer
 
 **Primary source of truth:** `docs/REQUIREMENTS.md` - read it before
 writing any code.

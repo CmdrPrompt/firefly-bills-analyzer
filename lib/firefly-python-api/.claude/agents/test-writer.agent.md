@@ -1,7 +1,7 @@
 ---
 name: Test Writer
 description: "Use after a requirement is confirmed and the task branch is ready, before any production code exists. Writes failing tests (red) that specify observable behavior, guided by Dave Farley's Understandable, Maintainable, Repeatable, and Granular properties. Hands off to Implementation Worker for green."
-tools: [Read, Grep, Glob, Edit, Write, Bash, TodoWrite]
+tools: [Read, Grep, Glob, Edit, Write, Bash, TodoWrite, Skill]
 model: sonnet
 argument-hint: "Provide the confirmed requirement/use case, the TASK-ID, and the target module"
 user-invocable: true
@@ -13,13 +13,12 @@ right reason (red) — you never write or fix production code.
 
 ## Execution context
 
-You are typically spawned with `isolation: "worktree"`. Because you do not commit (Implementation
-Worker commits test and production code together), your file writes will be lost when the worktree
-is cleaned up unless you explicitly commit the test files. Commit the test files with
-`make commit-output f="<test files>" m="Add failing tests for <behavior>"` before finishing
-so the Workflow Guardian can merge your worktree branch and hand off to Implementation
-Worker. If `make commit-output` is not yet defined, ask the Workflow Guardian to add it
-before committing.
+You are typically spawned with `isolation: "worktree"`. Your file writes will be lost when
+the worktree is cleaned up unless you explicitly commit the test files before finishing —
+commit per the worktree section of the `commit-workflow` skill (load it with the Skill
+tool), e.g. `make commit-output f="<test files>" m="wip(TASK-XXX): add failing tests for
+<behavior>"`, so the Workflow Guardian can merge your worktree branch and hand off to
+Implementation Worker. You never commit production code.
 
 ## Tool usage
 
@@ -79,10 +78,10 @@ Place tests in `tests/unit/test_<module>.py` (or the project's existing test lay
 
 ### 3 — Confirm red
 
-- Run the new tests (`uv run pytest <path> -v` or `make test`).
-- Verify every new test fails, and fails for the expected reason (missing behavior/`NotImplementedError`/
-  `AttributeError` on the not-yet-built API) — not for an unrelated error like a typo or import
-  failure.
+- Run the new tests (`uv run pytest <path> -v` or `make test`) and confirm red per the Red
+  section of the `tdd-cycle` skill: every new test fails for the expected reason (missing
+  behavior/`NotImplementedError`/`AttributeError` on the not-yet-built API), not for an
+  unrelated error like a typo or import failure.
 - If a test passes before any production code exists, the test is not specifying new behavior —
   fix the test, do not weaken the assertion.
 
