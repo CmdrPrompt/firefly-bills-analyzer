@@ -115,12 +115,15 @@ def _partition_by_source_account(
     """Partition a payee group by source account (FR-32d).
 
     Transactions sharing the same ``source_name`` value form one subgroup;
-    transactions with no ``source_name`` form their own subgroup. Distinct
-    financial roles that happen to share a payee name — e.g. a fixed
-    transfer funding a spending account, versus that spending account's own
-    purchases — are typically withdrawn through different source accounts,
-    so partitioning here first keeps them from being amount-clustered
-    together with the spending they fund.
+    transactions with no ``source_name`` form their own subgroup. The same
+    payee paid from two different source accounts — e.g. a subscription
+    withdrawn from both a dedicated spending account and a personal account —
+    is otherwise indistinguishable at the payee level, so partitioning here
+    first keeps those withdrawals from being amount-clustered together. Only
+    withdrawals reach this function (FR-01, UC1): `fetcher.fetch_transactions()`
+    fetches exclusively via `client.get_withdrawal_transactions()`, so a
+    Firefly III transfer between two of the user's own asset accounts is never
+    among the transactions partitioned here.
     """
     groups: dict[str | None, list[TransactionRead]] = defaultdict(list)
     for transaction in transactions:
@@ -363,9 +366,10 @@ def identify_recurring(
 ) -> list[RecurringPattern]:
     """Group ``transactions`` by payee and return recurring patterns (UC2, FR-27).
 
-    Each payee group is first partitioned by source account (FR-32d), so a
-    fixed transfer funding a spending account and that spending account's own
-    purchases are never analyzed together merely because they share a payee
+    Each payee group is first partitioned by source account (FR-32d), so the
+    same payee paid from two different source accounts (e.g. a subscription
+    withdrawn from both a dedicated spending account and a personal account)
+    is never analyzed together merely because the transactions share a payee
     name. Each resulting subgroup is further split into amount clusters
     (FR-32a) based on corroborated same-date co-occurrence: distinct real
     charges that happen to share a payee and source account (e.g. several

@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from firefly_python_api import FireflyConnectionError, TransactionRead
+from firefly_python_api import FireflyClient, FireflyConnectionError, TransactionRead
 
 from firefly_bills_analyzer import cache
 from firefly_bills_analyzer.config import Config
@@ -218,6 +218,35 @@ def test_stale_cache_triggers_live_fetch(tmp_path: Path) -> None:
                 fetch_transactions(config)
 
     mock_client_cls.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Withdrawal-only fetch layer (TASK-021, FR-32d rationale correction)
+# ---------------------------------------------------------------------------
+
+
+def test_fetch_transactions_calls_get_withdrawal_transactions_only(tmp_path: Path) -> None:
+    """fetch_transactions() must obtain transactions from
+    get_withdrawal_transactions() and no other client method, so that FR-32d's
+    withdrawal-only rationale (a Firefly III transfer never reaches
+    partitioning) stays true."""
+    with patch("firefly_bills_analyzer.fetcher.FireflyClient", autospec=True) as mock_client_cls:
+        mock_client = mock_client_cls.return_value
+        mock_client.get_withdrawal_transactions.return_value = []
+        fetch_transactions(_make_config(cache_dir=str(tmp_path)))
+
+    mock_client.get_withdrawal_transactions.assert_called_once()
+    other_transaction_methods = [
+        name
+        for name in dir(FireflyClient)
+        if "transaction" in name.lower() and name != "get_withdrawal_transactions"
+    ]
+    assert other_transaction_methods, (
+        "expected at least one sibling transaction-fetching method on FireflyClient "
+        "to assert was not called; if none exist, this list needs revisiting"
+    )
+    for method_name in other_transaction_methods:
+        getattr(mock_client, method_name).assert_not_called()
 
 
 def test_cache_for_different_window_is_ignored(tmp_path: Path) -> None:
