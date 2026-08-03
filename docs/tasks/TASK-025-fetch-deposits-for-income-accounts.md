@@ -2,16 +2,15 @@
 
 ## Status
 
-blocked
+in-progress
 
 ## Requirements
 
 **Binding:** FR-39a, FR-39b, FR-39c, FR-40a, FR-40b, FR-40c, FR-40d, NFR-13, NFR-14
-**BDD mode:** BDD-ABSENT
+**BDD mode:** BDD-ACTIVE
 **Depends on:** TASK-002 (`fetcher.py`, whose lookback-window computation and
 client construction this mirrors), TASK-007 (cache layer)
-**Blocked on:** `firefly-python-api` REQ-011 / that repository's TASK-016
-(`get_deposit_transactions()`), which does not exist yet
+**Blocked on:** Resolved — see Blockers section below.
 **Precedence:** The requirements document is the binding definition of this task.
 The story and scenarios below are derived from it. On any discrepancy, the
 requirements document wins. Stop and report discrepancies; do not build from
@@ -74,55 +73,35 @@ this task can merge behind its blocker without a half-built detector.
 
 ## Acceptance criteria (Gherkin)
 
-- [ ] Scenario: No income account configured means no deposit fetch
-      Given `INCOME_ACCOUNTS` is empty
-      When the analysis runs
-      Then no deposit request is made, no client is constructed for one, and
-      the run's behavior is identical to today's
+**Feature files:** tests/bdd/features/TASK-025-fetch-deposits-for-income-accounts.feature
 
-- [ ] Scenario: Deposits are fetched for the configured window
-      Given `INCOME_ACCOUNTS` names one account and `LOOKBACK_MONTHS` is 24
-      When the analysis runs
-      Then `get_deposit_transactions()` is called with the same start and end
-      dates `fetch_transactions()` used in that run
+- [x] 1. Scenario: No income account configured means no deposit fetch
+      See tests/bdd/features/TASK-025-fetch-deposits-for-income-accounts.feature: Scenario "No income account configured means no deposit fetch"
 
-- [ ] Scenario: Deposits to other accounts are discarded
-      Given deposits landing on both a configured income account and an
-      unconfigured account
-      When `fetch_deposits()` returns
-      Then only the records whose `destination_name` matches an income account
-      are present
+- [x] 2. Scenario: Deposits are fetched for the configured window
+      See tests/bdd/features/TASK-025-fetch-deposits-for-income-accounts.feature: Scenario "Deposits are fetched for the configured window"
 
-- [ ] Scenario: Deposits never reach the withdrawal pipeline
-      Given a run with income accounts configured
-      When the analysis completes
-      Then no deposit record is passed to payee grouping, category filtering,
-      account filtering, payee filtering, or bill creation, asserted at the
-      call boundaries
+- [x] 3. Scenario: Deposits to other accounts are discarded
+      See tests/bdd/features/TASK-025-fetch-deposits-for-income-accounts.feature: Scenario "Deposits to other accounts are discarded"
 
-- [ ] Scenario: Deposits are cached under their own key
-      Given a completed run with income accounts configured
-      When the cache directory is inspected
-      Then a `deposits` cache entry exists, distinct from the `transactions`
-      entry, and a second run within `CACHE_TTL_TRANSACTIONS` makes no deposit
-      request
+- [x] 4. Scenario: Deposits never reach the withdrawal pipeline
+      See tests/bdd/features/TASK-025-fetch-deposits-for-income-accounts.feature: Scenario "Deposits never reach the withdrawal pipeline"
 
-- [ ] Scenario: A cached window mismatch forces a refetch
-      Given a cached deposit entry whose window differs from the current run's
-      When the analysis runs
-      Then the deposits are fetched again rather than read from cache
+- [x] 5. Scenario: Deposits are cached under their own key
+      See tests/bdd/features/TASK-025-fetch-deposits-for-income-accounts.feature: Scenario "Deposits are cached under their own key"
 
-- [ ] Scenario: An unreachable instance is reported, not crashed
-      Given the deposit fetch raises `FireflyConnectionError`
-      When the analysis runs
-      Then the error is reported per NFR-04, with no stack trace
+- [x] 6. Scenario: A cached window mismatch forces a refetch
+      See tests/bdd/features/TASK-025-fetch-deposits-for-income-accounts.feature: Scenario "A cached window mismatch forces a refetch"
 
-- [ ] Hypothesis property test: for any set of deposit records and any set of
+- [x] 7. Scenario: An unreachable instance is reported, not crashed
+      See tests/bdd/features/TASK-025-fetch-deposits-for-income-accounts.feature: Scenario "An unreachable instance is reported, not crashed"
+
+- [x] 8. Hypothesis property test: for any set of deposit records and any set of
       configured income account names, every record in the result has a
       `destination_name` in that set, and no record with a matching
       `destination_name` is dropped
 
-- [ ] `make lint && make test` pass with coverage >= the task-start baseline
+- [x] 9. `make lint && make test` pass with coverage >= the task-start baseline
 
 ## Out of scope
 
@@ -136,16 +115,51 @@ this task can merge behind its blocker without a half-built detector.
 
 ## Blockers
 
-`firefly-python-api` does not expose `get_deposit_transactions()`. Requirement
-REQ-011 and TASK-016 have been written in that repository; the method itself is
-not implemented. Do not start this task until it is merged and the vendored
-`lib/firefly-python-api` copy has been re-synced.
+Resolved. `firefly-python-api`'s TASK-016 (REQ-011) shipped
+`FireflyClient.get_deposit_transactions(start, end, on_page=None)`; the
+vendored copy at `lib/firefly-python-api` has been re-synced and the method is
+implemented (not a stub) in
+`lib/firefly-python-api/src/firefly_python_api/_client.py` lines 542-581,
+delegating to the same `_get_transactions_by_type` pagination helper as
+`get_withdrawal_transactions()`. Confirmed via
+`lib/firefly-python-api/CHANGELOG.md` [Unreleased] entry (TASK-016) and by
+importing `FireflyClient.get_deposit_transactions` directly from the vendored
+source, which shows a matching signature
+`(start, end, on_page=None) -> list[TransactionRead]`.
 
 ## Completion
 
-**Date:**
-**Summary:**
+**Date:** 2026-08-03
+**Summary:** Added `INCOME_ACCOUNTS`/`INCOME_MIN_OCCURRENCES`/`INCOME_VARIANCE_TOLERANCE`
+to `Config`, and a new `fetch_deposits(config)` in `fetcher.py` that mirrors
+`fetch_transactions()`'s window derivation, `tqdm` progress, and cache-guard
+logic, but calls `get_deposit_transactions()`, filters to configured income
+accounts by `destination_name`, and caches under a separate `deposits` key.
+`fetch_deposits()` is a no-op (no client, no cache/network access) when
+`income_accounts` is empty. Wired into `__main__.main()` after
+`fetch_transactions()`; its result is only debug-logged, not passed to any
+downstream filter/analyzer/creator. All pre-existing `Config(...)` test
+call-site helpers were updated for the three new required fields.
 **Files changed:**
-**Branch:**
-**Stage:**
-**Commit:**
+
+- `src/firefly_bills_analyzer/config.py` - modified
+- `src/firefly_bills_analyzer/fetcher.py` - modified
+- `src/firefly_bills_analyzer/__main__.py` - modified
+- `tests/test_fetcher.py` - modified
+- `tests/test_config.py` - pre-existing (Test Writer)
+- `tests/test_main.py` - pre-existing (Test Writer)
+- `tests/test_account_filter.py` - modified
+- `tests/test_analyzer.py` - modified
+- `tests/test_bills_creator.py` - modified
+- `tests/test_category_filter.py` - modified
+- `tests/test_payee_filter.py` - modified
+- `tests/benchmark_analyzer.py` - modified
+- `tests/bdd/steps/test_task_019_steps.py` - modified
+- `tests/bdd/steps/test_task_025_steps.py` - modified (fixed two `_today` staleness bugs)
+- `tests/bdd/features/TASK-025-fetch-deposits-for-income-accounts.feature` - pre-existing (Test Writer)
+- `CHANGELOG.md` - modified
+- `docs/tasks/TASK-025-fetch-deposits-for-income-accounts.md` - modified
+
+**Branch:** `git checkout task/025-fetch-deposits-for-income-accounts`
+**Stage:** `git add src/firefly_bills_analyzer/config.py src/firefly_bills_analyzer/fetcher.py src/firefly_bills_analyzer/__main__.py tests/test_fetcher.py tests/test_config.py tests/test_main.py tests/test_account_filter.py tests/test_analyzer.py tests/test_bills_creator.py tests/test_category_filter.py tests/test_payee_filter.py tests/benchmark_analyzer.py tests/bdd/steps/test_task_019_steps.py tests/bdd/steps/test_task_025_steps.py tests/bdd/features/TASK-025-fetch-deposits-for-income-accounts.feature CHANGELOG.md docs/tasks/TASK-025-fetch-deposits-for-income-accounts.md`
+**Commit:** `git commit -m "Fetch deposits for configured income accounts (TASK-025)"`

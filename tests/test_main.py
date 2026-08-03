@@ -24,6 +24,10 @@ _TRANSACTION: TransactionRead = TransactionRead(
     date="2026-01-01", amount="10.00", destination_name="Netflix", category_name="Entertainment"
 )
 
+_DEPOSIT: TransactionRead = TransactionRead(
+    date="2026-01-01", amount="2500.00", destination_name="Salary Checking", source_name="Employer"
+)
+
 
 def _pattern(
     name: str = "Netflix",
@@ -57,6 +61,7 @@ def _pipeline(
     with (
         patch.dict(os.environ, full_env, clear=True),
         patch(f"{mod}.fetcher.fetch_transactions", return_value=[_TRANSACTION]) as fetch,
+        patch(f"{mod}.fetcher.fetch_deposits", return_value=[_DEPOSIT]) as fetch_deposits,
         patch(f"{mod}.category_filter.filter_transactions", return_value=[_TRANSACTION]) as filt,
         patch(
             f"{mod}.account_filter.filter_transactions", return_value=[_TRANSACTION]
@@ -72,6 +77,7 @@ def _pipeline(
     ):
         yield {
             "fetch": fetch,
+            "fetch_deposits": fetch_deposits,
             "filter": filt,
             "account_filter": account_filt,
             "payee_filter": payee_filt,
@@ -113,6 +119,69 @@ class TestConfigError:
         assert "FIREFLY_URL" in captured.err
         # NFR-04: a plain message, not a stack trace.
         assert "Traceback" not in captured.err
+
+
+class TestDepositWiring:
+    """TASK-025, FR-40d: fetch_deposits() runs after fetch_transactions(), and
+    its result never reaches the withdrawal-side pipeline."""
+
+    def test_fetch_deposits_called_after_fetch_transactions(self) -> None:
+        with _pipeline() as mocks:
+            code = main(["--auto-approve"])
+
+        assert code == 0
+        mocks["fetch"].assert_called_once()
+        mocks["fetch_deposits"].assert_called_once()
+
+    def test_deposit_result_never_passed_to_category_filter(self) -> None:
+        with _pipeline() as mocks:
+            code = main(["--auto-approve"])
+
+        assert code == 0
+        for call in mocks["filter"].call_args_list:
+            for call_arg in call.args:
+                if isinstance(call_arg, list):
+                    assert _DEPOSIT not in call_arg
+
+    def test_deposit_result_never_passed_to_account_filter(self) -> None:
+        with _pipeline() as mocks:
+            code = main(["--auto-approve"])
+
+        assert code == 0
+        for call in mocks["account_filter"].call_args_list:
+            for call_arg in call.args:
+                if isinstance(call_arg, list):
+                    assert _DEPOSIT not in call_arg
+
+    def test_deposit_result_never_passed_to_payee_filter(self) -> None:
+        with _pipeline() as mocks:
+            code = main(["--auto-approve"])
+
+        assert code == 0
+        for call in mocks["payee_filter"].call_args_list:
+            for call_arg in call.args:
+                if isinstance(call_arg, list):
+                    assert _DEPOSIT not in call_arg
+
+    def test_deposit_result_never_passed_to_identify_recurring(self) -> None:
+        with _pipeline() as mocks:
+            code = main(["--auto-approve"])
+
+        assert code == 0
+        for call in mocks["analyze"].call_args_list:
+            for call_arg in call.args:
+                if isinstance(call_arg, list):
+                    assert _DEPOSIT not in call_arg
+
+    def test_deposit_result_never_passed_to_bills_creator(self) -> None:
+        with _pipeline() as mocks:
+            code = main(["--auto-approve"])
+
+        assert code == 0
+        for call in mocks["create"].call_args_list:
+            for call_arg in call.args:
+                if isinstance(call_arg, list):
+                    assert _DEPOSIT not in call_arg
 
 
 class TestPipelineWiring:
