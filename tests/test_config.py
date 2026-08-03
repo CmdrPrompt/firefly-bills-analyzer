@@ -2,6 +2,8 @@ import os
 from unittest.mock import patch
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from firefly_bills_analyzer.config import Config, ConfigError
 
@@ -197,3 +199,98 @@ def test_household_spend_exclude_tag_override() -> None:
     with patch.dict(os.environ, env, clear=True):
         cfg = Config.from_env()
     assert cfg.household_spend_exclude_tag == "personal"
+
+
+# ---------------------------------------------------------------------------
+# Per-category one-off threshold overrides (TASK-033, FR-47e, FR-47f)
+# ---------------------------------------------------------------------------
+
+
+def test_household_spend_one_off_thresholds_defaults_to_empty_dict() -> None:
+    with patch.dict(os.environ, BASE_ENV, clear=True):
+        cfg = Config.from_env()
+    assert cfg.household_spend_one_off_thresholds == {}
+
+
+def test_household_spend_one_off_thresholds_unset_env_var_is_empty_dict() -> None:
+    env = {**BASE_ENV, "HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS": ""}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.household_spend_one_off_thresholds == {}
+
+
+def test_household_spend_one_off_thresholds_parses_single_pair() -> None:
+    env = {**BASE_ENV, "HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS": "Mat och hushåll:3000"}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.household_spend_one_off_thresholds == {"Mat och hushåll": 3000.0}
+
+
+def test_household_spend_one_off_thresholds_parses_multiple_pairs() -> None:
+    env = {
+        **BASE_ENV,
+        "HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS": "Mat och hushåll:3000,Transport:6000",
+    }
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.household_spend_one_off_thresholds == {
+        "Mat och hushåll": 3000.0,
+        "Transport": 6000.0,
+    }
+
+
+def test_household_spend_one_off_thresholds_strips_whitespace_around_pairs() -> None:
+    env = {
+        **BASE_ENV,
+        "HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS": " Mat och hushåll : 3000 , Transport : 6000 ",
+    }
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.household_spend_one_off_thresholds == {
+        "Mat och hushåll": 3000.0,
+        "Transport": 6000.0,
+    }
+
+
+def test_household_spend_one_off_thresholds_skips_malformed_entry_without_colon() -> None:
+    """No `:` separator: the entry carries no parseable amount, so it is
+    silently skipped, mirroring `_csv()`'s treatment of blank entries rather
+    than raising for a single bad pair among otherwise valid ones."""
+    env = {
+        **BASE_ENV,
+        "HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS": "Mat och hushåll3000,Transport:6000",
+    }
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.household_spend_one_off_thresholds == {"Transport": 6000.0}
+
+
+# Category names avoid "," and ":" (the pair/field separators) and surrounding
+# whitespace (stripped, so it would not round-trip through equality).
+_category_name_strategy = (
+    st.text(
+        alphabet=st.characters(blacklist_characters=",:", blacklist_categories=("Cs", "Cc")),
+        min_size=1,
+        max_size=15,
+    )
+    .map(lambda s: s.strip())
+    .filter(lambda s: s != "")
+)
+
+_amount_strategy = st.floats(
+    min_value=0.01, max_value=1_000_000, allow_nan=False, allow_infinity=False
+).map(lambda amount: round(amount, 2))
+
+
+@given(st.dictionaries(_category_name_strategy, _amount_strategy, min_size=0, max_size=8))
+@settings(max_examples=50)
+def test_household_spend_one_off_thresholds_round_trips_arbitrary_pairs(
+    pairs: dict[str, float],
+) -> None:
+    """Any set of `category:amount` pairs joined with commas parses back to
+    the same mapping, with amounts as floats (FR-47e's format)."""
+    raw = ",".join(f"{category}:{amount}" for category, amount in pairs.items())
+    env = {**BASE_ENV, "HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS": raw}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.household_spend_one_off_thresholds == pairs
