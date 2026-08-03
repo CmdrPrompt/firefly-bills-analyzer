@@ -2,12 +2,12 @@
 
 ## Status
 
-todo
+done
 
 ## Requirements
 
 **Binding:** FR-32d (rationale only, normative content unchanged)
-**BDD mode:** BDD-ACTIVE
+**BDD mode:** BDD-ABSENT
 **Depends on:** TASK-014 (introduced FR-32d and the incorrect rationale)
 **Precedence:** The requirements document is the binding definition of this task.
 The story and scenarios below are derived from it. On any discrepancy, the
@@ -70,16 +70,16 @@ fetch layer is ever widened to other transaction types.
 
 ## Acceptance criteria (Gherkin)
 
-- [ ] Scenario: The fetch layer supplies withdrawals only
+- [x] Scenario: The fetch layer supplies withdrawals only
       Given a mocked `FireflyClient`
       When `fetcher.fetch_transactions()` runs
       Then `get_withdrawal_transactions()` is the only client method called to obtain transactions
 
-- [ ] `_partition_by_source_account()`'s docstring no longer describes a transfer funding a spending account, and states that only withdrawals reach the function
+- [x] `_partition_by_source_account()`'s docstring no longer describes a transfer funding a spending account, and states that only withdrawals reach the function
 
-- [ ] No behavioral change: every existing test in `tests/` passes unmodified, and no test assertion is edited
+- [x] No behavioral change: every existing test in `tests/` passes unmodified, and no test assertion is edited
 
-- [ ] `make lint && make test` pass with coverage >= the TASK-018 baseline
+- [x] `make lint && make test` pass with coverage >= the TASK-018 baseline
 
 ## Out of scope
 
@@ -97,17 +97,46 @@ None
 
 ## Completion
 
-**Date:** YYYY-MM-DD
-**Summary:**
+**Date:** 2026-08-03
+**Summary:** Corrected FR-32d's justifying example, which described a Firefly
+III transfer scenario the withdrawal-only fetch layer can never supply.
+`_partition_by_source_account()`'s docstring in `analyzer.py` now uses the
+same-payee/two-accounts example from the revised FR-32d and states the
+withdrawal-only constraint explicitly. While implementing, found the same
+flawed transfer-based rationale repeated in `identify_recurring()`'s
+docstring (not listed in the task's original Change section, since the task
+description assumed only one docstring repeated it); corrected it with the
+same wording for consistency, since leaving it would have recreated the
+exact defect this task removes. `fetcher.py` was not touched, per the task
+(its module docstring was already correct). Added one regression-guard
+characterization test, `test_fetch_transactions_calls_get_withdrawal_transactions_only`,
+asserting `fetch_transactions()` calls only `get_withdrawal_transactions()`
+on the `FireflyClient`; the test passed immediately (green) since no
+production behavior changed, per the characterization-test convention for
+already-correct existing behavior. Test Design Reviewer flagged that the
+test's original sibling-method check (`dir(mock_client)` on an un-spec'd
+mock) was dead code that could never fail; fixed by patching
+`FireflyClient` with `autospec=True` and introspecting the real class via
+`dir(FireflyClient)` instead, plus an assertion that the sibling-method list
+is non-empty so the check cannot silently degrade to a no-op again. No
+behavioral change anywhere; all 192 pre-existing tests pass unmodified plus
+the 1 new test (193 total), coverage unchanged at 99% (matches the
+TASK-018-era baseline recorded immediately before this task's
+implementation). Task file's own `BDD mode` field was corrected from the
+incorrectly declared `BDD-ACTIVE` (no feature file existed) to `BDD-ABSENT`
+(matching the task's actual inline-Gherkin acceptance criteria and the
+precedent set by TASK-018) as a Workflow Guardian fallback edit, since the
+spawned Task Drafter agent could not commit its own fix (no Bash tool access
+in its worktree).
 **Files changed:**
 
-- `src/firefly_bills_analyzer/analyzer.py` — modified (docstring only)
-- `tests/test_fetcher.py` — modified (withdrawal-only assertion)
-- `docs/REQUIREMENTS_new.md` — modified prior to implementation (v0.2.22 → v0.2.23)
+- `src/firefly_bills_analyzer/analyzer.py` — modified (docstring only, in
+  both `_partition_by_source_account()` and `identify_recurring()`)
+- `tests/test_fetcher.py` — modified (added withdrawal-only regression test)
 - `CHANGELOG.md` — modified
-- `docs/tasks/README.md` — modified (status)
-- `docs/tasks/TASK-021-fr32d-rationale-correction.md` — this file
+- `docs/tasks/TASK-021-fr32d-rationale-correction.md` — this file (BDD mode
+  corrected to BDD-ABSENT, Status, acceptance criteria checked, Completion)
 
 **Branch:** `git checkout task/021-fr32d-rationale-correction`
-**Stage:** `git add src/firefly_bills_analyzer/analyzer.py tests/test_fetcher.py docs/REQUIREMENTS_new.md CHANGELOG.md docs/tasks/README.md docs/tasks/TASK-021-fr32d-rationale-correction.md`
+**Stage:** `git add src/firefly_bills_analyzer/analyzer.py tests/test_fetcher.py CHANGELOG.md docs/tasks/TASK-021-fr32d-rationale-correction.md`
 **Commit:** `git commit -m "docs: correct FR-32d's source-account partitioning rationale, which described a transfer the fetch layer never supplies"`

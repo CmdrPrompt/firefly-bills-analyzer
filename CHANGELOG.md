@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Corrected the rationale documented for source-account partitioning
+  (FR-32d's docstring in `analyzer.py`): it previously illustrated the need
+  for partitioning with a fixed-transfer example that the withdrawal-only
+  fetch layer can never actually supply. The docstring now uses the real
+  case — the same payee paid from two different source accounts — and
+  states the withdrawal-only constraint explicitly. No partitioning
+  behavior changed. (TASK-021)
+
 ### Added
 
 - Each identified recurring pattern now carries a normalized monthly
