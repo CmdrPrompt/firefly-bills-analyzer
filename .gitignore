@@ -97,3 +97,5 @@ firefly-bills-*.csv
 cache/transactions.json
 cache/bills.json
 cache/*
+firefly-income-*.csv
+firefly-income-*.json
