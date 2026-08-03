@@ -265,6 +265,30 @@ def test_household_spend_one_off_thresholds_skips_malformed_entry_without_colon(
     assert cfg.household_spend_one_off_thresholds == {"Transport": 6000.0}
 
 
+def test_household_spend_one_off_thresholds_skips_entry_with_empty_amount() -> None:
+    """A `category:` pair with nothing after the colon has no parseable
+    amount, so it is silently skipped like an entry with no colon at all."""
+    env = {
+        **BASE_ENV,
+        "HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS": "Mat och hushåll:,Transport:6000",
+    }
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.household_spend_one_off_thresholds == {"Transport": 6000.0}
+
+
+def test_household_spend_one_off_thresholds_skips_entry_with_unparseable_amount() -> None:
+    """A `category:amount` pair whose amount isn't a valid float is silently
+    skipped rather than raising, consistent with the other malformed-entry cases."""
+    env = {
+        **BASE_ENV,
+        "HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS": "Mat och hushåll:not-a-number,Transport:6000",
+    }
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.household_spend_one_off_thresholds == {"Transport": 6000.0}
+
+
 # Category names avoid "," and ":" (the pair/field separators) and surrounding
 # whitespace (stripped, so it would not round-trip through equality).
 _category_name_strategy = (

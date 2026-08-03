@@ -50,6 +50,7 @@ class OneOffPurchase:
     payee: str | None
     category: str | None
     source_account: str | None
+    threshold: float
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,7 @@ class HouseholdSpendResult:
     records: list[HouseholdSpendRecord]
     one_off_purchases: list[OneOffPurchase]
     unmatched_categories: list[str]
+    unmatched_threshold_overrides: list[str]
     include_tag_count: int
     exclude_tag_count: int
 
@@ -137,21 +139,28 @@ def _select_qualifying(
 
 
 def _split_one_off_purchases(
-    qualifying: list[TransactionRead], threshold: float
+    qualifying: list[TransactionRead], config: Config
 ) -> tuple[list[OneOffPurchase], list[TransactionRead]]:
-    """Set aside every withdrawal above the one-off threshold (FR-48c)."""
+    """Set aside every withdrawal above its category's one-off threshold
+    (FR-48c), using the per-category override when one is configured for
+    the transaction's category, or the default threshold otherwise (FR-47e)."""
     one_off_purchases: list[OneOffPurchase] = []
     monthly_input: list[TransactionRead] = []
     for transaction in qualifying:
         amount = float(transaction["amount"])
+        category = transaction.get("category_name")
+        threshold = config.household_spend_one_off_thresholds.get(
+            category, config.household_spend_one_off_threshold
+        )
         if amount > threshold:
             one_off_purchases.append(
                 OneOffPurchase(
                     date=str(transaction["date"]),
                     amount=amount,
                     payee=transaction.get("destination_name"),
-                    category=transaction.get("category_name"),
+                    category=category,
                     source_account=transaction.get("source_name"),
+                    threshold=threshold,
                 )
             )
         else:
@@ -190,6 +199,19 @@ def _unmatched_categories(withdrawals: list[TransactionRead], config: Config) ->
     ]
 
 
+def _unmatched_threshold_overrides(config: Config) -> list[str]:
+    """Categories named in `household_spend_one_off_thresholds` that are not
+    also household spend categories (FR-47f), reported on the same terms
+    `_unmatched_categories()` reports an unmatched household spend category
+    (FR-50)."""
+    categories = set(config.household_spend_categories)
+    return [
+        category
+        for category in config.household_spend_one_off_thresholds
+        if category not in categories
+    ]
+
+
 def aggregate_household_spend(
     withdrawals: list[TransactionRead], config: Config
 ) -> HouseholdSpendResult:
@@ -204,6 +226,7 @@ def aggregate_household_spend(
             records=[],
             one_off_purchases=[],
             unmatched_categories=[],
+            unmatched_threshold_overrides=[],
             include_tag_count=0,
             exclude_tag_count=0,
         )
@@ -212,9 +235,7 @@ def aggregate_household_spend(
     qualifying, include_tag_count, exclude_tag_count = _select_qualifying(
         withdrawals, config, pattern_ids
     )
-    one_off_purchases, monthly_input = _split_one_off_purchases(
-        qualifying, config.household_spend_one_off_threshold
-    )
+    one_off_purchases, monthly_input = _split_one_off_purchases(qualifying, config)
 
     window_end = _today()
     window_start = _subtract_months(window_end, config.lookback_months)
@@ -230,6 +251,7 @@ def aggregate_household_spend(
         records=records,
         one_off_purchases=one_off_purchases,
         unmatched_categories=_unmatched_categories(withdrawals, config),
+        unmatched_threshold_overrides=_unmatched_threshold_overrides(config),
         include_tag_count=include_tag_count,
         exclude_tag_count=exclude_tag_count,
     )

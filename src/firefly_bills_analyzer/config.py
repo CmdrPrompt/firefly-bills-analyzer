@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from dotenv import load_dotenv
 
@@ -12,6 +12,33 @@ load_dotenv()
 
 class ConfigError(ValueError):
     """Raised when a required configuration value is absent or invalid."""
+
+
+def _kv_csv(key: str) -> dict[str, float]:
+    """Parse comma-separated `category:amount` pairs from an env var (FR-47e).
+
+    An entry without a `:` separator, or whose amount does not parse as a
+    float, carries no usable value and is silently skipped — mirroring how
+    the plain comma-list parser treats blank entries.
+    """
+    raw = os.environ.get(key, "").strip()
+    if not raw:
+        return {}
+    result: dict[str, float] = {}
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if not entry or ":" not in entry:
+            continue
+        category, _, amount = entry.partition(":")
+        category = category.strip()
+        amount = amount.strip()
+        if not category or not amount:
+            continue
+        try:
+            result[category] = float(amount)
+        except ValueError:
+            continue
+    return result
 
 
 @dataclass(frozen=True)
@@ -57,6 +84,7 @@ class Config:
     household_spend_min_months: int
     household_spend_include_tag: str | None
     household_spend_exclude_tag: str | None
+    household_spend_one_off_thresholds: dict[str, float] = field(default_factory=dict)
 
     @classmethod
     def from_env(cls) -> Config:
@@ -110,6 +138,7 @@ class Config:
             household_spend_one_off_threshold=float(
                 os.environ.get("HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD", "2000")
             ),
+            household_spend_one_off_thresholds=_kv_csv("HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS"),
             household_spend_min_months=int(os.environ.get("HOUSEHOLD_SPEND_MIN_MONTHS", "3")),
             household_spend_include_tag=os.environ.get("HOUSEHOLD_SPEND_INCLUDE_TAG", "").strip()
             or None,

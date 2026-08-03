@@ -40,6 +40,7 @@ EMPTY_HOUSEHOLD_SPEND_RESULT = HouseholdSpendResult(
     records=[],
     one_off_purchases=[],
     unmatched_categories=[],
+    unmatched_threshold_overrides=[],
     include_tag_count=0,
     exclude_tag_count=0,
 )
@@ -73,6 +74,7 @@ def _one_off_purchase(
     payee: str | None = "Furniture Shop",
     category: str | None = "Household",
     source_account: str | None = "Checking",
+    threshold: float = 2000.0,
 ) -> OneOffPurchase:
     return OneOffPurchase(
         date=date,
@@ -80,6 +82,7 @@ def _one_off_purchase(
         payee=payee,
         category=category,
         source_account=source_account,
+        threshold=threshold,
     )
 
 
@@ -172,6 +175,7 @@ def run_with_one_household_spend_record(
             records=[_household_spend_record()],
             one_off_purchases=[],
             unmatched_categories=[],
+            unmatched_threshold_overrides=[],
             include_tag_count=0,
             exclude_tag_count=0,
         ),
@@ -243,6 +247,7 @@ def run_with_record_and_two_one_offs(
                 _one_off_purchase(date="2026-02-20", payee="Appliance Store"),
             ],
             unmatched_categories=[],
+            unmatched_threshold_overrides=[],
             include_tag_count=0,
             exclude_tag_count=0,
         ),
@@ -289,6 +294,7 @@ def same_run_with_json_format(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
             records=[_household_spend_record()],
             one_off_purchases=[_one_off_purchase()],
             unmatched_categories=[],
+            unmatched_threshold_overrides=[],
             include_tag_count=0,
             exclude_tag_count=0,
         ),
@@ -327,6 +333,7 @@ def export_format_none_with_household_spend(
             records=[_household_spend_record(category="Groceries")],
             one_off_purchases=[],
             unmatched_categories=[],
+            unmatched_threshold_overrides=[],
             include_tag_count=0,
             exclude_tag_count=0,
         ),
@@ -387,6 +394,7 @@ def household_spend_record_under_fr_49e(
             ],
             one_off_purchases=[],
             unmatched_categories=[],
+            unmatched_threshold_overrides=[],
             include_tag_count=0,
             exclude_tag_count=0,
         ),
@@ -420,6 +428,7 @@ def configured_category_matching_no_transaction(
             records=[],
             one_off_purchases=[],
             unmatched_categories=["Nonexistent Category"],
+            unmatched_threshold_overrides=[],
             include_tag_count=0,
             exclude_tag_count=0,
         ),
@@ -453,6 +462,7 @@ def run_with_tag_counts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict
             records=[],
             one_off_purchases=[],
             unmatched_categories=[],
+            unmatched_threshold_overrides=[],
             include_tag_count=2,
             exclude_tag_count=1,
         ),
@@ -487,6 +497,7 @@ def completed_household_spend_export(
             records=[_household_spend_record()],
             one_off_purchases=[],
             unmatched_categories=[],
+            unmatched_threshold_overrides=[],
             include_tag_count=0,
             exclude_tag_count=0,
         ),
@@ -525,6 +536,7 @@ def run_with_household_spend_and_pending_suggestions(
             records=[_household_spend_record(source_account="Checking Account")],
             one_off_purchases=[],
             unmatched_categories=[],
+            unmatched_threshold_overrides=[],
             include_tag_count=0,
             exclude_tag_count=0,
         ),
@@ -607,6 +619,7 @@ def the_export_runs(tmp_path: Path) -> dict[str, Any]:
             records=[record],
             one_off_purchases=[],
             unmatched_categories=[],
+            unmatched_threshold_overrides=[],
             include_tag_count=0,
             exclude_tag_count=0,
         )

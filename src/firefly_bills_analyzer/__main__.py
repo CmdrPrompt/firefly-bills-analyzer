@@ -146,7 +146,10 @@ def _format_household_spend_record(record: household_spend.HouseholdSpendRecord)
 def _format_one_off_purchase(purchase: household_spend.OneOffPurchase) -> str:
     category = f" [{purchase.category}]" if purchase.category else ""
     account = f" from {purchase.source_account}" if purchase.source_account else ""
-    return f"{purchase.date} {purchase.payee}{category}{account}: {purchase.amount:.2f}"
+    return (
+        f"{purchase.date} {purchase.payee}{category}{account}: {purchase.amount:.2f} "
+        f"(threshold {purchase.threshold:.2f})"
+    )
 
 
 def _print_household_spend(result: HouseholdSpendResult) -> None:
@@ -158,6 +161,8 @@ def _print_household_spend(result: HouseholdSpendResult) -> None:
         print(f"[household-spend] one-off: {_format_one_off_purchase(purchase)}")
     for category in result.unmatched_categories:
         print(f"[household-spend] unmatched category: {category}")
+    for category in result.unmatched_threshold_overrides:
+        print(f"[household-spend] unmatched threshold override: {category}")
     if result.include_tag_count or result.exclude_tag_count:
         print(
             f"[household-spend] tag corrections: {result.include_tag_count} included, "
@@ -278,6 +283,7 @@ def main(argv: list[str] | None = None) -> int:
         household_spend_result.records
         or household_spend_result.one_off_purchases
         or household_spend_result.unmatched_categories
+        or household_spend_result.unmatched_threshold_overrides
         or household_spend_result.include_tag_count
         or household_spend_result.exclude_tag_count
     )

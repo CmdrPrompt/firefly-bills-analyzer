@@ -14,6 +14,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   goes up rather than to the nearest öre, so a set of summed monthly
   equivalents never understates the actual cost. (FR-37, TASK-031)
 
+### Added
+
+- Household spend's one-off purchase threshold can now be configured per
+  category (`HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS`, comma-separated
+  `category:amount` pairs), instead of one amount applying to every
+  category. A category without an override still uses
+  `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD` as before, so a threshold sized for
+  an occasional Transport repair no longer misclassifies a routine grocery
+  run as a one-off purchase. Each exported one-off purchase record now also
+  carries the threshold amount that excluded it, and a category named in
+  the override mapping but absent from `HOUSEHOLD_SPEND_CATEGORIES` is
+  reported as an unmatched threshold override. (FR-47e, FR-47f, FR-48c,
+  FR-51c, TASK-033)
+
 ### Fixed
 
 - Household spend no longer silently drops real spending that happens to

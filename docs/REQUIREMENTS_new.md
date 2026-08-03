@@ -37,7 +37,7 @@ Terms used with a specific meaning in this specification. All requirements use t
 | Household spend category | A category named in `HOUSEHOLD_SPEND_CATEGORIES`. Spending in it is treated as benefiting the household rather than one person, wherever it was paid from. What belongs in the list is the user's declaration, not something the application infers (SE-08) |
 | Household spend | Withdrawals qualifying under FR-48d, aggregated per source account, category, and calendar month. Unlike a recurring payment pattern, it is not required to recur: day-to-day grocery shopping is the case it exists for, and its median interval of a few days puts it outside every frequency bucket FR-03 defines |
 | Household spend tag | A tag named in `HOUSEHOLD_SPEND_INCLUDE_TAG` or `HOUSEHOLD_SPEND_EXCLUDE_TAG`, applied by the user to an individual transaction to override what its category would otherwise decide. The category list sets the rule; the tags handle the exceptions to it, so that a personal purchase inside a household category, and a household purchase inside a personal one, can each be corrected without distorting the category structure |
-| One-off purchase | A single withdrawal in a household spend category whose amount exceeds `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD`. It is excluded from the monthly figures and reported separately (FR-48c), because a sofa is a settlement between household members, not a monthly cost |
+| One-off purchase | A single withdrawal in a household spend category whose amount exceeds that category's one-off threshold: the override configured for it in `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS` (FR-47e), or `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD` (FR-47b) when the category has no override. It is excluded from the monthly figures and reported separately (FR-48c), because a sofa is a settlement between household members, not a monthly cost — and what counts as a settlement rather than routine spend differs by category: a car repair is a rare one-off in Transport, while a 2,000–2,500 kr grocery run is ordinary spend in Mat och hushåll |
 | Complete month | A calendar month falling entirely inside the analysis window. The first and last months of the window are partial, since the window starts and ends mid-month, and their totals would understate real spending |
 | Income variance | The spread of an income source's occurrences around its observed net income, reported as minimum, maximum, mean, and the count of occurrences deviating from the observed net income by more than `INCOME_VARIANCE_TOLERANCE`. It is what makes a bonus, a holiday supplement, or a retroactive adjustment visible instead of silently averaged in |
 
@@ -488,7 +488,10 @@ files keep pointing at a single meaning.
    at or above `HIGH_CONFIDENCE_THRESHOLD`, are discarded, so that a subscription categorized as
    household spending is not counted twice; withdrawals belonging to a low-confidence pattern remain
    eligible for household spend, since UC2 itself does not trust that classification enough to act on it
-4. Withdrawals above the one-off threshold are set aside as one-off purchases
+4. Withdrawals whose amount exceeds the one-off threshold that applies to their category are set
+   aside as one-off purchases: the per-category override in `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS`
+   when one is configured for that category, otherwise the default `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD`
+   (FR-47b, FR-47e)
 5. The remainder is summed per source account, category, and calendar month
 6. Months not falling entirely inside the analysis window are dropped
 7. The reported monthly figure per source account and category is the median of the remaining
@@ -504,6 +507,11 @@ files keep pointing at a single meaning.
   name is visible rather than silently producing nothing
 - A withdrawal's pattern has confidence below `HIGH_CONFIDENCE_THRESHOLD`: the withdrawal is not
   excluded by step 3, and is measured as household spend like any other qualifying withdrawal
+- A household spend category has no entry in `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS`: the default
+  `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD` applies to it, unchanged from prior behavior
+- A category named in `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS` does not appear in
+  `HOUSEHOLD_SPEND_CATEGORIES`: reported the same way FR-50 reports an unmatched household spend
+  category, so a typo in the threshold mapping is visible rather than silently doing nothing
 
 **Why this exists.** UC2 answers "what recurs". A household where one member buys the groceries,
 the children's clothes, and the household supplies from their own account has a real, continuous,
@@ -604,12 +612,14 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-45d | When an income export completes, the application shall inform the user of the file path it wrote, on the same terms as FR-31 | UC12, UC5 |
 | FR-46  | In CLI mode, the application shall display the income sources, and the accounts reported under FR-42b and FR-42c, before the recurring payment review flow (UC3) | UC12, UC3 |
 | FR-47a | The application shall read the household spend categories from configuration (`HOUSEHOLD_SPEND_CATEGORIES`, comma-separated category names), and an empty value shall disable household spend measurement entirely | UC13 |
-| FR-47b | The application shall read the one-off purchase threshold from configuration (`HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD`, default 2000), as an absolute amount | UC13 |
+| FR-47b | The application shall read the default one-off purchase threshold from configuration (`HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD`, default 2000), as an absolute amount, applied to every household spend category that has no override under FR-47e | UC13 |
 | FR-47c | The application shall read the minimum number of complete months required for a median from configuration (`HOUSEHOLD_SPEND_MIN_MONTHS`, default 3) | UC13 |
 | FR-47d | The application shall read the household spend override tags from configuration (`HOUSEHOLD_SPEND_INCLUDE_TAG` and `HOUSEHOLD_SPEND_EXCLUDE_TAG`), each a single tag name, both optional | UC13 |
+| FR-47e | The application shall read per-category one-off purchase threshold overrides from configuration (`HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS`, comma-separated `category:amount` pairs, e.g. `Mat och hushåll:3000,Transport:6000`), and for each household spend category shall use the override amount when that category is named in `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS`, or `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD` (FR-47b) otherwise | UC13 |
+| FR-47f | If a category named in `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS` does not also appear in `HOUSEHOLD_SPEND_CATEGORIES`, then the application shall report that category as an unmatched threshold override, on the same terms FR-50 reports an unmatched household spend category | UC13 |
 | FR-48a | The application shall measure household spend from the withdrawals already fetched for UC1, and shall not issue an additional request to Firefly III for it | UC13, UC1 |
 | FR-48b | The application shall exclude from household spend every withdrawal that belongs to a recurring payment pattern identified in UC2 whose confidence score is at or above `HIGH_CONFIDENCE_THRESHOLD` (FR-04a), so that a transaction is excluded only when UC2's own evidence is already strong enough to trust it as a bill. A withdrawal belonging to a pattern below that threshold remains eligible for household spend: UC2's clustering (FR-32a) falls back to a single cluster whenever it finds no corroborated same-date evidence of distinct amounts, however much a payee's amounts vary across different dates, and such a cluster's low confidence reflects that its "recurring" classification is not to be relied on — including for the purpose of deciding what UC13 has already counted | UC13, UC2 |
-| FR-48c | The application shall exclude from the monthly totals every withdrawal whose amount exceeds `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD`, and shall report each such withdrawal separately with its date, amount, payee, category, and source account | UC13 |
+| FR-48c | The application shall exclude from the monthly totals every withdrawal whose amount exceeds the one-off purchase threshold that applies to its category (FR-47b, FR-47e), and shall report each such withdrawal separately with its date, amount, payee, category, source account, and the threshold amount that excluded it | UC13 |
 | FR-48d | The application shall qualify a withdrawal as household spend when its category is a household spend category, or when it carries the tag named in `HOUSEHOLD_SPEND_INCLUDE_TAG`, and shall exclude every other withdrawal | UC13 |
 | FR-48e | The application shall exclude from household spend every withdrawal carrying the tag named in `HOUSEHOLD_SPEND_EXCLUDE_TAG`, whatever its category, and this exclusion shall take precedence over every other qualifying rule including `HOUSEHOLD_SPEND_INCLUDE_TAG` | UC13 |
 | FR-48f | The application shall report the number of withdrawals admitted by `HOUSEHOLD_SPEND_INCLUDE_TAG` and the number removed by `HOUSEHOLD_SPEND_EXCLUDE_TAG`, so that the extent of manual correction is visible rather than folded silently into the totals | UC13 |
@@ -622,7 +632,7 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-50  | If a configured household spend category matches no transaction in the analysis window, then the application shall report that category as unmatched | UC13 |
 | FR-51a | When household spend measurement is enabled and the export format (`EXPORT_FORMAT`) is not `none`, the application shall write the household spend figures and the one-off purchases to a file separate from the recurring payment export (FR-08) and the income export (FR-45a), in the same format | UC13, UC5 |
 | FR-51b | Each exported household spend record shall carry the source account name, the category name, the median monthly figure, the mean, minimum, and maximum monthly totals, and the complete month count | UC13, UC5 |
-| FR-51c | Each exported one-off purchase record shall carry its date, amount, payee, category, and source account name, and shall be distinguishable from a household spend record | UC13, UC5 |
+| FR-51c | Each exported one-off purchase record shall carry its date, amount, payee, category, source account name, and the threshold amount that excluded it (FR-48c), and shall be distinguishable from a household spend record | UC13, UC5 |
 | FR-51d | When a household spend export completes, the application shall inform the user of the file path it wrote, on the same terms as FR-31 | UC13, UC5 |
 | FR-52  | In CLI mode, the application shall display the household spend figures, the one-off purchases, and any category reported under FR-49e or FR-50, before the recurring payment review flow (UC3) | UC13, UC3 |
 
@@ -795,7 +805,8 @@ The application supports two run modes:
 | `INCLUDE_ACCOUNTS`                 | Comma-separated source-account include list, matched against `source_name` (FR-35a) | *(empty = all)* |
 | `EXCLUDE_ACCOUNTS`                 | Comma-separated source-account exclude list, matched against `source_name` (FR-35b) | *(empty)*       |
 | `HOUSEHOLD_SPEND_CATEGORIES`       | Comma-separated categories whose spending benefits the household (FR-47a)           | *(empty = off)* |
-| `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD`| Amount above which a purchase is reported separately instead of averaged (FR-47b)   | `2000`          |
+| `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD`| Default amount above which a purchase is reported separately instead of averaged, used for any household spend category without an override (FR-47b) | `2000`          |
+| `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS`| Comma-separated per-category overrides of the one-off threshold, as `category:amount` pairs (FR-47e) | *(empty = none; every category uses the default)* |
 | `HOUSEHOLD_SPEND_MIN_MONTHS`       | Complete months required before a median is reported (FR-47c)                        | `3`             |
 | `HOUSEHOLD_SPEND_INCLUDE_TAG`      | Tag admitting a transaction as household spend despite its category (FR-48d)        | *(empty)*       |
 | `HOUSEHOLD_SPEND_EXCLUDE_TAG`      | Tag removing a transaction from household spend, overrides everything (FR-48e)      | *(empty)*       |
