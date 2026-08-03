@@ -277,11 +277,21 @@ def _collapse_into_billing_events(transactions: list[TransactionRead]) -> list[d
     return events
 
 
-def _classify_frequency(median_interval_days: float) -> str:
+def classify_frequency(median_interval_days: float) -> str:
+    """Classify a median interval (in days) into a frequency bucket (FR-03).
+
+    Promoted from a private helper so UC12 (`income.py`) can reuse the same
+    bucket boundaries rather than reimplementing them.
+    """
     for frequency, (low, high) in _FREQUENCY_RANGES.items():
         if low <= median_interval_days <= high:
             return frequency
     return "irregular"
+
+
+# Backward-compatible alias: existing call sites/tests in this module use the
+# original private name.
+_classify_frequency = classify_frequency
 
 
 def _confidence(
