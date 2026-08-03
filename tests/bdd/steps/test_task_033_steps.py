@@ -108,10 +108,13 @@ def withdrawal_above_default_below_override() -> dict[str, Any]:
 
 
 @then("the withdrawal is counted in the household spend monthly totals")
-def withdrawal_counted_in_monthly_totals(result: HouseholdSpendResult) -> None:
+def withdrawal_counted_in_monthly_totals(
+    result: HouseholdSpendResult, context: dict[str, Any]
+) -> None:
     assert result.one_off_purchases == []
+    expected_total = sum(float(w["amount"]) for w in context["withdrawals"])
     total = sum(month_total for record in result.records for month_total in record.monthly_totals)
-    assert total == 2500.0
+    assert total == expected_total
 
 
 # ---------------------------------------------------------------------------
