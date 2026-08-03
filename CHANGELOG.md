@@ -53,6 +53,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Deposits fetched for a configured income account are now analyzed to
+  recognize the payer who actually pays a monthly income source there:
+  deposits are grouped by income account and payer, same-date deposits from
+  the same payer are collapsed into one occurrence, and a group qualifies
+  once it recurs monthly at least `INCOME_MIN_OCCURRENCES` times. The
+  observed net income reported for an account is always the amount of its
+  most recent qualifying occurrence, never a mean, so a raise or pay cut is
+  visible immediately instead of being smoothed away over the analysis
+  window; minimum, maximum, mean, and an outlier count (occurrences
+  deviating from the observed figure by more than
+  `INCOME_VARIANCE_TOLERANCE`) are reported alongside it so a bonus or
+  one-off adjustment shows up rather than being silently absorbed. An
+  income account with no qualifying payer, or with more than one, is never
+  guessed at: it is reported with every candidate payer's occurrence count
+  and frequency instead, so an ambiguous or unpaid account is visible
+  rather than defaulted to a picked or summed figure. (FR-41a, FR-41b,
+  FR-41c, FR-42a, FR-42b, FR-42c, FR-43, FR-44, TASK-026)
+
 - Deposits landing on one or more configured income accounts
   (`INCOME_ACCOUNTS`, comma-separated) are now fetched from Firefly III
   alongside withdrawal transactions, over the same lookback window and cached

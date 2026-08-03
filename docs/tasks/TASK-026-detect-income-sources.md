@@ -176,9 +176,38 @@ None.
 
 ## Completion
 
-**Date:**
-**Summary:**
+**Date:** 2026-08-03
+**Summary:** Implemented `detect_income()` in a new `src/firefly_bills_analyzer/income.py`
+module. Deposits are grouped by `(destination_name, source_name)` per FR-41a
+(the deposit-side field inversion, income account/payer), same-date deposits
+from the same payer are collapsed into one summed occurrence, and each
+group's occurrence count and median interval are classified via
+`analyzer.classify_frequency()` (FR-41b). A group qualifies when its
+frequency is `monthly` and its occurrence count meets `income_min_occurrences`
+(FR-41c). Each configured income account resolves to exactly one
+`IncomeSource` when exactly one candidate qualifies (FR-42a), an
+`IncomeAccountIssue(reason="no-qualifying-candidate")` listing every rejected
+candidate's payer/occurrence count/frequency when none qualify (FR-42b), or
+`IncomeAccountIssue(reason="ambiguous")` listing every qualifying payer with
+no summed/averaged/picked figure when more than one qualifies (FR-42c).
+`observed_net_income`/`observed_date` are taken from the latest occurrence,
+never the mean (FR-43); `amount_min`/`amount_max`/`amount_mean` and
+`outlier_count` (occurrences deviating from the observed figure by more than
+`income_variance_tolerance`) are computed over every occurrence (FR-44).
+`_classify_frequency()` in `analyzer.py` was promoted to a public
+`classify_frequency()` (with a `_classify_frequency` backward-compatible
+alias so existing call sites/tests are unaffected) so `income.py` could
+import and reuse it rather than reimplementing the frequency-bucket
+boundaries, per the task's dependency on TASK-003. All 13 red tests in
+`tests/test_income.py` (committed in a730fed) now pass; no test was added,
+changed, or removed beyond what was already committed.
 **Files changed:**
-**Branch:**
-**Stage:**
-**Commit:**
+
+- `src/firefly_bills_analyzer/income.py` - created
+- `src/firefly_bills_analyzer/analyzer.py` - modified (promoted `_classify_frequency` to public `classify_frequency`, kept a backward-compatible private alias)
+- `CHANGELOG.md` - modified
+- `docs/tasks/TASK-026-detect-income-sources.md` - modified (Completion section)
+
+**Branch:** `git checkout task/026-detect-income-sources`
+**Stage:** `git add src/firefly_bills_analyzer/income.py src/firefly_bills_analyzer/analyzer.py CHANGELOG.md docs/tasks/TASK-026-detect-income-sources.md`
+**Commit:** `git commit -m "Detect income sources and resolve observed net income (UC12) (TASK-026)"`
