@@ -73,6 +73,31 @@ class IncomeResult:
     issues: list[IncomeAccountIssue]
 
 
+def _select_observed_occurrence(
+    sorted_events: list[dict[str, Any]], tolerance: float
+) -> dict[str, Any]:
+    """Select the occurrence whose amount becomes observed_net_income (FR-43,
+    FR-43a).
+
+    The most recent occurrence is used unless it deviates from the median of
+    all occurrence amounts by more than `tolerance`, in which case the
+    search walks backward from the most recent occurrence to find the first
+    (i.e. most recent) one that does not so deviate. The median, not the
+    observed figure itself, is the reference point, since comparing an
+    occurrence to the very figure it would set is circular. If every
+    occurrence deviates from the median, the oldest occurrence is used.
+    """
+    amounts = [float(event["amount"]) for event in sorted_events]
+    median = statistics.median(amounts)
+
+    for event in reversed(sorted_events):
+        amount = float(event["amount"])
+        if median == 0 or abs(amount - median) / median <= tolerance:
+            return event
+
+    return sorted_events[0]
+
+
 def _build_income_source(
     income_account: str,
     payer: str,
@@ -82,16 +107,20 @@ def _build_income_source(
     """Build an `IncomeSource` from one payer's collapsed occurrences.
 
     Observed net income is the amount of the most recent occurrence, not
-    the mean (FR-43). Variance figures (FR-44) are computed over every
-    occurrence, including the one that sets the observed figure.
+    the mean (FR-43), unless that occurrence deviates from the median
+    occurrence amount by more than `INCOME_VARIANCE_TOLERANCE`, in which
+    case the most recent non-deviating occurrence is used instead (FR-43a).
+    Variance figures (FR-44) are computed over every occurrence, including
+    any skipped when selecting the observed figure, with outlier_count
+    measuring deviation from the selected observed_net_income.
     """
     sorted_events = sorted(events, key=lambda event: str(event["date"]))
-    latest = sorted_events[-1]
-    observed_net_income = float(latest["amount"])
-    observed_date = str(latest["date"])
+    tolerance = config.income_variance_tolerance
+    observed_event = _select_observed_occurrence(sorted_events, tolerance)
+    observed_net_income = float(observed_event["amount"])
+    observed_date = str(observed_event["date"])
 
     amounts = [float(event["amount"]) for event in events]
-    tolerance = config.income_variance_tolerance
     outlier_count = sum(
         1
         for amount in amounts

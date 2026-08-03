@@ -1,7 +1,7 @@
 # TASK-030 Fallback income observed_net_income when latest occurrence deviates from median
 
 ## Status
-todo
+done
 
 ## Requirements
 **Binding:** FR-43a, FR-44, UC12
@@ -36,21 +36,21 @@ The new algorithm:
 
 ## Acceptance criteria (Gherkin)
 
-- [ ] 1. Normal case: latest occurrence does not deviate from median
+- [x] 1. Normal case: latest occurrence does not deviate from median
       Given an income account with occurrences `[1000, 1000, 1000, 1010]` and `INCOME_VARIANCE_TOLERANCE` of 0.10
       When the application detects the income source
       Then the observed_net_income is 1010 (the latest occurrence)
       And the observed_date is the date of the occurrence with amount 1010
       And outlier_count is 0 (no occurrence deviates from 1010 by more than 10%)
 
-- [ ] 2. Latest occurrence deviates; fallback to previous non-deviating
+- [x] 2. Latest occurrence deviates; fallback to previous non-deviating
       Given an income account with occurrences dated in sequence: 2026-07-01 (1000), 2026-08-01 (1000), 2026-09-01 (50), and `INCOME_VARIANCE_TOLERANCE` of 0.10
       When the application detects the income source
       Then the observed_net_income is 1000 (from 2026-08-01, the most recent non-deviating)
       And the observed_date is 2026-08-01
       And outlier_count is 1 (the 50 on 2026-09-01 deviates from 1000 by 95%, exceeding 10%)
 
-- [ ] 3. All occurrences deviate from median except one
+- [x] 3. All occurrences deviate from median except one
       Given an income account with occurrences `[1000, 100, 100, 100]` and `INCOME_VARIANCE_TOLERANCE` of 0.10
       When the application detects the income source
       Then the median amount is 100 (the median of [1000, 100, 100, 100])
@@ -58,7 +58,7 @@ The new algorithm:
       And outlier_count is 1 (the 1000 deviates from 100 by 900%, exceeding 10%)
       And amount_min, amount_max, amount_mean include all four occurrences
 
-- [ ] 4. Variance figures always span all occurrences
+- [x] 4. Variance figures always span all occurrences
       Given an income account with occurrences `[1000, 1000, 1000, 50]` and `INCOME_VARIANCE_TOLERANCE` of 0.10
       When the application detects the income source
       Then amount_min is 50, amount_max is 1000, amount_mean is (1000+1000+1000+50)/4 = 762.5
@@ -75,12 +75,40 @@ The new algorithm:
 None
 
 ## Completion
-**Date:** YYYY-MM-DD
-**Summary:** What was done, any decisions made, and what was left out and why.
+**Date:** 2026-08-03
+**Summary:** Implemented FR-43a in `_build_income_source` (extracted into a new
+`_select_observed_occurrence` helper): observed_net_income now falls back to
+the most recent occurrence that does not deviate from the median of all
+occurrences by more than `INCOME_VARIANCE_TOLERANCE`, instead of always
+taking the latest occurrence. Variance figures (min/max/mean/occurrences)
+still span all occurrences per FR-44, with outlier_count measured against
+the selected observed_net_income. Added a BDD feature file
+(`tests/bdd/features/TASK-030-...feature`) and step definitions
+(`tests/bdd/steps/test_task_030_steps.py`) covering all 4 acceptance
+criteria, plus 4 unit tests in `tests/test_income.py` and an updated
+Hypothesis property test with an independent reference oracle
+(`_reference_observed_net_income`). Confirmed red state before
+implementation: AC-2 (fallback) and the property test failed against the
+old code; AC-1/AC-3 happened to already pass since their "latest" occurrence
+already matched the new algorithm's outcome (no fallback triggered).
+`make lint` and `make test` both pass; coverage held at 99% (933 stmts, 1
+miss vs the 925/1/99% baseline recorded before implementation) - no
+regression. A Test Design Reviewer pass scored the new/updated tests 8.1/10
+(Farley Index) with no correctness defects; it suggested the Hypothesis
+oracle could be less structurally similar to the production algorithm, and
+that `test_ac3`/`test_ac4` could split their selection-outcome and
+variance-figure assertions into separate tests. Left both as follow-ups
+rather than blocking: the multi-assertion style matches this file's
+pre-existing tests (e.g. `test_bonus_is_counted_as_outlier_not_absorbed`),
+and the oracle still independently re-derives the answer via `statistics`
+and its own loop rather than calling production code.
 **Files changed:**
-- `src/firefly_bills_analyzer/income.py` - modified `_build_income_source` function
-- `tests/test_income.py` - added/updated test cases per TDD cycle
-- `CHANGELOG.md` - added entry for FR-43a implementation
+- `src/firefly_bills_analyzer/income.py` - added `_select_observed_occurrence` helper and updated `_build_income_source` for FR-43a
+- `tests/test_income.py` - added 4 AC unit tests and updated the Hypothesis property test with an independent reference oracle
+- `tests/bdd/features/TASK-030-fallback-income-net-income-from-median.feature` - new BDD feature file, 4 scenarios mapped to the 4 acceptance criteria
+- `tests/bdd/steps/test_task_030_steps.py` - new BDD step definitions
+- `CHANGELOG.md` - added Fixed entry for FR-43a
+- `docs/tasks/TASK-030-fallback-income-net-income-from-median.md` - status/completion metadata
 **Branch:** `git checkout task/030-fallback-income-net-income-from-median`
-**Stage:** `git add docs/REQUIREMENTS_new.md docs/tasks/TASK-030-fallback-income-net-income-from-median.md`
-**Commit:** `git commit -m "Add FR-43a and TASK-030 for income net income median fallback"`
+**Stage:** `git add src/firefly_bills_analyzer/income.py tests/test_income.py tests/bdd/features/TASK-030-fallback-income-net-income-from-median.feature tests/bdd/steps/test_task_030_steps.py CHANGELOG.md docs/tasks/TASK-030-fallback-income-net-income-from-median.md`
+**Commit:** `git commit -m "Implement FR-43a: fallback observed_net_income to most recent non-deviating occurrence"`

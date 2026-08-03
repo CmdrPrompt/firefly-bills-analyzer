@@ -9,6 +9,7 @@ each resulting income source.
 
 from __future__ import annotations
 
+import statistics
 from dataclasses import fields
 from datetime import date, timedelta
 
@@ -311,6 +312,89 @@ def test_empty_deposit_list_yields_no_source_and_raises_nothing() -> None:
 
 
 # ---------------------------------------------------------------------------
+# TASK-030: fallback observed_net_income when the latest occurrence deviates
+# from the median (FR-43a), variance figures always span all occurrences
+# (FR-44).
+# ---------------------------------------------------------------------------
+
+
+def test_ac1_normal_case_latest_occurrence_does_not_deviate_from_median() -> None:
+    dates = _monthly_dates(date(2026, 1, 1), 4)
+    amounts = ["1000.00", "1000.00", "1000.00", "1010.00"]
+    deposits = [
+        _deposit(d.isoformat(), amount, "Salary Checking", "Employer")
+        for d, amount in zip(dates, amounts)
+    ]
+    config = _make_config(income_accounts=["Salary Checking"], income_variance_tolerance=0.10)
+
+    result = detect_income(deposits, config)
+
+    source = result.sources[0]
+    assert source.observed_net_income == 1010.0
+    assert source.observed_date == dates[-1].isoformat()
+    assert source.outlier_count == 0
+
+
+def test_ac2_latest_occurrence_deviates_falls_back_to_previous_non_deviating() -> None:
+    deposits = [
+        _deposit("2026-07-01", "1000.00", "Salary Checking", "Employer"),
+        _deposit("2026-08-01", "1000.00", "Salary Checking", "Employer"),
+        _deposit("2026-09-01", "50.00", "Salary Checking", "Employer"),
+    ]
+    config = _make_config(income_accounts=["Salary Checking"], income_variance_tolerance=0.10)
+
+    result = detect_income(deposits, config)
+
+    source = result.sources[0]
+    assert source.observed_net_income == 1000.0
+    assert source.observed_date == "2026-08-01"
+    assert source.outlier_count == 1
+
+
+def test_ac3_all_occurrences_deviate_from_median_except_one() -> None:
+    dates = _monthly_dates(date(2026, 1, 1), 4)
+    amounts = ["1000.00", "100.00", "100.00", "100.00"]
+    deposits = [
+        _deposit(d.isoformat(), amount, "Salary Checking", "Employer")
+        for d, amount in zip(dates, amounts)
+    ]
+    config = _make_config(income_accounts=["Salary Checking"], income_variance_tolerance=0.10)
+
+    result = detect_income(deposits, config)
+
+    source = result.sources[0]
+    assert source.observed_net_income == 100.0
+    assert source.outlier_count == 1
+    assert source.occurrences == 4
+    assert source.amount_min == 100.0
+    assert source.amount_max == 1000.0
+    assert source.amount_mean == pytest.approx((1000.0 + 100.0 + 100.0 + 100.0) / 4)
+
+
+def test_ac4_variance_figures_always_span_all_occurrences() -> None:
+    dates = _monthly_dates(date(2026, 1, 1), 4)
+    amounts = ["1000.00", "1000.00", "1000.00", "50.00"]
+    deposits = [
+        _deposit(d.isoformat(), amount, "Salary Checking", "Employer")
+        for d, amount in zip(dates, amounts)
+    ]
+    config = _make_config(income_accounts=["Salary Checking"], income_variance_tolerance=0.10)
+
+    result = detect_income(deposits, config)
+
+    source = result.sources[0]
+    assert source.amount_min == 50.0
+    assert source.amount_max == 1000.0
+    assert source.amount_mean == pytest.approx((1000.0 + 1000.0 + 1000.0 + 50.0) / 4)
+    assert source.occurrences == 4
+    # outlier_count measures deviation from the *selected* observed_net_income
+    # (1000.0, since the latest occurrence of 50.0 deviates from the median
+    # of 1000.0 by more than the tolerance), not from the median itself.
+    assert source.observed_net_income == 1000.0
+    assert source.outlier_count == 1
+
+
+# ---------------------------------------------------------------------------
 # Hypothesis property tests
 # ---------------------------------------------------------------------------
 
@@ -346,6 +430,19 @@ def test_every_configured_income_account_appears_exactly_once(
     assert set(source_accounts).isdisjoint(issue_accounts)
 
 
+def _reference_observed_net_income(ordered_amounts: list[float], tolerance: float) -> float:
+    """Independent oracle for FR-43a: the median is the reference point, not
+    the observed figure itself. Walk backward from the most recent
+    occurrence and return the first amount that does not deviate from the
+    median of all amounts by more than ``tolerance``; if none qualifies
+    (every occurrence deviates), fall back to the oldest occurrence."""
+    median = statistics.median(ordered_amounts)
+    for amount in reversed(ordered_amounts):
+        if median == 0 or abs(amount - median) / median <= tolerance:
+            return amount
+    return ordered_amounts[0]
+
+
 @given(
     st.lists(
         st.floats(min_value=1, max_value=1_000_000, allow_nan=False, allow_infinity=False),
@@ -358,15 +455,21 @@ def test_observed_net_income_matches_latest_occurrence_within_range(
     amounts: list[float],
 ) -> None:
     dates = _monthly_dates(date(2024, 1, 1), len(amounts))
+    rounded_amounts = [float(f"{amount:.2f}") for amount in amounts]
     deposits = [
         _deposit(d.isoformat(), f"{amount:.2f}", "Salary Checking", "Employer")
         for d, amount in zip(dates, amounts)
     ]
-    config = _make_config(income_accounts=["Salary Checking"])
+    tolerance = 0.10
+    config = _make_config(income_accounts=["Salary Checking"], income_variance_tolerance=tolerance)
 
     result = detect_income(deposits, config)
 
     assert len(result.sources) == 1
     source = result.sources[0]
-    assert source.observed_net_income == pytest.approx(float(f"{amounts[-1]:.2f}"))
+    expected = _reference_observed_net_income(rounded_amounts, tolerance)
+    assert source.observed_net_income == pytest.approx(expected)
     assert source.amount_min <= source.observed_net_income <= source.amount_max
+    assert source.amount_min == min(rounded_amounts)
+    assert source.amount_max == max(rounded_amounts)
+    assert source.occurrences == len(rounded_amounts)
