@@ -2,7 +2,7 @@
 
 ## Status
 
-blocked
+todo
 
 ## Requirements
 
@@ -11,8 +11,7 @@ blocked
 **Depends on:** TASK-025 (the deposit ingestion path and the `INCOME_*`
 configuration), TASK-003 (`_classify_frequency()` and the median-interval
 computation this reuses)
-**Blocked on:** TASK-025, which is itself blocked on `firefly-python-api`
-REQ-011
+**Blocked on:** none
 **Precedence:** The requirements document is the binding definition of this task.
 The story and scenarios below are derived from it. On any discrepancy, the
 requirements document wins. Stop and report discrepancies; do not build from
@@ -173,7 +172,7 @@ payment are one cycle point, not two.
 
 ## Blockers
 
-TASK-025, and through it `firefly-python-api` REQ-011.
+None.
 
 ## Completion
 
