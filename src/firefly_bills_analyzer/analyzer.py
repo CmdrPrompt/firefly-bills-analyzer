@@ -13,7 +13,7 @@ from typing import Any
 
 from firefly_python_api import TransactionRead
 
-from firefly_bills_analyzer.category_filter import resolve_category_name
+from firefly_bills_analyzer.category_filter import has_any_category, resolve_category_name
 from firefly_bills_analyzer.config import Config
 
 _FREQUENCY_RANGES: dict[str, tuple[float, float]] = {
@@ -278,6 +278,7 @@ def _confidence(
     mean_amount: float,
     stddev_amount: float,
     category_name: str | None,
+    has_category: bool,
     config: Config,
 ) -> float:
     occurrence_score = min(occurrences / 4, 1.0)
@@ -288,7 +289,7 @@ def _confidence(
 
     if category_name is not None and category_name in config.include_categories:
         score += config.category_confidence_boost
-    if category_name is None and config.uncategorized_behavior == "neutral":
+    if not has_category and config.uncategorized_behavior == "neutral":
         score -= config.uncategorized_confidence_penalty
 
     return max(0.0, min(1.0, score))
@@ -328,6 +329,7 @@ def _build_pattern(
     mean_amount = statistics.mean(amounts)
     stddev_amount = statistics.pstdev(amounts)
     category_name = resolve_category_name(cluster, config)
+    has_category = has_any_category(cluster)
     source_account_name, source_account_varies = _resolve_source_account(cluster)
 
     confidence = _confidence(
@@ -337,6 +339,7 @@ def _build_pattern(
         mean_amount=mean_amount,
         stddev_amount=stddev_amount,
         category_name=category_name,
+        has_category=has_category,
         config=config,
     )
     frequency = _classify_frequency(median_days)

@@ -137,6 +137,7 @@ def test_confidence_always_in_range(
         mean_amount=mean_amount,
         stddev_amount=stddev_amount,
         category_name=None,
+        has_category=False,
         config=config,
     )
     assert 0.0 <= confidence <= 1.0
@@ -158,6 +159,7 @@ def test_confidence_perfect_regularity_and_amount_has_no_deviation_penalty(
         mean_amount=mean_amount,
         stddev_amount=0.0,
         category_name=None,
+        has_category=False,
         config=config,
     )
     expected = (
@@ -176,6 +178,7 @@ def test_confidence_category_boost_applied_when_in_include_list() -> None:
         mean_amount=10,
         stddev_amount=2,
         category_name="Streaming",
+        has_category=True,
         config=config,
     )
     without_category = _confidence(
@@ -185,6 +188,7 @@ def test_confidence_category_boost_applied_when_in_include_list() -> None:
         mean_amount=10,
         stddev_amount=2,
         category_name="Groceries",
+        has_category=True,
         config=config,
     )
     assert with_category > without_category
@@ -199,6 +203,7 @@ def test_confidence_uncategorized_neutral_reduces_confidence() -> None:
         mean_amount=10,
         stddev_amount=0,
         category_name="Groceries",
+        has_category=True,
         config=config,
     )
     uncategorized = _confidence(
@@ -208,6 +213,7 @@ def test_confidence_uncategorized_neutral_reduces_confidence() -> None:
         mean_amount=10,
         stddev_amount=0,
         category_name=None,
+        has_category=False,
         config=config,
     )
     assert uncategorized < categorized
@@ -225,6 +231,7 @@ def test_confidence_uncategorized_non_neutral_does_not_reduce_confidence(
         mean_amount=10,
         stddev_amount=0,
         category_name="Groceries",
+        has_category=True,
         config=config,
     )
     uncategorized = _confidence(
@@ -234,9 +241,82 @@ def test_confidence_uncategorized_non_neutral_does_not_reduce_confidence(
         mean_amount=10,
         stddev_amount=0,
         category_name=None,
+        has_category=False,
         config=config,
     )
     assert uncategorized == categorized
+
+
+def test_confidence_not_penalized_when_categorized_but_no_resolved_name() -> None:
+    """FR-13c: a cluster where every transaction is categorized, but
+    `resolve_category_name` still returns `None` (no majority), must not be
+    penalized like a genuinely uncategorized cluster."""
+    config = _make_config(uncategorized_behavior="neutral")
+    no_resolved_name_but_categorized = _confidence(
+        occurrences=4,
+        median_days=30,
+        stddev_days=0,
+        mean_amount=10,
+        stddev_amount=0,
+        category_name=None,
+        has_category=True,
+        config=config,
+    )
+    genuinely_uncategorized = _confidence(
+        occurrences=4,
+        median_days=30,
+        stddev_days=0,
+        mean_amount=10,
+        stddev_amount=0,
+        category_name=None,
+        has_category=False,
+        config=config,
+    )
+    assert no_resolved_name_but_categorized > genuinely_uncategorized
+    assert no_resolved_name_but_categorized == pytest.approx(
+        genuinely_uncategorized + config.uncategorized_confidence_penalty
+    )
+
+
+@given(
+    occurrences=st.integers(min_value=1, max_value=50),
+    median_days=st.floats(min_value=1, max_value=400),
+    mean_amount=st.floats(min_value=1, max_value=10000),
+    penalty=st.floats(min_value=0.0, max_value=1.0),
+)
+def test_confidence_independent_of_penalty_when_has_category(
+    occurrences: int, median_days: float, mean_amount: float, penalty: float
+) -> None:
+    """Acceptance criterion: for any cluster containing at least one
+    categorized transaction, confidence does not depend on
+    `UNCATEGORIZED_CONFIDENCE_PENALTY`."""
+    config = _make_config(
+        uncategorized_behavior="neutral", uncategorized_confidence_penalty=penalty
+    )
+    baseline_config = _make_config(
+        uncategorized_behavior="neutral", uncategorized_confidence_penalty=0.0
+    )
+    with_penalty = _confidence(
+        occurrences=occurrences,
+        median_days=median_days,
+        stddev_days=0.0,
+        mean_amount=mean_amount,
+        stddev_amount=0.0,
+        category_name=None,
+        has_category=True,
+        config=config,
+    )
+    baseline = _confidence(
+        occurrences=occurrences,
+        median_days=median_days,
+        stddev_days=0.0,
+        mean_amount=mean_amount,
+        stddev_amount=0.0,
+        category_name=None,
+        has_category=True,
+        config=baseline_config,
+    )
+    assert with_penalty == baseline
 
 
 # ---------------------------------------------------------------------------
@@ -295,6 +375,53 @@ def test_results_sorted_by_confidence_descending() -> None:
 
     assert [p.destination_name for p in patterns] == ["Netflix", "Corner Shop"]
     assert patterns[0].confidence >= patterns[1].confidence
+
+
+def test_fully_categorized_no_majority_cluster_is_not_penalized() -> None:
+    """Regression (FR-13c): twelve equal monthly transactions split across
+    two categories with no majority must score the same as an otherwise
+    identical single-category cluster, not 0.100 lower from the
+    uncategorized penalty."""
+    config = _make_config(uncategorized_behavior="neutral", category_majority_threshold=0.80)
+    start = date(2026, 1, 1)
+    single_category = [
+        _transaction(start + timedelta(days=30 * i), "9.99", "Netflix", "El") for i in range(12)
+    ]
+    split_categories = [
+        _transaction(
+            start + timedelta(days=30 * i),
+            "9.99",
+            "Netflix",
+            "El" if i < 7 else "Hushall",
+        )
+        for i in range(12)
+    ]
+
+    single_pattern = identify_recurring(single_category, config)[0]
+    split_pattern = identify_recurring(split_categories, config)[0]
+
+    assert split_pattern.category_name is None
+    assert split_pattern.confidence == pytest.approx(single_pattern.confidence)
+
+
+def test_partially_categorized_cluster_is_treated_as_categorized() -> None:
+    """FR-13c: a cluster with at least one categorized and at least one
+    uncategorized transaction is not penalized, per the "Uncategorized
+    pattern" definition (no transaction carries a category)."""
+    config = _make_config(uncategorized_behavior="neutral")
+    start = date(2026, 1, 1)
+    fully_categorized = [
+        _transaction(start + timedelta(days=30 * i), "9.99", "Netflix", "El") for i in range(6)
+    ]
+    partially_categorized = [
+        _transaction(start + timedelta(days=30 * i), "9.99", "Netflix", "El" if i < 3 else None)
+        for i in range(6)
+    ]
+
+    fully_pattern = identify_recurring(fully_categorized, config)[0]
+    partial_pattern = identify_recurring(partially_categorized, config)[0]
+
+    assert partial_pattern.confidence == pytest.approx(fully_pattern.confidence)
 
 
 def test_uncategorized_neutral_penalty_lowers_pattern_confidence() -> None:

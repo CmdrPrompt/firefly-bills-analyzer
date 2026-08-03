@@ -2,7 +2,11 @@ from firefly_python_api import TransactionRead
 from hypothesis import given
 from hypothesis import strategies as st
 
-from firefly_bills_analyzer.category_filter import filter_transactions, resolve_category_name
+from firefly_bills_analyzer.category_filter import (
+    filter_transactions,
+    has_any_category,
+    resolve_category_name,
+)
 from firefly_bills_analyzer.config import Config
 
 CATEGORIES = ["Streaming", "Groceries", "Utilities"]
@@ -179,6 +183,20 @@ def test_resolve_category_name_outright_majority_unaffected_by_tie_rule() -> Non
     config = _make_config(category_majority_threshold=0.40)
     transactions = [_transaction("Streaming")] * 3 + [_transaction("Groceries")] * 2
     assert resolve_category_name(transactions, config) == "Streaming"
+
+
+def test_has_any_category_true_when_at_least_one_transaction_is_categorized() -> None:
+    transactions = [_transaction("Streaming"), _transaction(None), _transaction(None)]
+    assert has_any_category(transactions) is True
+
+
+def test_has_any_category_false_when_all_uncategorized() -> None:
+    transactions = [_transaction(None) for _ in range(3)]
+    assert has_any_category(transactions) is False
+
+
+def test_has_any_category_false_for_empty_cluster() -> None:
+    assert has_any_category([]) is False
 
 
 @given(st.permutations([1, 2, 3, 4, 5]))

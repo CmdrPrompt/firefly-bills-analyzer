@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `UNCATEGORIZED_CONFIDENCE_PENALTY` is no longer applied to a pattern whose
+  amount cluster is fully categorized but for which `resolve_category_name`
+  (FR-13b) still resolves no name — e.g. a bill categorized 60/40 across two
+  related categories, neither reaching `CATEGORY_MAJORITY_THRESHOLD`. That
+  case was previously indistinguishable from a genuinely uncategorized
+  cluster and demoted by the same 0.10 penalty, which could be the
+  difference between auto-approval and manual review with no indication
+  why. The penalty now keys off whether any transaction in the cluster
+  carries a category at all (`category_filter.has_any_category()`), not off
+  the naming outcome. (TASK-023)
+
 - A bill name's category is now dropped when two or more categories are
   tied for most frequent within the amount cluster it is named from,
   regardless of `CATEGORY_MAJORITY_THRESHOLD`. Previously the tie was
