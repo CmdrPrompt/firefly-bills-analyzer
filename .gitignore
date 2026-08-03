@@ -99,3 +99,5 @@ cache/bills.json
 cache/*
 firefly-income-*.csv
 firefly-income-*.json
+firefly-household-spend-*.csv
+firefly-household-spend-*.json
