@@ -86,6 +86,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
 def _format_suggestion(pattern: RecurringPattern) -> str:
     category = f" [{pattern.category_name}]" if pattern.category_name else ""
     if pattern.source_account_varies:
+        # FR-30e: under FR-32d's partitioning this cannot occur normally;
+        # reaching here means the partitioning invariant has been violated.
         source_account = " from (varies)"
     elif pattern.source_account_name is not None:
         source_account = f" from {pattern.source_account_name}"

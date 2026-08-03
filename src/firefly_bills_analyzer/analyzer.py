@@ -4,6 +4,7 @@ frequency, and score how confidently each group represents a recurring payment.
 
 from __future__ import annotations
 
+import logging
 import statistics
 from collections import Counter, defaultdict
 from collections.abc import Callable
@@ -30,6 +31,8 @@ _MONTHLY_DIVISORS: dict[str, int] = {
     "yearly": 12,
 }
 
+logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class RecurringPattern:
@@ -53,20 +56,31 @@ class RecurringPattern:
 def _resolve_source_account(
     transactions_for_payee: list[TransactionRead],
 ) -> tuple[str | None, bool]:
-    """Resolve the source account name and whether it varies (FR-30a).
+    """Resolve the source account name and check FR-32d's single-account
+    invariant for the pattern (FR-30a, FR-30e).
 
-    Returns the mode of non-``None`` ``source_name`` values and whether more
-    than one distinct value occurs. There is no majority threshold: unlike
-    category resolution, this is deterministic based on mode alone.
+    FR-32d partitions every payee group by ``source_name`` before clustering,
+    so a pattern's transactions share exactly one distinct ``source_name``
+    value, or none: resolution is a distinct-value lookup, not a mode. When
+    more than one distinct value is present anyway, that is an FR-32d
+    violation rather than data to reconcile, so it is logged as a warning and
+    flagged via the returned ``varies`` flag rather than resolved silently.
     """
     names = [t["source_name"] for t in transactions_for_payee if t["source_name"] is not None]
     if not names:
         return None, False
 
-    counts = Counter(names)
-    mode_name, _ = counts.most_common(1)[0]
-    varies = len(counts) > 1
-    return mode_name, varies
+    distinct_names = set(names)
+    if len(distinct_names) > 1:
+        payee_names = {t["destination_name"] for t in transactions_for_payee}
+        logger.warning(
+            "FR-32d invariant violated for payee %s: source account varies across %s",
+            ", ".join(sorted(n for n in payee_names if n is not None)),
+            sorted(distinct_names),
+        )
+        return next(iter(distinct_names)), True
+
+    return next(iter(distinct_names)), False
 
 
 def _tolerance_gap_split(

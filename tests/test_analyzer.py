@@ -15,6 +15,7 @@ from firefly_bills_analyzer.analyzer import (
     _collapse_into_billing_events,
     _confidence,
     _partition_by_source_account,
+    _resolve_source_account,
     _split_into_amount_clusters,
     identify_recurring,
 )
@@ -559,6 +560,50 @@ def test_source_account_partition_produces_one_pattern_per_qualifying_account(
         assert pattern.source_account_name in qualifying
         assert pattern.source_account_varies is False
         assert pattern.occurrences == counts[pattern.source_account_name]
+
+
+def test_resolve_source_account_mixed_sources_flags_invariant_violation(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """FR-30e: `_resolve_source_account()` called directly with transactions
+    spanning two distinct `source_name` values (bypassing FR-32d's
+    partitioning) reports `source_account_varies = True` and logs a warning
+    naming both account names, since this state is an FR-32d invariant
+    violation rather than data to reconcile."""
+    start = date(2026, 1, 1)
+    transactions = [
+        _transaction(start, "9.99", "Netflix", "Streaming", source_name="Checking"),
+        _transaction(
+            start + timedelta(days=30), "9.99", "Netflix", "Streaming", source_name="Savings"
+        ),
+    ]
+
+    with caplog.at_level("WARNING"):
+        name, varies = _resolve_source_account(transactions)
+
+    assert varies is True
+    assert name in ("Checking", "Savings")
+    assert "Checking" in caplog.text
+    assert "Savings" in caplog.text
+
+
+@given(
+    st.text(min_size=1, max_size=20),
+    st.lists(st.dates(), min_size=1, max_size=20),
+)
+def test_resolve_source_account_hypothesis_single_source_name(
+    source_name: str, days: list[date]
+) -> None:
+    """For any transaction list sharing a single `source_name`, in any order,
+    `_resolve_source_account()` returns that name and `False`."""
+    transactions = [
+        _transaction(day, "9.99", "Netflix", "Streaming", source_name=source_name) for day in days
+    ]
+
+    name, varies = _resolve_source_account(transactions)
+
+    assert name == source_name
+    assert varies is False
 
 
 def test_analysis_of_24_months_completes_quickly() -> None:

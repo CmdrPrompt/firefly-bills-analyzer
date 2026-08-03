@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A pattern's source account name is now resolved from the single distinct
+  `source_name` value shared by its transactions, instead of a mode
+  computation left over from before FR-32d's source-account partitioning
+  made the mode redundant. `source_account_varies` now means something
+  actionable: since FR-32d guarantees each pattern's transactions share one
+  `source_name` (or none), the flag can only become `True` if that
+  partitioning invariant is violated, and doing so now logs a warning
+  naming the payee and the conflicting account names rather than silently
+  picking a mode. The CLI's existing "(varies)" indicator and the CSV/JSON
+  export fields are unchanged in behavior but now read as an anomaly
+  signal rather than a normal outcome. (FR-30e, TASK-024)
+
 - `UNCATEGORIZED_CONFIDENCE_PENALTY` is no longer applied to a pattern whose
   amount cluster is fully categorized but for which `resolve_category_name`
   (FR-13b) still resolves no name — e.g. a bill categorized 60/40 across two
