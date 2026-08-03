@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from decimal import ROUND_CEILING, Decimal
 from pathlib import Path
 
 from firefly_python_api import TransactionRead
@@ -116,7 +117,10 @@ def build_the_pattern(transactions: list[TransactionRead]) -> RecurringPattern:
     )
 )
 def monthly_equivalent_equals_mean_divided_by(pattern: RecurringPattern, divisor: int) -> None:
-    assert pattern.monthly_equivalent == pattern.amount_mean / divisor
+    # FR-37 (TASK-031): the raw division is rounded up to whole öre.
+    raw = pattern.amount_mean / divisor
+    expected = float(Decimal(str(raw)).quantize(Decimal("0.01"), rounding=ROUND_CEILING))
+    assert pattern.monthly_equivalent == expected
 
 
 @then("the pattern's `frequency` is `irregular` and its `monthly_equivalent` is `None`")

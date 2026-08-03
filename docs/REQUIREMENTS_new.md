@@ -29,7 +29,7 @@ Terms used with a specific meaning in this specification. All requirements use t
 | Common error | An error in the enumerated list: unreachable Firefly III instance, invalid or expired API token, invalid or missing required configuration value, insufficient API token permissions, Firefly III API error response (4xx/5xx other than 401, 403, and the name-uniqueness rejection handled per FR-05d), cache directory not writable. Example messages for each are given in Error Messages |
 | Uncategorized pattern | An amount cluster in which no transaction carries a category name. A cluster whose transactions are all categorized, but across categories none of which reaches `CATEGORY_MAJORITY_THRESHOLD`, is categorized-without-a-resolved-name: FR-13b gives it no category name for bill-naming purposes, but it is not an uncategorized pattern and is not penalized under FR-27 |
 | Duplicate bill | An existing bill in Firefly III whose name equals the candidate bill name, compared case-sensitively after trimming leading and trailing whitespace. Amount and frequency are not part of the duplicate criterion |
-| Monthly equivalent | The amount a recurring payment pattern costs per calendar month on average, derived from its mean amount and its frequency bucket (FR-03) via the fixed divisors monthly = 1, quarterly = 3, half-yearly = 6, yearly = 12. Undefined for the `irregular` bucket, where no divisor applies |
+| Monthly equivalent | The amount a recurring payment pattern costs per calendar month on average, derived from its mean amount and its frequency bucket (FR-03) via the fixed divisors monthly = 1, quarterly = 3, half-yearly = 6, yearly = 12, then rounded up to the nearest whole öre (two decimal places). Undefined for the `irregular` bucket, where no divisor applies |
 | Income account | An asset account named in `INCOME_ACCOUNTS`, on which the application looks for a recurring incoming payment. Typically the account a salary is paid into |
 | Income candidate | A group of deposit transactions on one income account sharing the same payer (`source_name`), analyzed for recurrence by the same interval and frequency machinery UC2 applies to withdrawals (FR-03) |
 | Income source | The one income candidate per income account that is classified `monthly` (FR-03) and meets `INCOME_MIN_OCCURRENCES`. An income account with no such candidate, or with more than one, yields no income source and is reported as such (FR-42b, FR-42c) |
@@ -179,7 +179,9 @@ The use cases are informative. They describe intended flows and provide context 
    half-yearly = 6, yearly = 12 — so that patterns billed at different cadences can be summed
    against each other. The divisor comes from the frequency bucket rather than from the observed
    median interval, so that the figure agrees with the `repeat_freq` of the bill FR-06 would
-   actually create. An `irregular` pattern has no divisor and therefore no monthly equivalent
+   actually create. The division result is then rounded up (ceiling) to two decimal places, so
+   that the figure never understates the pattern's true monthly cost. An `irregular` pattern has
+   no divisor and therefore no monthly equivalent
 
 10. Results are returned to the caller (web server or terminal) with the confidence score per entry
 
@@ -574,7 +576,7 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-36a | When a payee include list is configured (`INCLUDE_PAYEES`), the application shall include only transactions whose destination account name (`destination_name`) matches the include list in the analysis | UC10 |
 | FR-36b | When a payee exclude list is configured (`EXCLUDE_PAYEES`), the application shall exclude transactions whose destination account name (`destination_name`) matches the exclude list from the analysis; exclude is applied after include when both are configured | UC10 |
 | FR-36c | When the web UI page is loaded, the web UI shall fetch the existing payees from the Firefly III API and display them as multiselect lists | UC10 |
-| FR-37  | When the application builds a recurring payment pattern (UC2), the application shall compute a monthly equivalent (see Definitions) as the pattern's mean amount divided by the fixed divisor for its frequency bucket (FR-03) — monthly = 1, quarterly = 3, half-yearly = 6, yearly = 12 — and shall record no monthly equivalent when the pattern's frequency is `irregular` | UC2, UC5 |
+| FR-37  | When the application builds a recurring payment pattern (UC2), the application shall compute a monthly equivalent (see Definitions) as the pattern's mean amount divided by the fixed divisor for its frequency bucket (FR-03) — monthly = 1, quarterly = 3, half-yearly = 6, yearly = 12 — rounded up (ceiling) to two decimal places, and shall record no monthly equivalent when the pattern's frequency is `irregular` | UC2, UC5 |
 | FR-38  | *Reserved. Not used, retained to keep the ID sequence stable — formerly FR-38a through FR-38f, the household split requirements, moved out with UC11 per Open Item #10 (2026-08-02)* | — |
 | FR-39a | The application shall read the income accounts from configuration (`INCOME_ACCOUNTS`, comma-separated asset account names), and an empty value shall disable income detection entirely | UC12 |
 | FR-39b | The application shall read the minimum occurrence threshold for an income candidate from configuration (`INCOME_MIN_OCCURRENCES`, default 3) | UC12 |
