@@ -41,6 +41,7 @@ and is the single authoritative ordering.
 | — | [TASK-032](TASK-032-household-spend-confidence-threshold.md) Household spend excludes only high-confidence recurring patterns (FR-48b) | TASK-028, TASK-003 | todo | Real-data review found a payee with many varying-amount transactions and no same-date co-occurrence collapsing into a single low-confidence `irregular` cluster; FR-48b unconditionally excluded every one of those transactions from household spend, silently producing zero records. FR-48b (spec revision) now only excludes a withdrawal when its pattern's confidence is at or above `HIGH_CONFIDENCE_THRESHOLD`, reusing FR-04a's existing threshold |
 | — | [TASK-033](TASK-033-per-category-one-off-thresholds.md) Per-category one-off purchase thresholds (FR-47e, FR-47f, FR-48c, FR-51c) | TASK-028, TASK-032 | todo | Introduces per-category one-off threshold overrides via `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS` to avoid misclassifying ordinary household spend (e.g. 2,000–2,500 kr grocery runs in "Mat och hushåll") as one-off purchases. Categories without an override use the default `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLD` for backward compatibility; unmatched overrides are reported per FR-47f. Each exported one-off purchase now carries the threshold amount that excluded it. |
 | — | [TASK-034](TASK-034-env-example-one-off-thresholds.md) Document HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS in .env.example (FR-47e) | TASK-033 | todo | `.env.example` was missing the `HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS` entry TASK-033 added to `Config`; adds the commented-out line alongside its sibling `HOUSEHOLD_SPEND_*` variables |
+| — | [TASK-036](TASK-036-auto-approve-regular.md) Add --auto-approve-regular CLI flag for non-irregular patterns (UC3, FR-04c) | TASK-005 | todo | New CLI flag to auto-approve only non-irregular, high-confidence recurring patterns; irregular or below-threshold patterns presented interactively instead of skipped. Enforces mutual exclusivity with existing `--auto-approve` via argparse `add_mutually_exclusive_group()`. Distinct approval strategy from `--auto-approve` which auto-approves all patterns >= threshold regardless of frequency |
 
 ## Dependency graph
 
@@ -101,6 +102,7 @@ graph LR
     T003 --> T032
     T032 --> T033[TASK-033<br/>per-category one-off thresholds]
     T028 --> T033
+    T005 --> T036[TASK-036<br/>auto-approve-regular]
 ```
 
 ## Rules

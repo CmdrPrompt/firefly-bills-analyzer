@@ -230,6 +230,15 @@ The use cases are informative. They describe intended flows and provide context 
 - Remaining entries are rejected or presented interactively row by row (y/n/a)
 - Each printed suggestion includes the source account (or "varies") per FR-30b
 
+**Alternative flow (terminal, `--auto-approve-regular`):**
+
+- Entries whose frequency (FR-03) is not `irregular` and whose confidence score is at or
+  above the confidence threshold (FR-04a) are approved without interaction
+- All other entries — frequency `irregular` regardless of confidence, or a non-irregular
+  frequency with confidence below the threshold — are presented interactively row by row
+  (y/n/a/q), the same as the primary interactive review flow; they are not skipped
+- Each printed suggestion includes the source account (or "varies") per FR-30b
+
 ---
 
 ### UC4: Create bills in Firefly III
@@ -534,6 +543,7 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-03  | The application shall classify each recurring payment pattern into exactly one of the frequencies monthly, quarterly, half-yearly, yearly, or irregular | UC2 |
 | FR-04a | The application shall read the confidence threshold for automatic approval from configuration (`HIGH_CONFIDENCE_THRESHOLD`, default 0.80) | UC3, UC13 |
 | FR-04b | The application shall read the minimum occurrence threshold for classifying a pattern as recurring from configuration (`MIN_OCCURRENCES`, default 2) | UC2 |
+| FR-04c | Under `--auto-approve-regular` (UC3), the application shall approve without interaction only entries whose frequency (FR-03) is not `irregular` and whose confidence score is at or above the confidence threshold (FR-04a); all other entries shall be presented for interactive review rather than skipped or auto-rejected | UC3 |
 | FR-05a | When the application is about to create a bill, the application shall verify whether a duplicate bill (see Definitions) already exists in Firefly III before creating the bill | UC4 |
 | FR-05b | If a duplicate bill exists and its amount range and frequency equal the candidate's, then the application shall skip creation and report the outcome "already exists" | UC4 |
 | FR-05c | If a duplicate bill exists and its amount range or frequency differs from the candidate's, then the application shall skip creation and report the outcome "exists with different parameters", including the differing values in the report | UC4 |
@@ -779,7 +789,7 @@ User adjusts rows + clicks "Create selected bills"
 The application supports two run modes:
 
 - **Web mode** (default): `python app.py` starts the HTTP server
-- **CLI mode**: `python app.py --cli [--dry-run] [--auto-approve] [--clear-cache]` runs without a web server
+- **CLI mode**: `python app.py --cli [--dry-run] [--auto-approve | --auto-approve-regular] [--clear-cache]` runs without a web server
 
 ---
 
