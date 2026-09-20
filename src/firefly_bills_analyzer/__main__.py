@@ -42,7 +42,7 @@ Key environment variables (set in a .env file or the shell; see .env.example
 for the full list):
   FIREFLY_URL, FIREFLY_TOKEN     required: your Firefly III instance and API token
   DRY_RUN                        true/false, alternative to --dry-run
-  EXPORT_FORMAT                  csv, json, or none (default)
+  EXPORT_FORMAT                  csv, json, none (default), or a comma-separated list, e.g. csv,json
   HIGH_CONFIDENCE_THRESHOLD      confidence cutoff for auto-approval, 0.0-1.0 (default 0.80)
   INCLUDE_CATEGORIES             comma-separated categories to include (UC6)
   EXCLUDE_CATEGORIES             comma-separated categories to exclude (UC6)
@@ -224,6 +224,44 @@ def _default_household_spend_export_path(fmt: str) -> str:
     return f"./firefly-household-spend-{timestamp}.{ext}"
 
 
+def _run_exports(
+    export_formats: list[str],
+    patterns: list[RecurringPattern],
+    income_result: IncomeResult,
+    household_spend_result: HouseholdSpendResult,
+) -> None:
+    """FR-53b: write each of the three exports once per listed format,
+    printing the path of each file written (FR-31)."""
+    if export_formats == ["none"]:
+        return
+
+    for fmt in export_formats:
+        path = _default_export_path(fmt)
+        exporter.export(patterns, fmt, path)
+        print(f"Exported {len(patterns)} pattern(s) to {path}")
+
+    income_detection_enabled = bool(income_result.sources or income_result.issues)
+    if income_detection_enabled:
+        for fmt in export_formats:
+            income_path = _default_income_export_path(fmt)
+            exporter.export_income(income_result.sources, income_result.issues, fmt, income_path)
+            print(f"Exported {len(income_result.sources)} income source(s) to {income_path}")
+
+    household_spend_enabled = bool(
+        household_spend_result.records
+        or household_spend_result.one_off_purchases
+        or household_spend_result.unmatched_categories
+        or household_spend_result.unmatched_threshold_overrides
+        or household_spend_result.include_tag_count
+        or household_spend_result.exclude_tag_count
+    )
+    if household_spend_enabled:
+        for fmt in export_formats:
+            household_spend_path = _default_household_spend_export_path(fmt)
+            exporter.export_household_spend(household_spend_result, fmt, household_spend_path)
+            print(f"Exported household spend to {household_spend_path}")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
 
@@ -266,33 +304,7 @@ def main(argv: list[str] | None = None) -> int:
     elif patterns:
         print("No entries approved; no bills created.")
 
-    if config.export_format != "none":
-        path = _default_export_path(config.export_format)
-        exporter.export(patterns, config.export_format, path)
-        print(f"Exported {len(patterns)} pattern(s) to {path}")
-
-    income_detection_enabled = bool(income_result.sources or income_result.issues)
-    if income_detection_enabled and config.export_format != "none":
-        income_path = _default_income_export_path(config.export_format)
-        exporter.export_income(
-            income_result.sources, income_result.issues, config.export_format, income_path
-        )
-        print(f"Exported {len(income_result.sources)} income source(s) to {income_path}")
-
-    household_spend_enabled = bool(
-        household_spend_result.records
-        or household_spend_result.one_off_purchases
-        or household_spend_result.unmatched_categories
-        or household_spend_result.unmatched_threshold_overrides
-        or household_spend_result.include_tag_count
-        or household_spend_result.exclude_tag_count
-    )
-    if household_spend_enabled and config.export_format != "none":
-        household_spend_path = _default_household_spend_export_path(config.export_format)
-        exporter.export_household_spend(
-            household_spend_result, config.export_format, household_spend_path
-        )
-        print(f"Exported household spend to {household_spend_path}")
+    _run_exports(config.export_formats, patterns, income_result, household_spend_result)
 
     return 0
 

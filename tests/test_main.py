@@ -309,6 +309,41 @@ class TestDryRun:
         assert f"Exported 1 pattern(s) to {exported_path}" in capsys.readouterr().out
 
 
+class TestMultiFormatExport:
+    """TASK-037, FR-53b: multiple listed formats fan out to one export call
+    (and one printed path) per format."""
+
+    def test_exports_once_per_format_when_multiple_formats_configured(self) -> None:
+        with _pipeline(env={"EXPORT_FORMAT": "csv,json"}) as mocks:
+            code = main(["--dry-run", "--auto-approve"])
+
+        assert code == 0
+        assert mocks["export"].call_count == 2
+        called_formats = {call.args[1] for call in mocks["export"].call_args_list}
+        assert called_formats == {"csv", "json"}
+
+    def test_each_format_writes_its_own_default_extension(self) -> None:
+        with _pipeline(env={"EXPORT_FORMAT": "csv,json"}) as mocks:
+            code = main(["--dry-run", "--auto-approve"])
+
+        assert code == 0
+        paths_by_format = {call.args[1]: call.args[2] for call in mocks["export"].call_args_list}
+        assert str(paths_by_format["csv"]).endswith(".csv")
+        assert str(paths_by_format["json"]).endswith(".json")
+
+    def test_prints_one_path_per_format_when_multiple_formats_configured(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        with _pipeline(env={"EXPORT_FORMAT": "csv,json"}) as mocks:
+            code = main(["--dry-run", "--auto-approve"])
+
+        assert code == 0
+        out = capsys.readouterr().out
+        for call in mocks["export"].call_args_list:
+            path = call.args[2]
+            assert f"Exported 1 pattern(s) to {path}" in out
+
+
 class TestClearCache:
     def test_clears_cache_directory_and_prints_confirmation(
         self, capsys: pytest.CaptureFixture, tmp_path: Path

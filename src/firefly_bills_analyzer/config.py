@@ -14,6 +14,39 @@ class ConfigError(ValueError):
     """Raised when a required configuration value is absent or invalid."""
 
 
+_VALID_EXPORT_FORMATS = frozenset({"csv", "json", "none"})
+
+
+def _parse_export_formats(raw: str) -> list[str]:
+    """Parse `EXPORT_FORMAT` into a validated list of formats (FR-53a).
+
+    Accepts a single format or a comma-separated list, trimming whitespace
+    around each entry. Rejects (FR-53c/FR-53d, all as `ConfigError`):
+    - an unsupported format, naming the offending value;
+    - the same format listed more than once, naming the offending value;
+    - `none` combined with one or more other formats.
+    """
+    formats = [entry.strip() for entry in raw.split(",") if entry.strip()]
+    if not formats:
+        return ["none"]
+
+    seen: set[str] = set()
+    for fmt in formats:
+        if fmt not in _VALID_EXPORT_FORMATS:
+            raise ConfigError(
+                f"EXPORT_FORMAT: '{fmt}' is not a supported export format "
+                "(supported: csv, json, none)."
+            )
+        if fmt in seen:
+            raise ConfigError(f"EXPORT_FORMAT: '{fmt}' appears more than once in EXPORT_FORMAT.")
+        seen.add(fmt)
+
+    if "none" in formats and len(formats) > 1:
+        raise ConfigError("EXPORT_FORMAT: 'none' cannot be combined with other export formats.")
+
+    return formats
+
+
 def _kv_csv(key: str) -> dict[str, float]:
     """Parse comma-separated `category:amount` pairs from an env var (FR-47e).
 
@@ -85,6 +118,10 @@ class Config:
     household_spend_include_tag: str | None
     household_spend_exclude_tag: str | None
     household_spend_one_off_thresholds: dict[str, float] = field(default_factory=dict)
+    # FR-53a: parsed/validated `EXPORT_FORMAT` list; defaults to `["none"]`
+    # so existing `Config(...)` call sites that predate multi-format support
+    # (e.g. in tests) don't need updating.
+    export_formats: list[str] = field(default_factory=lambda: ["none"])
 
     @classmethod
     def from_env(cls) -> Config:
@@ -99,6 +136,9 @@ class Config:
         def _csv(key: str) -> list[str]:
             raw = os.environ.get(key, "").strip()
             return [x.strip() for x in raw.split(",") if x.strip()] if raw else []
+
+        raw_export_format = os.environ.get("EXPORT_FORMAT", "none")
+        export_formats = _parse_export_formats(raw_export_format)
 
         return cls(
             firefly_url=url,
@@ -123,7 +163,8 @@ class Config:
             include_payees=_csv("INCLUDE_PAYEES"),
             exclude_payees=_csv("EXCLUDE_PAYEES"),
             dry_run=os.environ.get("DRY_RUN", "false").lower() in ("1", "true", "yes"),
-            export_format=os.environ.get("EXPORT_FORMAT", "none"),
+            export_format=raw_export_format,
+            export_formats=export_formats,
             web_port=int(os.environ.get("WEB_PORT", "5000")),
             web_host=os.environ.get("WEB_HOST", "127.0.0.1"),
             cache_dir=os.environ.get("CACHE_DIR", "./cache"),

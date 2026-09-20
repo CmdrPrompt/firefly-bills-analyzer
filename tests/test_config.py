@@ -38,6 +38,7 @@ def test_defaults() -> None:
     assert cfg.amount_cluster_tolerance == 0.15
     assert cfg.dry_run is False
     assert cfg.export_format == "none"
+    assert cfg.export_formats == ["none"]
     assert cfg.uncategorized_behavior == "neutral"
     assert cfg.category_majority_threshold == 0.80
     assert cfg.uncategorized_confidence_penalty == 0.10
@@ -318,3 +319,118 @@ def test_household_spend_one_off_thresholds_round_trips_arbitrary_pairs(
     with patch.dict(os.environ, env, clear=True):
         cfg = Config.from_env()
     assert cfg.household_spend_one_off_thresholds == pairs
+
+
+# ---------------------------------------------------------------------------
+# Multi-format export (TASK-037, FR-53a, FR-53b, FR-53c, FR-53d)
+# ---------------------------------------------------------------------------
+
+
+def test_export_formats_defaults_to_none() -> None:
+    with patch.dict(os.environ, BASE_ENV, clear=True):
+        cfg = Config.from_env()
+    assert cfg.export_formats == ["none"]
+
+
+def test_export_formats_empty_env_var_defaults_to_none() -> None:
+    env = {**BASE_ENV, "EXPORT_FORMAT": ""}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.export_formats == ["none"]
+
+
+def test_export_formats_single_csv() -> None:
+    env = {**BASE_ENV, "EXPORT_FORMAT": "csv"}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.export_formats == ["csv"]
+
+
+def test_export_formats_single_json() -> None:
+    env = {**BASE_ENV, "EXPORT_FORMAT": "json"}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.export_formats == ["json"]
+
+
+def test_export_formats_comma_separated_list() -> None:
+    env = {**BASE_ENV, "EXPORT_FORMAT": "csv,json"}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.export_formats == ["csv", "json"]
+
+
+def test_export_formats_strips_whitespace_around_entries() -> None:
+    env = {**BASE_ENV, "EXPORT_FORMAT": " csv , json "}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.export_formats == ["csv", "json"]
+
+
+def test_export_format_none_combined_with_other_format_raises() -> None:
+    env = {**BASE_ENV, "EXPORT_FORMAT": "csv,none"}
+    with patch.dict(os.environ, env, clear=True):
+        with pytest.raises(ConfigError, match="none"):
+            Config.from_env()
+
+
+def test_export_format_unsupported_value_raises_and_names_it() -> None:
+    env = {**BASE_ENV, "EXPORT_FORMAT": "yaml"}
+    with patch.dict(os.environ, env, clear=True):
+        with pytest.raises(ConfigError, match="yaml"):
+            Config.from_env()
+
+
+def test_export_format_duplicate_value_raises_and_names_it() -> None:
+    env = {**BASE_ENV, "EXPORT_FORMAT": "csv,csv"}
+    with patch.dict(os.environ, env, clear=True):
+        with pytest.raises(ConfigError, match="csv"):
+            Config.from_env()
+
+
+def test_export_format_unsupported_value_in_list_is_named() -> None:
+    env = {**BASE_ENV, "EXPORT_FORMAT": "csv,xml"}
+    with patch.dict(os.environ, env, clear=True):
+        with pytest.raises(ConfigError, match="xml"):
+            Config.from_env()
+
+
+_valid_format_strategy = st.sampled_from(["csv", "json"])
+
+
+@given(
+    st.lists(_valid_format_strategy, min_size=1, max_size=2, unique=True),
+)
+@settings(max_examples=25)
+def test_export_formats_valid_permutations_parse_to_expected_list(formats: list[str]) -> None:
+    """Any comma-separated permutation of distinct valid formats parses back
+    to the same ordered list (FR-53a)."""
+    raw = ",".join(formats)
+    env = {**BASE_ENV, "EXPORT_FORMAT": raw}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.export_formats == formats
+
+
+@given(
+    st.lists(_valid_format_strategy, min_size=1, max_size=2, unique=True),
+    st.text(alphabet=" \t", min_size=0, max_size=3),
+)
+@settings(max_examples=25)
+def test_export_formats_tolerates_surrounding_whitespace(formats: list[str], padding: str) -> None:
+    """Whitespace around comma-separated entries is trimmed (FR-53a)."""
+    raw = ",".join(f"{padding}{fmt}{padding}" for fmt in formats)
+    env = {**BASE_ENV, "EXPORT_FORMAT": raw}
+    with patch.dict(os.environ, env, clear=True):
+        cfg = Config.from_env()
+    assert cfg.export_formats == formats
+
+
+@given(st.sampled_from(["none,csv", "csv,none", "none,json", "json,none"]))
+@settings(max_examples=10)
+def test_export_formats_none_combined_with_anything_raises(raw: str) -> None:
+    """`none` combined with any other format is always rejected (FR-53c)."""
+    env = {**BASE_ENV, "EXPORT_FORMAT": raw}
+    with patch.dict(os.environ, env, clear=True):
+        with pytest.raises(ConfigError, match="none"):
+            Config.from_env()

@@ -16,6 +16,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `EXPORT_FORMAT` now accepts a comma-separated list of formats (e.g.
+  `csv,json`), so the recurring-payment, income, and household spend
+  exports are each written once per listed format instead of forcing a
+  choice between CSV and JSON. Listing `none` together with another
+  format, an unsupported format, or the same format more than once is
+  rejected at startup with a message naming the offending value. `--help`
+  documents the comma-separated syntax. (FR-53a, FR-53b, FR-53c, FR-53d,
+  FR-08, FR-29, TASK-037)
+
 - Household spend's one-off purchase threshold can now be configured per
   category (`HOUSEHOLD_SPEND_ONE_OFF_THRESHOLDS`, comma-separated
   `category:amount` pairs), instead of one amount applying to every
