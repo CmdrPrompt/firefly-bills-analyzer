@@ -435,7 +435,7 @@ to a real Firefly III instance with transaction history
 ### UC11: *Retired*
 
 UC11 (household contribution split report) was removed in v0.2.24 under Open
-Item #10 and now lives in `firefly-household-splitter`. The number is retained
+Item #10 and now lives in `firefly-household-balancer`. The number is retained
 here, unused, so that references to UC11 in the changelog and in closed task
 files keep pointing at a single meaning.
 
@@ -702,7 +702,7 @@ Binding negative requirements defining the boundary of version 1.0. These are in
 | SE-04 | The application shall not create a bill, or any other entity in Firefly III, from a deposit transaction; deposits are read for income detection (UC12) only |
 | SE-05 | The application shall not classify what a deposit represents beyond recurrence: it does not distinguish salary from a refund, a reimbursement, or a gift. Recurrence on a declared income account is the whole of the criterion (FR-41c), which is why an ambiguous account is reported rather than resolved (FR-42c) |
 | SE-06 | The application shall not report gross income, tax, or deductions. Only the net amount that reached the account is observable in a Firefly III deposit |
-| SE-07 | The application shall not compute, recommend, or report any split of costs between people; that is `firefly-household-splitter`'s concern, and the reason UC11 was retired |
+| SE-07 | The application shall not compute, recommend, or report any split of costs between people; that is `firefly-household-balancer`'s concern, and the reason UC11 was retired |
 | SE-08 | The application shall not infer which categories represent household spending, and shall not propose additions to `HOUSEHOLD_SPEND_CATEGORIES`. The list is the user's declaration. A figure derived from it moves money between people, so the boundary of what counts must be set deliberately, not guessed |
 | SE-09 | The application shall not split a single transaction between household and personal spending. A purchase that is partly shared is either admitted whole or excluded whole; representing a partial share is Firefly III's own split-transaction feature, applied by the user before the analysis |
 | SE-10 | The application shall not write, suggest, or modify a tag in Firefly III. The override tags are read; applying them is the user's act, performed in Firefly III |

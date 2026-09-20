@@ -128,7 +128,7 @@ configured and `DRY_RUN` unset issues no additional creation call.
 
 ## Out of scope
 
-- Any consumer-side use of the exported file. `firefly-household-splitter`
+- Any consumer-side use of the exported file. `firefly-household-balancer`
   owns that, per SE-07.
 - A web UI view of income. Contingent on Open Item #5 like every other web
   surface.

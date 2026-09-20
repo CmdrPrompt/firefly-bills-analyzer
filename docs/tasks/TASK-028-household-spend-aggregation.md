@@ -193,7 +193,7 @@ TASK-029 to display.
 - Inferring which categories are household spending (SE-08).
 - Writing or suggesting tags in Firefly III (SE-10).
 - Any use of these figures in a cost split (SE-07); that lives in
-  `firefly-household-splitter`.
+  `firefly-household-balancer`.
 - Fetching anything. The withdrawals are already in memory (NFR-15).
 
 ## Blockers
