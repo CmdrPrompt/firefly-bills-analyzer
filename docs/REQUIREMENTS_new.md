@@ -280,8 +280,9 @@ The use cases are informative. They describe intended flows and provide context 
 1. The application is run with the `--dry-run` flag
 2. Analysis and suggestions are printed to the terminal
 3. No bills are created in Firefly III
-4. Suggestions are exported according to `EXPORT_FORMAT`
-5. The application prints the path of the exported file (FR-31)
+4. Suggestions are exported according to `EXPORT_FORMAT`, once per listed format when more
+   than one is configured (FR-53b)
+5. The application prints the path of each exported file (FR-31)
 
 ---
 
@@ -551,7 +552,7 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-06  | When the application creates a bill, the application shall compute the bill amount range (minimum and maximum) by applying the configured margin (`AMOUNT_MARGIN`) to the estimated amount | UC4 |
 | FR-07a | When the application is started with the `--dry-run` flag or the `DRY_RUN` configuration parameter is set, the application shall activate dry-run mode | UC5 |
 | FR-07b | While dry-run mode is active, the application shall not write any data to Firefly III | UC5 |
-| FR-08  | Upon user request, the application shall export the analysis results to CSV format or JSON format | UC5 |
+| FR-08  | Upon user request, the application shall export the analysis results to CSV format, JSON format, or both, as configured via `EXPORT_FORMAT` (FR-53a) | UC5 |
 | FR-09  | The application shall log all API calls and their outcomes | UC1, UC4 |
 | FR-10  | The application shall read its configuration from a `.env` file or from environment variables; when the same parameter is defined in both, environment variables shall take precedence | — |
 | FR-11a | When a category include list is configured, the application shall include only transactions whose category matches the include list in the analysis | UC6 |
@@ -578,7 +579,7 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-26b | The `firefly-python-api` package shall expose a `FireflyClient` class that provides a configured `requests.Session` | — |
 | FR-27  | When the application classifies recurring payment patterns, the application shall compute the confidence score as 0.4 × occurrence score + 0.4 × regularity score + 0.2 × amount score + category boost − uncategorized penalty, and shall clamp the result to the range [0.0, 1.0], where uncategorized penalty equals `UNCATEGORIZED_CONFIDENCE_PENALTY` when the pattern is an uncategorized pattern (see Definitions — no transaction in its amount cluster carries a category name) and `UNCATEGORIZED_BEHAVIOR` is `neutral`, else 0. A pattern whose transactions are categorized but for which FR-13b resolves no category name is not penalized (FR-13c) | UC2 |
 | FR-28  | Upon developer request, a dedicated opt-in script shall fetch the user's real withdrawal transactions from the configured Firefly III instance, run `identify_recurring()` against them, and report the real transaction count and elapsed time, without creating, modifying, or deleting any data in Firefly III | UC8 |
-| FR-29  | The CLI `--help` output shall document the environment variables a user commonly needs to set per run mode, alongside the flags, so that configuration is discoverable without reading `.env.example`: `FIREFLY_URL` and `FIREFLY_TOKEN` (required), `DRY_RUN` (alternative to `--dry-run`), `EXPORT_FORMAT` (`csv`/`json`/`none`), `HIGH_CONFIDENCE_THRESHOLD` (auto-approve/review cutoff), `INCLUDE_CATEGORIES`/`EXCLUDE_CATEGORIES`, `UNCATEGORIZED_BEHAVIOR`, `INCLUDE_ACCOUNTS`/`EXCLUDE_ACCOUNTS`, and `INCLUDE_PAYEES`/`EXCLUDE_PAYEES` | UC3, UC5, UC6, UC9, UC10 |
+| FR-29  | The CLI `--help` output shall document the environment variables a user commonly needs to set per run mode, alongside the flags, so that configuration is discoverable without reading `.env.example`: `FIREFLY_URL` and `FIREFLY_TOKEN` (required), `DRY_RUN` (alternative to `--dry-run`), `EXPORT_FORMAT` (`csv`/`json`/`none`, or a comma-separated list such as `csv,json`), `HIGH_CONFIDENCE_THRESHOLD` (auto-approve/review cutoff), `INCLUDE_CATEGORIES`/`EXCLUDE_CATEGORIES`, `UNCATEGORIZED_BEHAVIOR`, `INCLUDE_ACCOUNTS`/`EXCLUDE_ACCOUNTS`, and `INCLUDE_PAYEES`/`EXCLUDE_PAYEES` | UC3, UC5, UC6, UC9, UC10 |
 | FR-30a | When the application identifies a recurring pattern (UC2), the application shall resolve a source account name for the pattern as the single distinct `source_name` value shared by the pattern's transactions, or no source account name when that value is absent. Since FR-32d partitions every payee group by `source_name` before clustering, each pattern's transactions share exactly one `source_name` value, or none; the resolution is therefore total and has no tie case | UC2 |
 | FR-30b | The CLI review output (UC3) shall display, for each suggestion, the resolved source account name (FR-30a); when more than one distinct source account occurs in the pattern, the output shall display a "varies" indicator instead of a single account name | UC3 |
 | FR-30c | The web UI table view (FR-17a) shall include a column showing the resolved source account name (FR-30a), or a "varies" indicator when more than one distinct source account occurs in the pattern | UC3 |
@@ -616,7 +617,7 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-43  | The application shall set an income source's observed net income to the amount of its most recent occurrence, and shall not use the mean over the analysis window; the split this figure feeds is forward-looking, and a mean makes a pay rise invisible for as many months as the window is long | UC12 |
 | FR-43a | If the most recent occurrence deviates from the candidate's median occurrence amount by more than `INCOME_VARIANCE_TOLERANCE`, the application shall instead set the observed net income to the amount of the most recent occurrence that does not so deviate; occurrences skipped this way remain counted in the variance figures required by FR-44. The median, not the observed net income itself, is the reference point, since comparing an occurrence to the very figure it would set is circular | UC12 |
 | FR-44  | The application shall compute, for each income source, the minimum, maximum, and mean of its occurrence amounts, and the number of occurrences whose amount deviates from the observed net income by more than `INCOME_VARIANCE_TOLERANCE` | UC12 |
-| FR-45a | When income detection is enabled and the export format (`EXPORT_FORMAT`) is not `none`, the application shall write the income sources to a file separate from the recurring payment export (FR-08), in the same format | UC12, UC5 |
+| FR-45a | When income detection is enabled and the export format (`EXPORT_FORMAT`) is not `none`, the application shall write the income sources to a file separate from the recurring payment export (FR-08), in the same format(s) (FR-53b) | UC12, UC5 |
 | FR-45b | Each exported income source record shall carry the income account name, the payer name, the observed net income, its date, the occurrence count, the median interval in days, and the variance figures required by FR-44 | UC12, UC5 |
 | FR-45c | The application shall also export the accounts reported under FR-42b and FR-42c, marked with the reason no income source was emitted, so that a missing member's income is visible in the file rather than only as an absent row | UC12, UC5 |
 | FR-45d | When an income export completes, the application shall inform the user of the file path it wrote, on the same terms as FR-31 | UC12, UC5 |
@@ -640,11 +641,15 @@ Requirements follow EARS-style patterns with the system (or subsystem) as active
 | FR-49d | The application shall report, per source account and category, the mean, minimum, and maximum monthly total and the number of complete months contributing to them | UC13 |
 | FR-49e | If fewer than `HOUSEHOLD_SPEND_MIN_MONTHS` complete months are available for a source account and category, then the application shall report the pair with its available month count and no median figure | UC13 |
 | FR-50  | If a configured household spend category matches no transaction in the analysis window, then the application shall report that category as unmatched | UC13 |
-| FR-51a | When household spend measurement is enabled and the export format (`EXPORT_FORMAT`) is not `none`, the application shall write the household spend figures and the one-off purchases to a file separate from the recurring payment export (FR-08) and the income export (FR-45a), in the same format | UC13, UC5 |
+| FR-51a | When household spend measurement is enabled and the export format (`EXPORT_FORMAT`) is not `none`, the application shall write the household spend figures and the one-off purchases to a file separate from the recurring payment export (FR-08) and the income export (FR-45a), in the same format(s) (FR-53b) | UC13, UC5 |
 | FR-51b | Each exported household spend record shall carry the source account name, the category name, the median monthly figure, the mean, minimum, and maximum monthly totals, and the complete month count | UC13, UC5 |
 | FR-51c | Each exported one-off purchase record shall carry its date, amount, payee, category, source account name, and the threshold amount that excluded it (FR-48c), and shall be distinguishable from a household spend record | UC13, UC5 |
 | FR-51d | When a household spend export completes, the application shall inform the user of the file path it wrote, on the same terms as FR-31 | UC13, UC5 |
 | FR-52  | In CLI mode, the application shall display the household spend figures, the one-off purchases, and any category reported under FR-49e or FR-50, before the recurring payment review flow (UC3) | UC13, UC3 |
+| FR-53a | `EXPORT_FORMAT` shall accept either a single format (`csv`, `json`, or `none`) or a comma-separated list of formats (e.g. `csv,json`) | UC5 |
+| FR-53b | When `EXPORT_FORMAT` lists more than one format, the application shall write every export FR-08, FR-45a, and FR-51a would otherwise produce once per listed format, each to its own file using that format's own default path/extension, rather than choosing only one | UC5 |
+| FR-53c | If `EXPORT_FORMAT` lists `none` together with one or more other formats, then the application shall reject the configuration as invalid on startup, since `none` (no export) is contradictory when combined with a format that requests one | UC5 |
+| FR-53d | If `EXPORT_FORMAT` lists an unsupported format, or the same format more than once, then the application shall reject the configuration as invalid on startup, naming the offending value | UC5 |
 
 ---
 
@@ -805,7 +810,7 @@ The application supports two run modes:
 | `AMOUNT_CLUSTER_TOLERANCE`         | Relative amount gap that starts a new cluster within a payee (FR-32a)               | `0.15`          |
 | `HIGH_CONFIDENCE_THRESHOLD`        | Confidence threshold for auto-approval in CLI mode                                  | `0.80`          |
 | `DRY_RUN`                          | Do not create any bills                                                             | `false`         |
-| `EXPORT_FORMAT`                    | Export format (csv/json/none)                                                       | `none`          |
+| `EXPORT_FORMAT`                    | Export format: `csv`, `json`, `none`, or a comma-separated list of formats (FR-53a)  | `none`          |
 | `INCLUDE_CATEGORIES`               | Comma-separated category include list                                               | *(empty = all)* |
 | `EXCLUDE_CATEGORIES`               | Comma-separated category exclude list                                               | *(empty)*       |
 | `CATEGORY_CONFIDENCE_BOOST`        | Confidence boost for transactions matching the include list                         | `0.15`          |
