@@ -36,3 +36,13 @@ def test_help_documents_key_environment_variables() -> None:
         "UNCATEGORIZED_BEHAVIOR",
     ):
         assert var in help_text
+
+
+def test_help_documents_comma_separated_export_format_syntax() -> None:
+    """FR-29: --help documents EXPORT_FORMAT as accepting a comma-separated
+    list too (TASK-037)."""
+    help_text = build_arg_parser().format_help()
+    assert "csv" in help_text
+    assert "json" in help_text
+    assert "none" in help_text
+    assert "csv,json" in help_text
